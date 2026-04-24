@@ -1998,21 +1998,6 @@ _PASSTHROUGH_INTENTS = frozenset({
 _TASK_LOOKBACK_MSGS   = 20   # max total history messages to scan when deriving context
 _TASK_MAX_PASSTHROUGH = 3    # max consecutive pass-through user turns before task expires
 
-# ── ReasoningScaffold + AmbiguityGate patterns ──────────────────────────────
-_COMPARISON_SCAFFOLD_RE = re.compile(
-    r'\b(compare|vs\.?|versus|difference between|pros and cons|which is better|better than)\b',
-    re.IGNORECASE
-)
-_VAGUE_PRONOUN_RE = re.compile(
-    r'\b(this|that|it|these|those|the thing|the one)\b', re.IGNORECASE
-)
-_VAGUE_REQUEST_RE = re.compile(
-    r'^(help me with|fix this|improve this|make this|check this|review this|'
-    r'explain this|what about this|can you help|patulong|tulungan mo ako|'
-    r'i-explain mo|ano ba ito)\b',
-    re.IGNORECASE
-)
-
 # Per-domain continuation vocabulary.
 # Used by _classify_continuation to detect positive in-domain evidence in a
 # message that is otherwise too weak to classify confidently.
@@ -3148,6 +3133,83 @@ _CONV_OPENERS: frozenset[str] = frozenset({
     'wow', 'oh', 'ah', 'lol', 'haha', 'hehe', 'lmao', 'omg',
     'awesome', 'cool',
 })
+
+
+# ── ReasoningScaffold + AmbiguityGate patterns ──────────────────────────────
+_COMPARISON_SCAFFOLD_RE = re.compile(
+    r'\b(compare|vs\.?|versus|difference between|pros and cons|which is better|better than)\b',
+    re.IGNORECASE
+)
+_VAGUE_PRONOUN_RE = re.compile(
+    r'\b(this|that|it|these|those|the thing|the one)\b', re.IGNORECASE
+)
+_VAGUE_REQUEST_RE = re.compile(
+    r'^(help me with|fix this|improve this|make this|check this|review this|'
+    r'explain this|what about this|can you help|patulong|tulungan mo ako|'
+    r'i-explain mo|ano ba ito)\b',
+    re.IGNORECASE
+)
+
+
+# ── AmbiguityGate helpers ────────────────────────────────────────────────────
+def _is_ambiguous_query(query: str, history: list) -> bool:
+    """Return True when the query is too vague to answer without clarification."""
+    q = query.strip()
+    wc = len(q.split())
+
+    if wc > 120:
+        return False
+    # Clear question structure is never ambiguous
+    if re.search(r'\b(who|what|when|where|why|how)\b.{3,}', q, re.IGNORECASE):
+        return False
+
+    _has_prior_assistant = any(m.get('role') == 'assistant' for m in history)
+
+    # Signal 1: vague pronoun with no prior context and no inline code
+    if wc <= 8 and _VAGUE_PRONOUN_RE.search(q) and not _has_prior_assistant and '```' not in q:
+        return True
+
+    # Signal 2: bare vague task request (no code block, short message)
+    # Suppress only when a referential pronoun in the query can resolve against prior context.
+    _has_referent = bool(_VAGUE_PRONOUN_RE.search(q)) and _has_prior_assistant
+    if wc <= 10 and _VAGUE_REQUEST_RE.search(q) and '```' not in q and not _has_referent:
+        return True
+
+    return False
+
+
+def _generate_clarification(query: str, model: str) -> str:
+    """One fast LLM call → ONE clarifying question in Maria's voice."""
+    _system = (
+        "You are Maria Clara. The user sent a message that is too vague to answer well.\n"
+        "Ask ONE short clarifying question in Maria's natural Taglish/English voice.\n"
+        "Under 20 words. No filler openers like 'Sure!', 'Of course!', or 'Great question!'.\n"
+        "Do not answer the question — only ask for clarification."
+    )
+    try:
+        with _OLLAMA_SEMAPHORE:
+            _resp = ollama.chat(
+                model=model,
+                messages=[
+                    {"role": "system", "content": _system},
+                    {"role": "user",   "content": query},
+                ],
+                options={
+                    "temperature": 0.3,
+                    "num_predict": 50,
+                    "num_ctx": 512,
+                    "num_gpu": _NUM_GPU_LAYERS,
+                },
+            )
+        _text = ""
+        if isinstance(_resp, dict):
+            _text = _resp.get("message", {}).get("content", "").strip()
+        elif hasattr(_resp, "message"):
+            _text = getattr(_resp.message, "content", "").strip()
+        return clean_output(_text) if _text else "Anong ibig mong sabihin exactly? Give me a bit more context."
+    except Exception as _e:
+        print(f"   ⚠️ AmbiguityGate clarification failed: {_e}")
+        return "Hmm, gusto ko siguraduhing naiintindihan ko — can you give me more context?"
 
 
 def _classify_query_intent(query: str, is_filipino: bool = False,
