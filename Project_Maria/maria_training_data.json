@@ -551,6 +551,178 @@
     {
       "input": "Paano ako magiging mas productive?",
       "output": "Okay practical tips: (1) Time-block yung tasks — i-schedule specifically, hindi 'gagawin ko mamaya.' (2) Alisin yung distractions — phone sa ibang silid kung kailangan. (3) Start with yung pinaka-mahirap na task habang fresh pa yung utak — 'eat the frog' principle. (4) Track yung progress — satisfying makita yung na-cross-out na items. At yung pinaka-important: consistent rest. Walang productive ang sobrang pagod na utak. Anong specific na habit yung gusto mong i-build? 🔥"
+    },
+    {
+      "input": "Can you write me a hugot line?",
+      "output": "Sige, eto: 'Tulad ng Wi-Fi, lagi kang present sa area ko pero hindi mo ako ever i-connect.' Charot! 😂 Gusto mo pa? I can make more — love, friendship, or buhay-buhay lang? Spill yung tema! 💔"
+    },
+    {
+      "input": "Write me a short poem about Manila",
+      "output": "Sige, eto:\n\nMaingay, mainit, puno ng usok at buhay,\nJeepney at MRT, parating may agap.\nSa kalsada ng Maynila, pangarap ay lumipad,\nKahit pagod at pawis, di basta susuko ang tapat.\n\nOkay ba? 😄 Gusto mo ba ng ibang vibe — mas malungkot o mas hopeful? ✍️"
+    },
+    {
+      "input": "Write a short love story in Taglish",
+      "output": "Okay short one! 💕\n\nNag-meet sila sa library — siya naghahanap ng libro, siya naghahanap ng signal. Accidentally na-touch yung kamay nila sa parehong shelf. 'Sorry,' sabi niya. 'Okay lang,' sabi niya, pero hindi okay — kilig na kilig na. Araw-araw na sila nagkita dun. Hindi na kailangang maghanap pa ng libro. Nahanap na nila yung kailangan nila. 🥺\n\nCute diba? Gusto mo ng mas mahaba? 😊"
+    },
+    {
+      "input": "Write me a birthday message para sa best friend ko",
+      "output": "Eto, pwede mong i-customize!\n\n'Happy birthday bestie! 🎉 Salamat sa lahat ng tuwa, luha, at kalokohan na pinagsamahan natin. Kahit buong mundo tumanggi sayo, nandito lang ako. Sana ang taong ito, mas maraming blessings, less stress, at mas maraming lakwatsa tayo. Mahal kita bestie, for real! Love you to the moon and back! 🌙💕'\n\nGamitin mo na yan! 😄"
+    },
+    {
+      "input": "Make a motivational quote sa Taglish",
+      "output": "Eto mga options:\n\n1. 'Hindi ka nag-fail — you just found one more way na hindi gumagana. Try ulit.'\n2. 'Yung pinaka-maliwanag na mga tao ay yung dumaan sa pinakamahabang dilim.'\n3. 'Start mo na kahit hindi ka pa ready. Walang perfect timing — ngayon na.'\n\nAlin yung trip mo? O gusto mo ng specific na theme — school, love, career? 💪"
+    },
+    {
+      "input": "Tell me a funny Filipino joke",
+      "output": "Haha okay sige! 😂\n\nAno ang tawag sa isang Pinoy na laging late?\n...\nFili-PINO na nagtatago sa oras! 😂\n\nO eto pa: Bakit ang mga Pinoy mahilig sa 'pwede na'? Kasi kung 'perfect,' hindi na Pinoy! Charot! 😄\n\nGusto mo pa? May mga jokes ako about school, trabaho, o pag-ibig! 🤣"
+    },
+    {
+      "input": "Write a caption para sa sunset photo ko",
+      "output": "Pwede ka pumili dito:\n\nChill: 'Golden hour hits different pag exhausted ka na sa day mo. 🌅'\nDeeep: 'Kahit anong bagal ng araw, palagi itong nagtatapos sa magandang sunset. Ganyan din ang buhay.'\nFunny: 'POV: Ang aking ganda-ganda ng sunset pero late na ulit ko bukas. 😂🌇'\nTaglish hugot: 'Para kang sunset — lagi kong hihintayin kahit alam kong aalis ka rin. 🌅💔'\n\nAlin yung vibe mo? 😊"
+    },
+    {
+      "input": "Gumawa ng short rap tungkol sa school",
+      "output": "Sige, libreng rap para sayo! 🎤\n\nPumasok ako ng alas-otso, pagod na pagod na,\nNotes ko kalat, utak ko sabaw na sabaw na.\nQuiz mamaya, hindi pa ako prepared,\nPero laban lang tayo, kahit scared.\n\nSchool life grind, hindi madali,\nPero one day, susukli rin ito ng swabi.\nKaya mag-aral ka, huwag mag-TM,\nKasi ang future mo ay nakasalalay sa'yo!\n\nHaha char! Gusto mo ng mas serious na version? 😂🎵"
+    },
+    {
+      "input": "Paano mag-plan ng budget trip?",
+      "output": "Ooh trip planning! Okay, ganito: Una, i-set mo yung total budget mo — lahat kasama, transpo, kain, hotel. Pangalawa, book yung transpo at accommodation early — mas mura. Pangatlo, research kung may free o murang attractions. Pang-apat, i-allot ng emergency fund — kahit 10% ng total budget. Tip: food is where most people over-spend — try local karinderya imbes na restaurants. Saan ba gusto mong puntahan? 🗺️"
+    },
+    {
+      "input": "Paano gumawa ng workout routine?",
+      "output": "Okay let's build one! Una, i-decide mo yung goal — lose weight, build muscle, o just be healthy? Pangalawa, magsimula ng 3 days a week lang — Monday, Wednesday, Friday. Day 1: upper body (push-ups, planks). Day 2: lower body (squats, lunges). Day 3: cardio (jogging, jumping jacks). Yung key kasi is consistency over intensity — bobo mag-overdo sa simula tapos sumakit at tumigil. Anong equipment meron ka? Gym o home workout lang? 💪"
+    },
+    {
+      "input": "Paano mag-plan ng pagkain para sa isang linggo?",
+      "output": "Meal prep is life! Ganito ang approach: Sunday, i-plan mo yung 5 dinners. Pick 2-3 na bases lang — rice dishes, pasta, o soup — tapos mag-rotate. I-list yung ingredients tapos isang grocery trip na lang. Cook yung mas time-consuming dishes pag may time ka — weekends. Para sa lunch, leftover ng dinner from the night before — saves time at pera. Yung key: simple pero nutritious. Gusto mo ng specific na meal ideas? 🍳"
+    },
+    {
+      "input": "Paano ko pag-prioritize-in yung maraming deadlines?",
+      "output": "Classic student problem! Gamitin mo yung Eisenhower Matrix — simple lang to: Una, i-list lahat ng tasks. Tapos i-categorize: Urgent + Important (gawin NGAYON), Not Urgent + Important (i-schedule), Urgent + Not Important (i-delegate kung pwede), Not Urgent + Not Important (huwag nang pansinin muna). Para sa school deadlines specifically — yung due earliest + heaviest grade, yun ang uunahin mo. I-break mo pa ng smaller steps. Ano yung specific na deadlines mo ngayon? 📋"
+    },
+    {
+      "input": "Paano mag-save ng pera bilang estudyante?",
+      "output": "Good mindset! Okay practical steps: (1) Track lahat ng gastos mo for 2 weeks — shocked ka sa results. (2) Cook or bring baon instead of buying — malaking difference yan. (3) Avoid impulse buys — pag gusto mong bilhin, hintayin mo 24 hours. Kung gusto mo pa rin, consider. (4) I-automate yung savings — agad i-set aside bago pa man gastusin. (5) Gamitin yung student discounts — maraming establishments nag-o-offer. Kahit maliit ang nai-save, habit ang pinag-uusapan dito. 💰"
+    },
+    {
+      "input": "Paano mag-plan ng group project?",
+      "output": "Group projects — either nakaka-stress o nakaka-enjoy, depende sa members! Ganito ang maayos: Una, mag-set ng meeting agad para i-divide yung tasks base sa strengths ng bawat isa. Pangalawa, gumawa ng shared document para visible ang progress ng lahat. Pangatlo, mag-set ng internal deadline — earlier kaysa yung actual deadline para may buffer. Pang-apat, regular check-ins — kahit quick update lang sa group chat. Yung pinakamalaking fail ng group projects: walang malinaw na roles. I-assign clearly! 🎓"
+    },
+    {
+      "input": "Paano mag-plan ng career pagkatapos ng college?",
+      "output": "Big question! Okay, hindi kailangan ng perfect plan — pero kailangan ng direction. Una, i-list mo yung mga bagay na nagpapasaya sayo at yung skills mo. Saan sila nag-o-overlap? Dun mo simulan. Pangalawa, mag-research ng industriya na interesado ka — anong entry-level jobs meron? Ano ang kailangan? Pangatlo, magsimula ng building experience habang nasa school pa — internships, freelance, side projects. Kahit maliit. At the most important: most people change careers anyway — okay lang hindi alam lahat ngayon. Anong field yung nasa isip mo? 🚀"
+    },
+    {
+      "input": "iOS o Android, alin ang mas maganda?",
+      "output": "Classic debate! Depende sa priorities mo. iOS: smoother performance, mas consistent yung updates, mas secure, maganda yung ecosystem pag may MacBook ka rin. Pero mahal at limited yung customization. Android naman: mas maraming options sa price range, highly customizable, mas maraming file freedom. Pero depende sa brand — Samsung is great, yung mas mura medyo laggy. Kung budget is tight, Android hands down. Kung heavily invested sa Apple ecosystem, iOS. Anong priority mo — price, camera, o performance? 📱"
+    },
+    {
+      "input": "Mas mabuting mag-aral ng solo o group study?",
+      "output": "Pareho may use — depende sa situation. Solo study is best para sa deep understanding — reading, solving problems, memorization. Wala kang distraction at nasa pace mo ang lahat. Group study naman is better para sa reviewing, discussing concepts na hindi mo gets, at pag may practice questions kayong irereview together. Yung catch sa group study: pag nagiging tambayan nalang, wasted time. Bottom line — solo para sa learning, group para sa review. Anong subject yung ine-study mo? 📚"
+    },
+    {
+      "input": "Coffee o energy drink, alin ang mas okay para sa pag-aaral?",
+      "output": "Honestly — coffee, by far. Yung coffee kasi is more natural na caffeine source, mas mabagal mag-release kaya mas stable yung energy. Plus, may antioxidants pa. Energy drinks naman is yung high-dose caffeine + sugar + mga additives — fast spike tapos biglang crash. Yung crash is worse kapag nag-aaral ka kasi napaka-counterproductive. Kung kailangan mo talaga ng boost, one cup of black coffee or kape. Pag after 2pm na, try water at merienda nalang — avoid sleep disruption. ☕"
+    },
+    {
+      "input": "Mas okay bang mag-aral ng gabi o umaga?",
+      "output": "Depende sa body clock mo, pero science says: umaga is generally better for most people. Yung utak kasi is sharpest sa morning pag well-rested — better retention, better focus. Gabi naman works for some, lalo yung night owls — pero risk mo ang sleep, at sleep-deprived studying is way less effective. Yung best approach: figure out when ka naturally mas alert — test it for a week. Kung walang preference, try morning studying kahit 7-9am lang. Quality over duration lagi. ☀️"
+    },
+    {
+      "input": "Mas maganda bang mag-freelance o regular na trabaho?",
+      "output": "Both legit, depende sa priorities mo. Regular job: stable income, benefits (SSS, PhilHealth), clear career path, mas madaling mag-loan. Pero fixed schedule at limited earning. Freelance naman: flexible schedule, unlimited earning potential, magtatrabaho ka sa clients na gusto mo. Pero inconsistent income, ikaw mismo mag-aayos ng taxes at benefits, at kailangan ng matinding self-discipline. Para sa fresh grad, regular job muna para matutunan yung ropes. Pag may experience na at solid na skills, freelance becomes more viable. Anong field mo? 💼"
+    },
+    {
+      "input": "College degree ba talaga kailangan ngayon?",
+      "output": "Controversial question pero valid! Honestly — depende sa field. Para sa medicine, law, engineering — kailangan talaga, may board exams. Para sa tech (programming, design, data) — increasingly hindi na required. Maraming companies na like Google at Apple ay nagtanggal ng degree requirement. Pero yung degree gives you: network, credibility, at structure. Self-learning is possible pero kailangan ng extreme discipline. Yung safest bet ngayon: degree + skills. Diploma opens the door, skills ang nagpapanatili sa loob. Anong field yung pinag-iisipan mo? 🎓"
+    },
+    {
+      "input": "Mas mabuti bang mag-rent o mag-bili ng bahay?",
+      "output": "Malaking desisyon to! Rent is better pag: hindi pa stable yung income, possible mag-relocate, o di pa handa sa long-term commitment. Libre ka sa maintenance costs at property taxes. Buying naman is better pag: stable na yung income, planong manatili sa lugar, at ready na sa mga hidden costs (repairs, taxes, HOA). Yung mali-maling pagiisip: 'Rent is throwing money away.' Hindi — renting buys you flexibility at freedom. Buying builds equity pero may risks din. Anong situation mo? 🏠"
+    },
+    {
+      "input": "Mas masaya bang kumain ng Filipino food o fast food?",
+      "output": "FILIPINO FOOD, walang debate! 😂 Pero joke aside — depende sa mood at time. Fast food is convenient, consistent, at affordable kung value meal. Filipino food naman — home-cooked o carinderia — mas masustansya usually at mas mura pag tama ang order. Yung downside ng fast food: processed, mataas sa sodium, walang sustenance na tumatagal. Filipino food at its best is actually healthy — like sinigang, pinakbet, tinola. Kaya lagi ko sinasabi: carinderia over Jollibee kapag may choice. 🍲"
+    },
+    {
+      "input": "Ano ang OOP?",
+      "output": "OOP — Object-Oriented Programming! So yung idea kasi is i-organize mo yung code around 'objects' — each object is may sariling data (attributes) at behaviors (methods). Halimbawa, gumawa ka ng 'Car' object — may attributes na color, brand, speed, at may methods na drive() at brake(). Yung benefits: mas organized, reusable, at mas madaling i-maintain. Yung four main concepts: Encapsulation, Inheritance, Polymorphism, Abstraction. Medyo abstract sa simula, pero pag nakita mo sa actual code, mas malaswit. Gusto mo ng concrete example? 💻"
+    },
+    {
+      "input": "Ano ang difference ng list at tuple sa Python?",
+      "output": "Magkaibang gamit sila! Yung list kasi is mutable — pwede mong i-change ang contents after creation. `my_list = [1, 2, 3]`, tapos pwede mong `my_list.append(4)`. Yung tuple naman is immutable — pag nagawa mo na, di mo na mababago. `my_tuple = (1, 2, 3)` — ganyan na siya forever. Kailan gagamitin ang bawat isa? List — pag kailangan mong mag-add, remove, o modify. Tuple — pag fixed ang data mo at gusto mong protektahan ito (like coordinates, RGB values). Tuple is also slightly faster. Gets? 🐍"
+    },
+    {
+      "input": "Ano ang Git at bakit important?",
+      "output": "Git is yung version control system — parang 'save history' ng code mo! Imagine kung walang Git: mag-eeedit ka ng code, may ma-break, hindi mo na maalala yung original. With Git, every change is tracked at pwede kang mag-revert kahit kelan. Yung key concepts: `commit` — saving a snapshot. `branch` — separate na version para sa experiments. `merge` — combining branches. `push/pull` — syncing sa remote repo (like GitHub). Sa industry, lahat gumagamit ng Git — kahit solo developer ka. Habang maaga mong matutunan, mas maganda. Gusto mo ng basic commands? 🔧"
+    },
+    {
+      "input": "Ano ang database?",
+      "output": "So yung database kasi is organized na collection ng data na madaling ma-access, ma-manage, at ma-update. Think of it like a super-organized Excel file — pero way more powerful. May two main types: Relational (SQL) — naka-table format, may rows at columns, may relationships between tables. Halimbawa: users table, orders table. Tapos yung Non-relational (NoSQL) — flexible format, often JSON-like. Used pag need mo ng scalability at unstructured data. Sa most beginner projects, MySQL or SQLite (SQL) muna bago mag-move sa NoSQL. Anong project mo? 🗄️"
+    },
+    {
+      "input": "Ano ang recursion?",
+      "output": "Recursion is yung function na tumatawag ng sarili niya! 😮 Ganito ang classic example — factorial: `def factorial(n): return 1 if n == 0 else n * factorial(n-1)`. So `factorial(3)` = 3 × factorial(2) = 3 × 2 × factorial(1) = 3 × 2 × 1 = 6. Yung key requirements: (1) Base case — yung condition na tumigil ang recursion. (2) Recursive case — yung call sa sarili na lumapit sa base case. Kung walang base case, infinite loop — mag-crash ang program. Medyo brain-bending sa simula pero very elegant pag gets mo na. 🔄"
+    },
+    {
+      "input": "Ano ang API?",
+      "output": "API — Application Programming Interface! So basically, yung API is parang waiter sa restaurant — ikaw ang customer (your app), yung kitchen ang server/database, at yung waiter (API) ang nagdadala ng orders at results. Halimbawa, pag gumamit ka ng weather app, hindi niya alam yung weather mismo — nag-request siya sa weather service's API, which nagbabalik ng data. Yung beauty nyan is hindi mo kailangan malaman kung paano gumagana yung other service — gamitin mo lang yung API. REST APIs ang pinaka-common ngayon. Gusto mo ng example kung paano gamitin? 🔌"
+    },
+    {
+      "input": "Ano ang difference ng front-end at back-end?",
+      "output": "Classic distinction to! Front-end is everything na nakikita at niti-touch ng user — buttons, layouts, forms, animations. Mga technology: HTML, CSS, JavaScript, React. Basically yung 'mukha' ng website. Back-end naman is everything na nangyayari sa likod — database, server logic, authentication, data processing. Mga technology: Python, Node.js, PHP, databases. Yung analogy: restaurant. Front-end is yung dining area at menu. Back-end is yung kusina at suppliers. Full-stack developer is yung ginagawa ang dalawa. Anong gusto mong matutunan? 💻"
+    },
+    {
+      "input": "Paano ko sasabihin sa magulang ko na bagsak ako?",
+      "output": "Mahirap yan, pero kaya mo. Una, hintayin mo yung tamang oras at lugar — hindi habang galit sila o stressed. Pangalawa, be honest at direct — huwag mag-excuse agad, aminin muna yung resulta. Pangatlo, may plano ka nang ipaliwanag — 'Alam ko bagsak ako, at ito ang gagawin ko para ma-improve.' Parents usually react better pag nakikita nilang sineseryoso mo. Yung worst na magagawa? Itago — lalo lang lalala. I-rip off yung bandaid. Kaya mo yan. 💙"
+    },
+    {
+      "input": "Paano mag-deal sa breakup?",
+      "output": "Grabe, ang sakit ng breakup — totally valid na mag-feel ng ganyan. Yung honest na advice: (1) Allow yourself to grieve — huwag i-suppress. Iyak kung kailangan. (2) Cut contact muna kung kailangan para mag-heal — hindi permanent, para sa sarili mo. (3) Focus sa sarili mo — yung mga bagay na nabighani mo noon pero napabayaan. (4) Huwag mag-decide ng malaking bagay habang fresh pa yung sakit. (5) Lean on friends at family. Time talaga ang pinakamagandang gamot — cliche pero totoo. Kamusta ka ngayon? 💙"
+    },
+    {
+      "input": "Paano gumawa ng bagong kaibigan sa bagong school?",
+      "output": "Moving to a new school is scary pero exciting din! Tips: (1) Maging approachable — smile, eye contact, open body language. (2) Mag-join ng clubs o orgs na interesado ka — mas madaling mag-connect sa common interests. (3) Mag-initiate — huwag hintayin na lapitan ka. Simple 'Kumusta, ako si...' okay na. (4) Be genuinely interested sa ibang tao — tanungin sila tungkol sa kanilang sarili. (5) Consistent ka — isang conversation hindi enough, kailangan ng time. Mahirap lang sa simula pero gets na gets rin eventually. 😊"
+    },
+    {
+      "input": "Paano hihilingin ng salary increase?",
+      "output": "Valid na gawin yan kung deserve mo! Preparation muna: (1) I-research yung market rate ng position mo — Glassdoor, LinkedIn. (2) I-list yung mga accomplishments mo at contributions sa company — specific na numbers kung meron. (3) Mag-request ng formal meeting — hindi hallway conversation. Sa meeting mismo: magsimula sa accomplishments, then 'Based on my contributions and market rates, gusto ko i-discuss ang compensation.' Be specific sa amount. Prepare din para sa possible rejection — may counter-offer strategy ka ba? 💼"
+    },
+    {
+      "input": "Paano mo haharapin ang criticism?",
+      "output": "Okay, depende sa type ng criticism. Constructive: listen fully bago mag-react, huwag mag-defensive agad. Ask clarifying questions para ma-understand. Salamatan — kahit mahirap — kasi nagbibigay sila ng free info para ma-improve ka. Kung di ka agree, okay to respectfully disagree with reasons. Destructive naman (personal attacks, walang basis): huwag pansinin. Hindi worth ng energy mo. Yung key mindset shift: criticism about your work, hindi about your worth as a person. Hiwalay yung dalawa. Anong specific na situation? 💭"
+    },
+    {
+      "input": "Paano tigilan ang sobrang pag-iisip?",
+      "output": "Overthinking is exhausting! Yung things that actually help: (1) Name it — pag napansin mo na nag-o-overthink ka, sabihin mo sa sarili mo: 'Nag-o-overthink na ko.' Awareness muna. (2) Ground yourself — 5 things na makikita mo, 4 na maririnig, 3 na mahahawakan — pulls you back sa present. (3) Set a 'worry time' — 15 minutes a day lang dedicated para sa pag-aalala. Outside that time, i-defer. (4) Action over analysis — minsan ang antidote sa overthinking is gawin na lang. Start kahit maliit. Lagi mo ring tanungin: 'Controllable ba to?' Kung hindi, let it go. 💙"
+    },
+    {
+      "input": "Paano maging mas confident?",
+      "output": "Confidence is a skill — hindi ka lang either born with it or not. Yung mga napatunayan na: (1) Act first — huwag hintayin na mag-feel ka ng confident. Gawa ka muna, kasunod ang feeling. (2) Celebrate maliit na wins — builds momentum. (3) Fix yung posture — sounds too simple pero research shows nagbabago yung mood. (4) Ihanda mo sarili mo — yung best na confidence booster is actually alam mo yung topic. (5) Reduce comparison sa iba — compare mo sarili mo sa kung sino ka last year. Anong specific na area ng buhay? 💪"
+    },
+    {
+      "input": "Paano ko malalaman kung ano ang passion ko?",
+      "output": "Yung honest na sagot: minsan hindi mo alam agad — at okay lang yan. Yung common mistake: hinihintay yung 'eureka' moment. Rarely ganun. Gawin mo instead: (1) Notice kung anong activities yung time flies when you do them. (2) Kung walang bayad, ano pa rin ang gagawin mo? (3) Anong topics ang gusto mong pag-usapan nang walang tigil? (4) Try maraming bagay — hindi mo malalaman kung hindi mo subukan. Passion is often found through action, hindi sa pag-iisip. At tandaan: passion can grow — hindi kailangan na instant love affair. 🔍"
+    },
+    {
+      "input": "Paano mag-improve ng tulog?",
+      "output": "Sleep is underrated na life cheat code! Yung evidence-based na tips: (1) Consistent na oras ng tulog at gising — kahit weekends. Body clock kasi adapts. (2) No screens 30 minutes bago matulog — yung blue light nagse-suppress ng melatonin. (3) Dark, malamig na kwarto — better sleep environment. (4) Huwag mag-kape after 2pm. (5) Pag hindi makatulog after 20 minutes, bumangon ka — don't lie awake, nakaka-train lang ng utak na gisingin. (6) Huwag mag-review sa kama — train your brain na yung kama = sleep lang. 😴"
+    },
+    {
+      "input": "Paano mag-handle ng anxiety?",
+      "output": "Anxiety is super common — lalo ngayon. Yung immediate techniques: (1) Box breathing — inhale 4 counts, hold 4, exhale 4, hold 4. Repeat. Literally resets yung nervous system. (2) Ground yourself — name 5 things na nakikita mo. (3) Move — kahit short walk, nagre-reduce ng stress hormones. Long-term naman: regular exercise, consistent sleep, limit caffeine. At yung pinaka-important — kung persistent na yung anxiety, okay at normal to seek help. Therapist o counselor — hindi weakness yun. Kamusta ka? 💙"
+    },
+    {
+      "input": "Paano mag-stay healthy bilang estudyante?",
+      "output": "Student life kasi is stressful, so extra importante ang health! Yung realistic na tips: (1) Sleep — kahit 7 hours, non-negotiable. Lahat ng study tips walang kwenta pag pagod ang utak. (2) Mag-move — hindi kailangan gym. 20-minute walk a day malaking tulong. (3) Kumain ng may sustansya — kahit 1 healthy meal a day. Huwag kain-kain lang ng processed. (4) Hydrate — maraming students nagkakamali ng 'gutom' e uhaw lang pala. (5) Social connection — isolate ka man, maintain at least 1-2 genuine friendships. Mental health is health din. 💪"
+    },
+    {
+      "input": "Ano ang dapat gawin kapag masakit ang ulo habang nag-aaral?",
+      "output": "Lagyan mo muna agad ng attention yun, kasi lumulala kapag pinagpatuloy! (1) I-stop muna yung study at ipalayo ang mata sa screen — eye strain is common cause. (2) Uminom ng tubig — dehydration is yung #1 overlooked cause ng headache. (3) Mag-stretch ng leeg at balikat — tension headache yun pag matagal naupong hunched. (4) Mag-rest sa dark, quiet place ng 10-15 minutes. (5) Kung hindi pa gumagaling, pwede ng pain reliever. Kung frequent na yung headaches, worth checking sa doctor. At bago mag-aral next time — proper posture at proper lighting! 💊"
+    },
+    {
+      "input": "Anong benefits ng exercise?",
+      "output": "Grabe ang list! Physically: mas matibay ang immune system, mas maayos ang cardiovascular health, better weight management, mas malusog ang bones at muscles. Mentally — yung underrated na part: exercise releases endorphins at serotonin — natural na mood booster. Reduces anxiety at depression as effectively as mild antidepressants based sa studies. Improves memory at focus — relevant sa students. Better sleep. More energy paradoxically. Yung catch? Kailangan mo lang magsimula — yung 'hindi ko feel na mag-ehersisyo' is exactly when you need it most. 💪"
     }
   ]
 }
