@@ -17614,6 +17614,24 @@ JS/TS: async/await, const by default, optional chaining, handle Promise rejectio
 SQL: correct JOIN types, avoid N+1, explain index strategy.
 Structure: explain approach → code → key explanations → examples. Never dump unexplained code.
 """
+            # ── ReasoningScaffold — structured reasoning guidance ─────────────
+            # Appended after math/code blocks (which already have strong scaffolds).
+            # Planning, explainer, and comparison queries get intent-specific structure.
+            if _query_mode == _INTENT_PLANNING:
+                system_prompt += (
+                    "\nREASONING: List every constraint the user mentioned first. "
+                    "Build the plan addressing each one explicitly. Do not drop any constraint."
+                )
+            elif _query_mode == _INTENT_EXPLAINER:
+                system_prompt += (
+                    "\nREASONING: Structure your answer — core concept first, "
+                    "then how/why it works, then a concrete example. Do not skip the example."
+                )
+            if _COMPARISON_SCAFFOLD_RE.search(self.user_text):
+                system_prompt += (
+                    "\nREASONING: Structure — key differences first, then key similarities, "
+                    "then your assessment. Be balanced; don't favour one side without reason."
+                )
             # ── 3.1 UPGRADE: Enhanced Debug Intake Template ───────────────────
             # When the user mentions a specific error but hasn't given the full
             # traceback, inject targeted triage instructions so Maria asks the
