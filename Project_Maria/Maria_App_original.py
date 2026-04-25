@@ -19034,6 +19034,7 @@ DON'T — these kill the vibe instantly:
                 raw_response = re.sub(r'\n{3,}', '\n\n', raw_response).strip()
 
             final_response = raw_response
+            _is_clean_mode = (_query_mode == _INTENT_CASUAL and len(final_response.split()) <= 30)
 
             # ── Step 1: Anti-artifact cleaner ────────────────────────────────
             # Strip generic AI filler openers ("Certainly!", "Great question!", etc.)
@@ -19045,7 +19046,6 @@ DON'T — these kill the vibe instantly:
                     final_response = _cleaned
 
             # ── Step 2: Hallucination scan ────────────────────────────────────
-            _is_clean_mode = (_query_mode == _INTENT_CASUAL and len(final_response.split()) <= 30)
             if not _is_clean_mode:
                 _has_hal, _hal_issues, _hal_sev = HallucinationDetector.scan(
                     final_response, self.user_text
