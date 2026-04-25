@@ -4811,6 +4811,34 @@ _lang_detect_cache_lock = threading.Lock()  # guards _lang_detect_cache for mult
 _FILIPINO_HARD_PHRASES: frozenset = frozenset(w for w in _FILIPINO_HARD if " " in w)
 _FILIPINO_HARD_WORDS:   frozenset = _FILIPINO_HARD - _FILIPINO_HARD_PHRASES
 
+# ── Taglish few-shot examples — loaded once from maria_training_data.json ─────
+def _load_taglish_few_shots() -> list:
+    """Return (user_input, maria_output) pairs whose response contains real Taglish."""
+    try:
+        _path = os.path.join(BASE_DIR, "maria_training_data.json")
+        with open(_path, encoding="utf-8") as _f:
+            _raw = json.load(_f)
+        _tl_markers = {
+            "naman", "kasi", "yung", "ba", "lang", "pala", "kumusta", "oo",
+            "sige", "grabe", "naku", "pero", "talaga", "yun", "diba", "meron",
+            "wala", "pwede", "gusto", "hindi", "salamat", "paalam", "ingat",
+            "tara", "ano", "ako", "ka", "ko", "mo", "mga", "nila", "sila",
+        }
+        _shots = []
+        for _ex in _raw.get("training_examples", []):
+            _inp = _ex.get("input", "").strip()
+            _out = _ex.get("output", "").strip()
+            if not _inp or not _out:
+                continue
+            _words = set(re.findall(r"[a-z]+", _out.lower()))
+            if _words & _tl_markers:
+                _shots.append((_inp, _out))
+        return _shots
+    except Exception:
+        return []
+
+_TAGLISH_FEW_SHOTS: list = _load_taglish_few_shots()
+
 def detect_language(text: str) -> str:
     """
     Highly accurate multi-language detector.
@@ -17420,6 +17448,17 @@ class UltraIntelligentWorker(QThread):
                     "   If user is serious → still Taglish, but toned down. Professional pero approachable.\n"
                     "   Match the user's Filipino/English ratio exactly. Mirror their energy."
                 )
+                # ── Inject few-shot examples from maria_training_data.json ──────
+                if _TAGLISH_FEW_SHOTS:
+                    import random as _rnd
+                    _shots = _rnd.sample(_TAGLISH_FEW_SHOTS, min(4, len(_TAGLISH_FEW_SHOTS)))
+                    _lang_instruction += (
+                        "\n\nEXAMPLES — these are real Maria conversations. Copy this exact voice and Taglish mix:\n"
+                        + "\n".join(
+                            f'   User: "{_q}"\n   Maria: "{_a}"'
+                            for _q, _a in _shots
+                        )
+                    )
             else:
                 _lang_instruction = (
                     f"The user is writing in {detected_lang_name}. Respond in {detected_lang_name} only.\n"
