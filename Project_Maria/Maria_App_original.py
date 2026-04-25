@@ -15917,6 +15917,16 @@ class UltraIntelligentWorker(QThread):
             _task_family = _query_mode if _query_mode in _TASK_INTENTS else ""
             self.routed_intent_decided.emit(self.message_id, self.session_id, _task_family)
 
+            # ── AmbiguityGate: ask one clarifying question for vague queries ──
+            if (_query_mode not in {_INTENT_CASUAL, _INTENT_EMOTIONAL, _INTENT_REACTION}
+                    and not _active_ctx.is_active()
+                    and _is_ambiguous_query(self.user_text, self.history)):
+                print(f"   ❓ AmbiguityGate fired — query too vague, asking clarification")
+                _clarification = _generate_clarification(self.user_text, MODEL_FAST)
+                self.response_ready.emit(_clarification, self.message_id, self.session_id)
+                self.finished_processing.emit(self.message_id, self.session_id)
+                return
+
             _ic_result_detail = (f"Routing decided after "
                                  f"{_trace_steps_count} checks  "
                                  f"(mode: {_query_mode})")
