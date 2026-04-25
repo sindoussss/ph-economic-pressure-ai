@@ -4628,6 +4628,10 @@ _FILIPINO_HARD = {
     "pabili", "pakuha", "pasend", "pashare",
     "mamaya na", "bukas na lang", "sige na",
     "tipo", "type mo", "crush", "jowa", "syota",
+    # Core Filipino grammatical words missing from earlier list
+    "mga",                                          # plural marker — 100% unique to Filipino
+    "namin", "natin", "nila", "niya",               # genitive pronouns (our-excl/incl, their, his/her)
+    "sila", "kayo", "tayo",                         # plural subject pronouns (they, you-pl, we-incl)
 }
 
 _FILIPINO_SOFT = {
@@ -4650,6 +4654,9 @@ _FILIPINO_SOFT = {
     "keri", "kebs", "oks", "g",  # very short but used in Taglish context
     "nako", "naku", "sayang", "hirap",
     "type", "jowa", "syota", "bebe", "mahal",
+    # High-frequency Filipino function words (safe as standalone tokens)
+    "ako", "ka", "ko", "mo",    # singular pronouns: I, you(subj), me/my, you(gen)
+    "ang", "ng", "sa",          # articles/particles: the, of/by, in/at/to
 }
 
 _SPANISH_HARD = {
