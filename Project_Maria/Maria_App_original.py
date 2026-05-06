@@ -1877,10 +1877,11 @@ _RE_PROFANITY      = [
 # "animal reproduction") are not blocked.
 _INAPPROPRIATE_RE = re.compile(
     r'\b('
-    r'sex\s+with\s+(me|us|you)\b'
-    r'|have\s+sex\s+with\s+(me|you)\b'
+    r'sex\s+with\s+(me|us|you|tayo|kita)\b'
+    r'|have\s+sex\s+with\s+(me|you|tayo|kita)\b'
     r'|sex\s+me\b'
-    r'|f+u+c+k+\s*(me|you|us|with\s+me|with\s+you)\b'
+    r'|f+u+c+k+\s*(me|you|us|tayo|kita|ka|mo\s+ako|with\s+me|with\s+you|with\s+tayo)\b'
+    r'|mag-?sex\s+(tayo|kita|na\s+tayo)\b'
     r'|make\s+love\s+(to|with)\s+(me|you)\b'
     r'|sleep\s+with\s+me\b'
     r'|send\s+(me\s+)?(nudes?|naked\s+pics?|dick\s+pics?|pussy\s+pics?)\b'
