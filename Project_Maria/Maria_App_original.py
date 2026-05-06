@@ -18275,6 +18275,19 @@ DON'T — these kill the vibe instantly:
                     f"{_ref_text}"
                 )
 
+            # ── Crisis resource injection ─────────────────────────────────────
+            if _inject_crisis:
+                system_prompt += (
+                    "\n\nCRISIS CONTEXT (this turn only):\n"
+                    "The user may be expressing distress or self-harm ideation. "
+                    "Respond with genuine warmth and care. "
+                    "Do NOT provide instructions for self-harm. "
+                    "If it feels natural, mention that help is available:\n"
+                    "  PH: Hopeline 8804-4673 (24/7) | NCMH Crisis Line 1553\n"
+                    "You don't have to push it — read the tone and include it if it fits."
+                )
+                print("   Crisis resources injected into system prompt.")
+
             messages = []
             if LORA_CONTEXT:
                 messages.append({"role": "system", "content": LORA_CONTEXT})
