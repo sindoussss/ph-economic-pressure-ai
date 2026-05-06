@@ -138,6 +138,24 @@ _specialist_lock             = threading.Lock()   # guards refresh + globals
 # ── Lazy-initialized globals ───────────────────────────────────────────────────
 _PROG_KNOWLEDGE = None   # ProgrammingKnowledgeSystem, lazy-init on first code query
 
+# ── Precompiled regex for coding-query detection (used in wiki gate) ──────────
+_CODING_TERMS = re.compile(
+    r'\b(python|javascript|typescript|java|kotlin|swift|rust|go|golang'
+    r'|c\+\+|c#|php|ruby|dart|scala|perl|bash|powershell'
+    r'|api|rest|restful|http|https|json|xml|graphql|grpc|websocket'
+    r'|function|class|method|variable|loop|array|list|dict|tuple'
+    r'|decorator|generator|iterator|closure|lambda|async|await'
+    r'|algorithm|data structure|linked list|hash map|binary tree'
+    r'|git|docker|kubernetes|sql|nosql|mongodb|postgres|mysql'
+    r'|react|vue|angular|node|express|django|flask|fastapi|spring'
+    r'|code|coding|program|programming|debug|debugging|refactor'
+    r'|import|library|framework|package|module|dependency'
+    r'|frontend|backend|fullstack|devops|deployment|ci.cd'
+    r'|machine learning|neural network|deep learning|llm|gpt|ai model'
+    r'|numpy|pandas|pytorch|tensorflow|scikit|matplotlib)\b',
+    re.IGNORECASE
+)
+
 
 def _preferred_torch_device() -> str:
     """Use CUDA when PyTorch can access it; otherwise fall back to CPU."""
@@ -1270,19 +1288,27 @@ def save_attachment(src_path: str) -> str:
         return src_path
 
 EMERGENCY_CONFIG = {
-    # Emergency keywords (case-insensitive)
+    # Emergency keywords (case-insensitive) — no '!' required; panicking users don't punctuate
     'KEYWORDS': {
         'FILIPINO': {
-            'FIRE': ['sunog!', 'sunog ng', 'nag-aapoy', 'nasusunog', 'apoy'],
-            'THIEF': ['magnanakaw!', 'holdap!', 'nakawan!', 'kawatan'],
-            'MEDICAL': ['tulong!', 'saklolo!', 'emergency!', 'aksidente!', 'nasugatan!'],
-            'POLICE': ['pulis!', 'krimen!', 'katarantaduhan!']
+            'FIRE':    ['sunog', 'sunog ng', 'nag-aapoy', 'nasusunog', 'apoy', 'usok', 'nagsusunog'],
+            'THIEF':   ['magnanakaw', 'holdap', 'nakawan', 'kawatan', 'nanloloko', 'nananakaw'],
+            'MEDICAL': ['tulong', 'saklolo', 'emergency', 'aksidente', 'nasugatan', 'nasaktan',
+                        'hindi makalanghap', 'nahihirapan huminga', 'sakit sa dibdib'],
+            'POLICE':  ['pulis', 'krimen', 'katarantaduhan', 'inatake', 'inassault']
         },
         'ENGLISH': {
-            'FIRE': ['fire!', 'burning!', 'flame!', 'blaze!'],
-            'THIEF': ['thief!', 'robber!', 'robbery!', 'stealing!', 'burglar!'],
-            'MEDICAL': ['help!', 'emergency!', 'accident!', 'injured!', 'bleeding!'],
-            'POLICE': ['police!', 'crime!', 'danger!', 'attack!']
+            'FIRE':    ['fire', 'burning', 'flame', 'blaze', 'smoke', 'on fire',
+                        'grease fire', 'kitchen fire', 'filling with smoke'],
+            'THIEF':   ['thief', 'robber', 'robbery', 'stealing', 'burglar',
+                        'broke in', 'break-in', 'intruder', 'being robbed'],
+            'MEDICAL': ['help', 'emergency', 'accident', 'injured', 'bleeding',
+                        'chest pain', 'chest tightness', 'chest feels tight',
+                        'not breathing', 'unconscious', 'seizure', 'choking',
+                        'heart attack', 'stroke', 'overdose', 'can\'t breathe',
+                        'difficulty breathing', 'panic attack'],
+            'POLICE':  ['police', 'crime', 'danger', 'attack', 'being attacked',
+                        'kidnap', 'assault', 'someone broke in']
         }
     },
 
@@ -1297,7 +1323,13 @@ EMERGENCY_CONFIG = {
     # Do NOT hardcode real email addresses in source code.
     # Set MARIA_RESPONDER_POLICE, MARIA_RESPONDER_FIRE, MARIA_RESPONDER_MEDICAL,
     # MARIA_RESPONDER_FAMILY to real addresses before deploying.
+    # MARIA_RESPONDER_SELF = your own Gmail to receive all alerts (good for testing)
     'RESPONDERS': [
+        {
+            'name': 'Self / Test',
+            'email': os.environ.get('MARIA_RESPONDER_SELF', 'sindousbuilding@gmail.com'),
+            'type': ['FIRE', 'THIEF', 'MEDICAL', 'POLICE', 'GENERAL']
+        },
         {
             'name': 'Local Police',
             'email': os.environ.get('MARIA_RESPONDER_POLICE', ''),
@@ -1396,7 +1428,6 @@ THEME = {
 
 # ── Intent & Action Preview widget toggle ────────────────────────────────────
 # Set False to disable the premium intent preview card entirely with one flag.
-# DISABLED — replaced by MariaThoughtCard (a single flowing-prose thought).
 _INTENT_PREVIEW_ENABLED: bool = False
 
 SYNTAX_THEME = {
@@ -1841,6 +1872,34 @@ _RE_PROFANITY      = [
     (re.compile(r'\bihi\b',       re.I), "hassle"),
     (re.compile(r'\blibog\b',     re.I), "nakakailang"),
 ]
+# Sexual / explicit solicitation patterns — caught before any LLM call or search.
+# Intentionally scoped to direct solicitation so educational queries ("safe sex",
+# "animal reproduction") are not blocked.
+_INAPPROPRIATE_RE = re.compile(
+    r'\b('
+    r'sex\s+with\s+(me|us|you)\b'
+    r'|have\s+sex\s+with\s+(me|you)\b'
+    r'|sex\s+me\b'
+    r'|f+u+c+k+\s*(me|you|us|with\s+me|with\s+you)\b'
+    r'|make\s+love\s+(to|with)\s+(me|you)\b'
+    r'|sleep\s+with\s+me\b'
+    r'|send\s+(me\s+)?(nudes?|naked\s+pics?|dick\s+pics?|pussy\s+pics?)\b'
+    r'|show\s+me\s+your\s+(boobs?|tits?|ass\b|pussy|dick\b|cock\b|penis|vagina|naked|nude\b)\b'
+    r'|masturbate\w*\s+(with|for|to)\s+me\b'
+    r'|get\s+naked\s+for\s+me\b'
+    r'|strip\s+for\s+me\b'
+    r'|touch\s+yourself\s+for\s+me\b'
+    r'|be\s+my\s+sex\s+slave\b'
+    r'|be\s+my\s+slave\b'
+    r'|rape\s+(me|you)\b'
+    r'|kantot\s+(tayo|mo|ako|kita)\b'
+    r'|jakolin\s+mo\s+ako\b'
+    r'|mag-?hubad\s+ka\b'
+    r'|halikan\s+mo\s+ako\b'
+    r'|hawakan\s+mo\s+ako\b'
+    r')',
+    re.I,
+)
 # ── Module-level compiled patterns for detect_language ────────────────────────
 _RE_WORDS          = re.compile(r"[a-z\']+")
 # ── Module-level compiled patterns for WebRAG cache key / query rewrite ────────
@@ -1849,7 +1908,8 @@ _RE_NON_WORD       = re.compile(r'[^\w\s-]')
 # ── Module-level compiled patterns for _compress_mmr token extraction ──────────
 _RE_ALPHA          = re.compile(r'[a-z]+')
 # ── Module-level compiled patterns for markdown formatter ─────────────────────
-_RE_MD_HEADING     = re.compile(r'^(#{1,3})\s+(.*)')
+_RE_MD_HEADING     = re.compile(r'^(#{1,6})\s+(.*)')
+_RE_MD_INLINE_HEADING = re.compile(r'(?<!\n)(#{1,6})\s+(\S[^\n]*?)(?=\s*#{1,6}\s|\s*$)')  # heading appearing mid-line
 _RE_MD_BOLD        = re.compile(r'\*\*(.+?)\*\*')
 _RE_MD_BOLD2       = re.compile(r'__(.+?)__')
 _RE_MD_ITALIC      = re.compile(r'(?<!\*)\*(?!\*)(.+?)\*(?!\*)')
@@ -2316,12 +2376,23 @@ _FRESH_SIGNALS_RE = re.compile(
     r'\b(by\s+the\s+way|anyway|different\s+(question|topic)|'
     r'change\s+(of\s+)?subject|never\s+mind\s+(that|the)|'
     r'forget\s+(about\s+)?that|new\s+question|moving\s+on|'
-    r'actually\s+never\s+mind)\b',
+    r'actually\s+never\s+mind|'
+    # Filipino explicit topic-switch phrases
+    r'ibang\s+(tanong|topic|paksa)|mag\-?iba\s+(na\s+tayo|tayo\s+ng)|'
+    r'wala\s+nang\s+kinalaman|ibang\s+bagay\s+na|iba\s+na\s+lang)\b',
     re.IGNORECASE
 )
 _DEICTIC_RE = re.compile(
     r'\b(it|that|this|there|those|them|the\s+(same|other|first|last|next)|'
     r'yun|iyon|ito|doon|dito|yung\s+same|yung\s+iba)\b',
+    re.IGNORECASE
+)
+# Words that implicitly reference prior content — "give me a simpler version",
+# "can you elaborate", "ulit", etc. all signal the user is staying on the same topic.
+_IMPLICIT_CONTINUATION_RE = re.compile(
+    r'\b(again|elaborate|simplify|simpler|clearer|shorter|longer|differently|'
+    r'redo|retry|rephrase|reword|deeper|instead|summarize|restate|recap|'
+    r'ulit|muli|paki|pakiulit|mas|pa\b)',
     re.IGNORECASE
 )
 _WEAK_FRESH_RE = re.compile(
@@ -2341,27 +2412,33 @@ def _classify_continuation(query: str, active_ctx: 'ActiveTaskContext') -> str:
 
     ql = query.strip().lower()
 
-    # Correction/challenge always wins
+    # ── Unambiguous overrides ─────────────────────────────────────────────────
     if _REACTION_RE.search(ql):
         return "correction"
-
-    # Explicit topic-switch
     if _FRESH_SIGNALS_RE.search(ql):
         return "fresh"
 
-    # Domain vocabulary — earned evidence
-    domain_vocab = _DOMAIN_CONTINUATION_VOCAB.get(active_ctx.intent, frozenset())
-    if domain_vocab:
-        if set(re.findall(r'[a-z]+', ql)) & domain_vocab:
-            return "continuation"
-
-    words = query.split()
-    # Very short query with no standalone question opener → continuation
-    if len(words) <= 5 and not _WEAK_FRESH_RE.search(ql):
+    # ── Positive continuation signals ─────────────────────────────────────────
+    # Deictic reference ("this/that/it/yun/ito") — references prior content.
+    # No word-count cap: "I think that approach you explained earlier has a flaw"
+    # is still a continuation no matter how long the sentence is.
+    if _DEICTIC_RE.search(ql):
         return "continuation"
 
-    # Deictic reference with short message → continuation
-    if len(words) <= 10 and _DEICTIC_RE.search(ql):
+    # Implicit-reference words — "elaborate", "again", "ulit", "simpler", etc.
+    # all anchor the message to whatever was just discussed.
+    if _IMPLICIT_CONTINUATION_RE.search(ql):
+        return "continuation"
+
+    # Domain vocabulary — earned positive evidence
+    domain_vocab = _DOMAIN_CONTINUATION_VOCAB.get(active_ctx.intent, frozenset())
+    if domain_vocab and set(re.findall(r'[a-z]+', ql)) & domain_vocab:
+        return "continuation"
+
+    # Short messages with an active task are almost always follow-ups.
+    # Question words no longer block this — "why?" and "paano?" are follow-ups,
+    # not fresh starts, when something is already in progress.
+    if len(query.split()) <= 5:
         return "continuation"
 
     return "fresh"
@@ -2424,6 +2501,49 @@ def _strip_artifact_opener(text: str) -> str:
     if cleaned[0].islower():
         cleaned = cleaned[0].upper() + cleaned[1:]
     return cleaned
+
+
+# Artifact endings — generic AI closing phrases appended after the real answer.
+# Matched only at the tail so mid-response uses are untouched.
+_ARTIFACT_ENDINGS_RE = re.compile(
+    r'\s*\n*('
+    r'I\s+hope\s+(this|that)\s+(helps?|clears?\s+(things?\s+)?up)[!.]?\s*'
+    r'|Hope\s+(this|that)\s+(helped?|helps?|answers?[^\n.!?]{0,40})[!.]?\s*'
+    r'|Feel\s+free\s+to\s+(ask|reach\s+out|let\s+me\s+know)[^\n.!?]{0,60}[!.]?\s*'
+    r'|Let\s+me\s+know\s+if\s+(you\s+(need|have|want)[^\n.!?]{0,60}|there\'?s?\s+(anything|something)[^\n.!?]{0,40})[!.]?\s*'
+    r'|Don\'?t?\s+hesitate\s+to\s+(ask|reach\s+out|contact\s+me)[^\n.!?]{0,40}[!.]?\s*'
+    r'|Is\s+there\s+anything\s+(else|more)\s+I\s+can\s+(help|do)[^\n.!?]{0,40}\?\s*'
+    r'|Anything\s+else\s+I\s+can\s+(help|do\s+for)[^\n.!?]{0,40}\?\s*'
+    r'|If\s+you\s+have\s+(any|more|further)\s+(questions?|doubts?|concerns?)[^\n.!?]{0,40}[!.]?\s*'
+    r'|Please\s+(let\s+me\s+know|don\'?t?\s+hesitate)[^\n.!?]{0,40}[!.]?\s*'
+    r')$',
+    re.IGNORECASE
+)
+
+
+def _strip_artifact_ending(text: str) -> str:
+    """Remove generic AI filler closing phrases from the end of a response."""
+    cleaned = _ARTIFACT_ENDINGS_RE.sub('', text).rstrip()
+    return cleaned if cleaned else text
+
+
+def _one_question_rule(text: str) -> str:
+    """Keep at most one trailing question — removes redundant follow-up questions."""
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    if len(parts) <= 1:
+        return text
+    # Walk backwards collecting consecutive question sentences at the tail
+    tail_qs: list = []
+    for seg in reversed(parts):
+        if seg.rstrip().endswith('?'):
+            tail_qs.insert(0, seg)
+        else:
+            break
+    if len(tail_qs) <= 1:
+        return text
+    body = ' '.join(parts[:len(parts) - len(tail_qs)]).rstrip()
+    last_q = tail_qs[-1]
+    return (body + ' ' + last_q).strip() if body else last_q
 
 
 # Navigation/directions detector — phrases that always need route/map data
@@ -2814,81 +2934,55 @@ _SOCIAL_SMALLTALK_RE = re.compile(
 
 def has_real_request_signal(text: str) -> bool:
     """
-    Stage-2 escape hatch for is_trivial_social_message().
+    Returns True if the message contains a clear signal of a real information
+    request. Three checks only — the old word-level keyword scans (live-info
+    keywords, action verbs, comma clause) were removed because single-word
+    matches over-fired on temporal adverbs ("today"), evaluative verbs ("look"),
+    and common particles, producing false positives like routing compliments to
+    web search.
 
-    Returns True if the message contains ANY signal of a real information
-    request, tool request, live-info request, or problem-solving request —
-    even when the message starts with a social opener.
+    Checks (any one is sufficient):
+      1. Multi-word request phrase  ("can you", "how do", "tell me", …)
+      2. '?' + meaningful content   (real question after stripping social opener)
+      3. Filipino interrogative     (ano, sino, saan, bakit, …)
 
-    If this returns True, the trivial-social fast path is NOT taken for
-    this turn; the message goes through normal routing.
-
-    Decision criteria (any ONE is sufficient):
-      1. Hard live-info keyword present   (latest, today, news, weather, …)
-      2. Action verb present              (search, explain, fix, verify, …)
-      3. Multi-word request phrase        (can you, how do, tell me, …)
-      4. Comma + real request content    (clause continuation after opener)
-      5. '?' + meaningful content after  (real question after social opener)
-      6. Filipino interrogative present  (ano, sino, saan, bakit, …)
-
-    # Examples → True (real request present, must NOT fast-path):
-    #   "nice, can you search this?"          → phrase "can you"
-    #   "thanks what's the latest update?"    → live-info "latest"
-    #   "bro what happened today?"            → live-info "today" + "happened"
-    #   "hello, what's the weather today?"    → live-info "weather", "today"
-    #   "wtf is the stock price of Tesla?"    → live-info "stock", "price"
-    #   "okay, how do I fix this bug?"        → phrase "how do" + action "fix"
-    #   "nice, explain that more"             → action "explain"
-    #   "thanks but can you verify that?"     → phrase "can you" + action "verify"
-    #   "real, who is the current president?" → live-info "current"
-    #   "slay, now check the latest news"     → live-info "latest", "news"
-    #
-    # Examples → False (no real request, safe to fast-path if social):
-    #   "nice", "thanks", "okay", "bro what", "wtf", "noted", "hello maria"
+    Personal address / compliment guard fires first — exits False before any
+    check so "you look so good today" never reaches the keyword logic.
     """
     t_lower = text.lower()
-    word_set = set(re.findall(r'[a-z]+', t_lower))
 
-    # 1. Hard live-info keywords
-    if word_set & _REAL_REQUEST_LIVE_KWS:
-        return True
+    # Guard: personal address/compliment aimed at Maria — never a real request.
+    # "you look so good today", "you sound amazing", "you were so helpful" etc.
+    if '?' not in text:
+        _hw = re.findall(r'[a-z]+', t_lower)
+        if (2 <= len(_hw) <= 12
+                and _hw[0] in ('you', 'u')
+                and _hw[1] in ('look', 'sound', 'seem', 'feel', 'are', 'were',
+                               'got', 'make', 'made', 'have', 'smell', 'taste')
+                and (len(_hw) < 3
+                     or _hw[2] not in ('up', 'this', 'it', 'for', 'that', 'into',
+                                       'at', 'over', 'through', 'around'))):
+            return False
 
-    # 2. Single-word action verbs
-    if word_set & _REAL_REQUEST_ACTION_WORDS:
-        return True
-
-    # 3. Multi-word request phrases (substring match on lowercased text)
+    # 1. Multi-word request phrases — two-word sequences resist false positives
     for phrase in _REAL_REQUEST_PHRASES:
         if phrase in t_lower:
             return True
 
-    # 4. Comma + actual request cue after it
-    #    Catches "nice, can you...", "okay, who is...", "thanks, what time..."
-    #    but rejects casual tails like "nice, bro" or "real, same here".
-    if ',' in text:
-        after_comma = text.split(',', 1)[1].strip()
-        if len(after_comma.split()) >= 2 and _POST_COMMA_REQUEST_RE.search(after_comma):
-            return True
-
-    # 5. Question mark present + substantial content remains after stripping
-    #    the trivial social opener from the front.
-    #    "bro what?" → strip "bro what" → "" → 0 words → NOT a real question
-    #    "nice what time is it?" → strip "nice" → "what time is it?" → 4 words
+    # 2. Question mark + substantial content after stripping social opener
     if '?' in text:
         rest = _SOCIAL_OPENER_STRIP_RE.sub('', text.strip(), count=1).strip()
         if len(rest.split()) >= 2:
             return True
 
-    # 6. Filipino interrogatives — only when they look like a real question,
-    # not a casual reaction ending in social closers like "haha" / "char".
+    # 3. Filipino interrogatives — only when the message is a real question
+    word_set = set(re.findall(r'[a-z]+', t_lower))
     if word_set & _FILIPINO_INTERROGATIVES:
-        words = re.findall(r'[a-z]+', t_lower)
-        meaningful_words = [w for w in words if len(w) > 1]
-        last_word = words[-1] if words else ""
-        if (
-            ('?' in text or len(meaningful_words) >= 4)
-            and last_word not in _FILIPINO_SOCIAL_CLOSERS
-        ):
+        _words = re.findall(r'[a-z]+', t_lower)
+        meaningful = [w for w in _words if len(w) > 1]
+        last = _words[-1] if _words else ""
+        if (('?' in text or len(meaningful) >= 4)
+                and last not in _FILIPINO_SOCIAL_CLOSERS):
             return True
 
     return False
@@ -3381,6 +3475,19 @@ def _classify_query_intent(query: str, is_filipino: bool = False,
         return _INTENT_GENERAL
     trace_cb and trace_cb("ic_localfile", "completed|Not a file search")
 
+    # 10.8 Personal compliment / social statement addressed to Maria.
+    # Fires BEFORE live_signals — "today" in "you look great today" is a temporal
+    # adverb, not a live-info signal; "look" as an evaluative verb is not a search
+    # action. Two conditions make this safe: no question mark, and the word after
+    # the verb is not a preposition/object that signals an imperative ("look up",
+    # "look into", "look at this").
+    if (wc <= 10 and '?' not in q
+            and re.match(r'^(?:you|u)\s+(?:look|sound|seem|feel|are|were|got|make|made)\b', ql)):
+        _w3 = words[2] if wc > 2 else ''
+        if _w3 not in ('up', 'this', 'it', 'for', 'that', 'into', 'at', 'over', 'through'):
+            trace_cb and trace_cb("ic_social", "completed|Personal address — casual, not a search")
+            return _INTENT_CASUAL
+
     # 11. Live / current info — also catches explicit search requests.
     # "today" here is intentional: a standalone "weather today?" or "score today?"
     # is genuinely live_info.  Planning queries are already caught above.
@@ -3439,130 +3546,6 @@ def _classify_query_intent(query: str, is_filipino: bool = False,
 
     # 14. Fallback → general
     return _INTENT_GENERAL
-
-
-def _compose_intent_thought(user_text: str, mode: str, continuation: str,
-                            is_trivial_social: bool) -> str:
-    """Synthesize the classifier outcome into a short prose thought.
-
-    The intent classifier walks through ~15 discrete signal checks.  Showing
-    each check as its own step row reads like a diagnostic scan, not thinking.
-    This helper takes the final classification and produces one flowing
-    sentence or two — the kind of internal monologue an LLM would narrate
-    before answering — so the visible "Thought" panel feels like genuine
-    reasoning instead of a rule-based checklist.
-    """
-    # Continuation / correction short-circuits (context carries through)
-    if continuation == "continuation":
-        return ("This continues the task I was already on, so I'll stay in "
-                "that same frame instead of restarting from scratch.")
-    if continuation == "correction":
-        return ("They're pushing back on something from before, so I'll keep "
-                "the same task open and adjust based on what they just said.")
-
-    # Trivial social override beats everything else
-    if is_trivial_social:
-        return ("This is just a casual social beat — not a question, just "
-                "someone keeping the thread alive. I'll match the vibe and "
-                "keep the reply light.")
-
-    # Per-intent prose
-    if mode == _INTENT_EMOTIONAL:
-        return ("There's real feeling in this — they're not asking for "
-                "information, they want to be heard. I'll stay present and "
-                "warm rather than jumping into advice mode.")
-    if mode == _INTENT_CASUAL:
-        return ("This feels casual — someone sharing a thought or making a "
-                "comment, not a question to look up. I'll just match their "
-                "energy and keep it chill.")
-    if mode == _INTENT_REACTION:
-        return ("This is a reaction — they're responding to something, not "
-                "opening a new topic. I'll read the tone and answer back in "
-                "kind.")
-    if mode == _INTENT_CODE:
-        return ("A coding question — I'll focus on what they're actually "
-                "trying to build or fix, and write something that works "
-                "rather than over-explaining around it.")
-    if mode == _INTENT_TRANSLATION:
-        return ("They want a translation — I'll give it directly, then note "
-                "anything worth flagging about the phrasing if it matters.")
-    if mode == _INTENT_TEXT_TASK:
-        return ("This is a rewrite or summary task — I'll focus on the "
-                "transformation itself instead of adding my own commentary "
-                "around it.")
-    if mode == _INTENT_CREATIVE:
-        return ("Creative work — they want something written, not explained. "
-                "I'll lean into tone and specificity instead of reaching for "
-                "something generic.")
-    if mode == _INTENT_PLANNING:
-        return ("They want a plan. I'll pull the constraints out of what "
-                "they said and build around those rather than handing back "
-                "a template.")
-    if mode == _INTENT_NAVIGATION:
-        return ("This is about directions — I'll focus on the actual route "
-                "or location they need, not a general overview.")
-    if mode == _INTENT_LIVE_INFO:
-        return ("This needs fresh info — something that changes over time, "
-                "so my own knowledge isn't enough. I should check current "
-                "sources before I commit to an answer.")
-    if mode == _INTENT_EXACT_FACT:
-        return ("A direct factual question — they want a specific answer, "
-                "not a long explanation. I'll keep it tight and verify the "
-                "fact if there's any doubt.")
-    if mode == _INTENT_EXPLAINER:
-        return ("They want an explanation — I'll break it down into pieces "
-                "that build on each other instead of dumping everything at "
-                "once.")
-    # Default: general intent
-    return ("I'm figuring out the right angle here before I write the "
-            "answer — what they actually need versus what they literally "
-            "asked.")
-
-
-# ── Intent → polished UI text ────────────────────────────────────────────────
-_THOUGHT_SENTENCE_END_RE = re.compile(r'[.!?…][\'")\]]*(?=\s|$)')
-
-
-def _extract_complete_thought_prefix(text: str) -> str:
-    """Return only the fully completed sentences from a streamed thought."""
-    cleaned = re.sub(r'\s+', ' ', (text or '')).strip()
-    if not cleaned:
-        return ""
-
-    _last_end = None
-    for _m in _THOUGHT_SENTENCE_END_RE.finditer(cleaned):
-        _last_end = _m.end()
-    return cleaned[:_last_end].strip() if _last_end else ""
-
-
-def _finalize_maria_thought(raw_text: str, fallback_text: str) -> str:
-    """Polish a streamed thought and avoid completing on a cut-off sentence."""
-    _cand = re.sub(r'\s+', ' ', (raw_text or '')).strip().strip('"\'""')
-
-    for _filler in ("Alright, ", "Alright ", "Let me ", "Let's ", "I'll start by ",
-                    "I will start by ", "First, ", "First of all, "):
-        if _cand.lower().startswith(_filler.lower()):
-            _cand = _cand[len(_filler):].lstrip()
-            if _cand:
-                _cand = _cand[0].upper() + _cand[1:]
-            break
-
-    _cand = re.sub(r"\b(lost (his|her|their) mind|crazy|insane|delusional|psycho)\b",
-                   "really deep in it", _cand, flags=re.IGNORECASE)
-    _cand = re.sub(r"\b(dumb|stupid|pathetic|desperate|cringe|clingy|weird)\b",
-                   "a bit much", _cand, flags=re.IGNORECASE)
-    _cand = re.sub(r"\bwhat's the deal with this (guy|girl|person)\??\s*",
-                   "", _cand, flags=re.IGNORECASE)
-    _cand = _cand.strip(" ,;:-")
-
-    if len(_cand) >= 40 and _THOUGHT_SENTENCE_END_RE.search(_cand):
-        return _cand
-
-    _complete_prefix = _extract_complete_thought_prefix(_cand)
-    if len(_complete_prefix) >= 48:
-        return _complete_prefix
-
-    return fallback_text.strip()
 
 
 @dataclass
@@ -3626,6 +3609,15 @@ _PREVIEW_STOPWORDS = {
     'this', 'to', 'up', 'what', 'when', 'where', 'which', 'who', 'why', 'you',
     'your',
 }
+
+# Words stripped when extracting the topic phrase — question words + generic verbs
+_PREVIEW_QUESTION_WORDS = frozenset({
+    'what', 'how', 'why', 'when', 'where', 'who', 'which', 'can', 'could',
+    'would', 'should', 'is', 'are', 'do', 'does', 'did', 'paano', 'ano',
+    'bakit', 'sino', 'saan', 'kailan', 'alin', 'anong', 'pwede', 'tell',
+    'explain', 'describe', 'give', 'show', 'write', 'list', 'compare',
+    'define', 'please', 'help', 'make', 'create', 'need', 'want',
+})
 
 
 def _preview_focus_phrase(user_text: str, max_words: int = 3) -> str:
@@ -3700,441 +3692,603 @@ def _preview_focus_title(user_text: str, fallback: str = "this") -> str:
     return focus.title() if focus else fallback.title()
 
 
+def _extract_query_topic(text: str, max_words: int = 3) -> str:
+    """Pull a short topic phrase by skipping stopwords and question words."""
+    words = re.findall(r"[A-Za-z0-9_'\-]+", text or "")
+    topic = []
+    for raw in words:
+        token = raw.lower().strip(".,!?\"'")
+        if len(token) <= 2:
+            continue
+        if token in _PREVIEW_STOPWORDS or token in _PREVIEW_QUESTION_WORDS:
+            continue
+        topic.append(raw.strip(".,!?\"'"))
+        if len(topic) >= max_words:
+            break
+    return " ".join(topic) if topic else ""
+
+
+def _detect_cog_op(ql: str, mode: str) -> str:
+    """Map a query's lowercased text + routed mode to a cognitive operation tag."""
+    if mode == _INTENT_CODE:
+        if any(w in ql for w in ('error', 'bug', 'fail', 'crash', 'broken', 'fix', 'wrong',
+                                  "doesn't work", "not working", 'syntax', 'traceback', 'exception')):
+            return 'DEBUG'
+        return 'EXPLAIN_CODE'
+    if mode == _INTENT_PLANNING:
+        return 'PLAN'
+    if mode == _INTENT_EMOTIONAL:
+        return 'SUPPORT'
+    if mode == _INTENT_CASUAL:
+        return 'CASUAL'
+    if mode == _INTENT_CREATIVE:
+        return 'CREATE'
+    if mode == _INTENT_REACTION:
+        return 'REACT'
+    if mode in (_INTENT_EXACT_FACT, _INTENT_LIVE_INFO):
+        return 'FIND_INFO'
+    if mode == _INTENT_NAVIGATION:
+        return 'NAVIGATE'
+    if re.search(r'\b(compare|vs\.?|versus|difference|better|or|which)\b', ql):
+        return 'COMPARE'
+    if re.search(r'\b(bakit|why)\b', ql):
+        return 'EXPLAIN_WHY'
+    if re.search(r'\b(paano|how\s+to|how\s+do|how\s+does|how\s+can|how)\b', ql):
+        return 'EXPLAIN_HOW'
+    if re.search(r'\b(what\s+is|what\s+are|ano\s+ang|ano\s+ba|define|meaning)\b', ql):
+        return 'DEFINE'
+    if re.search(r'\b\d+\b|\bsolve\b|\bcompute\b|\bcalculate\b|\bformula\b|\bequation\b', ql):
+        return 'SOLVE_MATH'
+    if mode == _INTENT_EXPLAINER:
+        return 'EXPLAIN_HOW'
+    return 'GENERAL'
+
+
 def build_reasoning_preview(user_text: str, query_mode: str,
                             active_ctx: 'ActiveTaskContext | None' = None,
                             tool_state: dict | None = None,
                             history: list | None = None) -> list[ReasoningPreviewLine]:
-    """
-    Build compact, safe, user-facing reasoning summary lines for the preview card.
-    """
+    """Build compact, user-facing reasoning-step lines for the preview card."""
+    import random as _rnd
     q = (user_text or "").strip()
     ql = q.lower()
     tool_state = tool_state or {}
     history = history or []
     active_ctx = active_ctx or ActiveTaskContext()
 
-    # Always trust the current turn's routed query_mode first. tool_state may
-    # carry older execution metadata, but preview mode must reflect this turn.
     effective_mode = query_mode or tool_state.get("effective_mode") or _INTENT_GENERAL
-    focus = _preview_focus_phrase(q)
     is_trivial_social = bool(tool_state.get("is_trivial_social"))
-    is_continuation = bool(tool_state.get("continuation"))
-    is_correction = bool(tool_state.get("correction"))
-    will_search = bool(tool_state.get("will_search"))
-    will_read_code = bool(tool_state.get("will_read_code"))
-    will_plan = bool(tool_state.get("will_plan"))
-    has_attachment = bool(tool_state.get("has_attachment"))
-    attachment_kind = tool_state.get("attachment_kind", "")
-    will_use_history = bool(history) or active_ctx.is_active()
-    is_short = len(q.split()) <= 6
+    is_continuation   = bool(tool_state.get("continuation"))
+    is_correction     = bool(tool_state.get("correction"))
+    will_search       = bool(tool_state.get("will_search"))
+    will_read_code    = bool(tool_state.get("will_read_code"))
+    will_plan         = bool(tool_state.get("will_plan"))
+    has_attachment    = bool(tool_state.get("has_attachment"))
+    attachment_kind   = tool_state.get("attachment_kind", "")
+    will_use_history  = bool(history) or active_ctx.is_active()
 
-    focus_title = _preview_focus_title(q, "this")
+    topic = _extract_query_topic(q)
+    t = f" '{topic}'" if topic else ""
 
-    if is_trivial_social or effective_mode == _INTENT_CASUAL:
-        if any(k in ql for k in ('joke', 'funny', 'laugh', 'pick-up line', 'pickup line')):
-            lines = [
-                _preview_line(
-                    "I can tell this is playful — keeping it light.",
-                    "understand",
-                    detail="This feels playful, so I’m keeping the tone light instead of overthinking it."
-                ),
-                _preview_line(
-                    "Let me come up with something quick and funny.",
-                    "compose",
-                    active=True,
-                    detail="I’m coming up with something quick and funny that still sounds natural."
-                ),
-            ]
-        elif any(k in ql for k in ('hi', 'hello', 'hey', 'kamusta', 'kumusta', 'uy', 'huy')):
-            lines = [
-                _preview_line(
-                    "Casual opener — a warm reply fits better than anything formal.",
-                    "understand",
-                    detail="This is a casual opener, so a warm reply fits better than anything formal."
-                ),
-                _preview_line(
-                    "Writing something short, relaxed, and conversational.",
-                    "compose",
-                    active=True,
-                    detail="I’m keeping the reply short, relaxed, and conversational."
-                ),
-            ]
-        else:
-            lines = [
-                _preview_line(
-                    "Reading the vibe here first.",
-                    "understand",
-                    detail="This feels light, so I’m reading the tone first instead of forcing a heavy answer."
-                ),
-                _preview_line(
-                    "Keeping this casual and easy.",
-                    "compose",
-                    active=True,
-                    detail="I’m shaping a reply that stays natural and easy to read."
-                ),
-            ]
-        return _dedupe_preview_lines(lines)
+    cog_op = _detect_cog_op(ql, _INTENT_CASUAL if is_trivial_social else effective_mode)
 
-    if effective_mode == _INTENT_EMOTIONAL:
-        lines = [
-            _preview_line(
-                "I can feel this needs a careful reply — reading closely.",
-                "understand",
-                detail="This needs a careful reply, so I’m reading it closely before I answer."
-            ),
-            _preview_line(
-                "Staying close to what you said, not going past it.",
-                "route",
-                detail="I want the reply to stay supportive and specific without reaching past what you said."
-            ),
-            _preview_line(
-                "Writing something warm and honest now.",
-                "compose",
-                active=True,
-                detail="I’m putting together something warm and honest without sounding scripted."
-            ),
+    # ── CASUAL / TRIVIAL ──────────────────────────────────────────────────────
+    if cog_op == 'CASUAL':
+        understand = _rnd.choice([
+            "Reading the vibe before I reply.",
+            "Casual tone — catching what you actually mean.",
+            "Not overthinking this — just reading the room.",
+            "Light message, light reply.",
+        ])
+        compose = _rnd.choice([
+            "Keeping this short and natural.",
+            "Writing something easy and conversational.",
+            "Staying relaxed — no need to make this heavy.",
+            "Keeping the reply loose and direct.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand",
+                          detail=understand + " I'll match the energy instead of going formal."),
+            _preview_line(compose, "compose", active=True,
+                          detail=compose + " Matching whatever vibe you came in with."),
+        ])
+
+    # ── EMOTIONAL SUPPORT ─────────────────────────────────────────────────────
+    if cog_op == 'SUPPORT':
+        understand = _rnd.choice([
+            "Reading this carefully — it needs a real response.",
+            "There's something personal here, so I'm reading it closely.",
+            "This isn't a quick answer — I want to get it right.",
+            "Feeling the weight of this before I say anything.",
+        ])
+        route = _rnd.choice([
+            "Staying close to what you said, not going past it.",
+            "Not projecting — I'll answer what you actually shared.",
+            "Keeping the reply grounded in what you told me.",
+            "Making sure I don't overstep what you're comfortable sharing.",
+        ])
+        compose = _rnd.choice([
+            "Writing something warm and honest — no script.",
+            "Putting together a reply that actually means something.",
+            "Keeping it genuine, not generic.",
+            "Drafting something that doesn't feel canned.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── DEBUGGING CODE ────────────────────────────────────────────────────────
+    if cog_op == 'DEBUG':
+        understand = _rnd.choice([
+            f"Looks like something is breaking{t} — finding where.",
+            f"Bug report{t} — narrowing down the failure point.",
+            f"Something's off{t}. Let me trace it.",
+            f"Reading the error{t} before I start guessing.",
+        ])
+        route_opts = [
+            "Matching the error message to the most likely code path.",
+            "Isolating the part that actually triggers the failure.",
+            "Checking if this is a logic bug, a type issue, or something else.",
+            "Separating the symptom from the actual cause.",
         ]
-        return _dedupe_preview_lines(lines)
-
-    if effective_mode == _INTENT_CODE:
-        lines = [
-            _preview_line(
-                "Looks like a bug — let me see where it breaks.",
-                "understand",
-                detail="This looks like a bug, so I’m narrowing down where it starts to break."
-            ),
-            _preview_line(
-                "This connects to the same bug — keeping that failure path in view.",
-                "route",
-                detail="This follows the same bug thread, so I’m keeping that failure path in view."
-            ) if is_continuation else _preview_line(
-                "Tracing what’s most likely causing the break.",
-                "route",
-                detail="I’m tracing the part of the app that is most likely causing the break."
-            ),
-        ]
+        if is_continuation:
+            route_opts = [
+                "This is still the same bug thread — keeping the failure path in view.",
+                "Continuing the same trace — not starting over.",
+            ]
+        route = _rnd.choice(route_opts)
+        tool_line = None
         if has_attachment and attachment_kind == "image":
-            lines.append(_preview_line(
-                "There’s an image attached — checking if it shows the problem area.",
-                "tool",
-                detail="There’s an image attached, so I’m checking whether it points to the broken area."
-            ))
+            tool_line = _rnd.choice([
+                "There's a screenshot attached — checking if it shows the break.",
+                "Image attached — seeing if it points to the problem area.",
+            ])
         elif has_attachment:
-            lines.append(_preview_line(
-                "There’s something attached — pulling it into the diagnosis.",
-                "tool",
-                detail="There’s extra material here, so I’m pulling it into the diagnosis before I answer."
-            ))
+            tool_line = _rnd.choice([
+                "There's extra material attached — pulling it into the diagnosis.",
+                "Attachment here — checking it before I answer.",
+            ])
         elif will_read_code:
             if any(tok in ql for tok in ('traceback', 'typeerror', 'exception', 'log', 'stack')):
-                lines.append(_preview_line(
-                    "The error message is a clue — matching it to the code path.",
-                    "tool",
-                    detail="The error message matters here, so I’m matching it to the most likely code path."
-                ))
+                tool_line = _rnd.choice([
+                    "The stack trace is a clue — matching it to the code path.",
+                    "Error message is here — pinning it to the right line.",
+                ])
             else:
-                lines.append(_preview_line(
-                    "Checking the most likely code path first.",
-                    "tool",
-                    detail="I’m checking the most relevant code path first so the answer points to the real break."
-                ))
-        lines.append(_preview_line(
-            "Putting together an answer — cause first, then the fix.",
-            "compose",
-            active=True,
-            detail="I’m shaping the answer around the cause first, then the fix."
-        ))
+                tool_line = _rnd.choice([
+                    "Checking the relevant code path first.",
+                    "Reading the code before I commit to a cause.",
+                ])
+        compose = _rnd.choice([
+            "Cause first, then the fix — putting that together now.",
+            "Writing the answer around what actually broke.",
+            "Explaining the break, then the repair.",
+            "Making the fix make sense — not just pasting a solution.",
+        ])
+        lines = [
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+        ]
+        if tool_line:
+            lines.append(_preview_line(tool_line, "tool", detail=tool_line))
+        lines.append(_preview_line(compose, "compose", active=True, detail=compose))
         return _dedupe_preview_lines(lines)
 
-    if effective_mode == _INTENT_PLANNING:
-        lines = [
-            _preview_line(
-                "This is a planning request — pulling out the time constraints first.",
-                "understand",
-                detail="This is a planning request, so I’m pulling out the time pressure and constraints first."
-            ),
-            _preview_line(
-                "Looks like an adjustment — keeping the same goal in view.",
-                "route",
-                detail="This looks like an adjustment to the current plan, so I’m keeping the same goal in view."
-            ) if is_continuation else _preview_line(
-                "Figuring out what matters most so the plan stays workable.",
-                "route",
-                detail="I’m sorting out what matters most here so the plan stays workable instead of just busy."
-            ),
+    # ── CODE EXPLANATION ──────────────────────────────────────────────────────
+    if cog_op == 'EXPLAIN_CODE':
+        understand = _rnd.choice([
+            f"Code question{t} — figuring out what part needs explaining.",
+            f"Reading the code question{t} to find the real ask.",
+            f"Checking what about{t} actually needs unpacking.",
+            f"There's a code question here{t} — finding the core of it.",
+        ])
+        route = _rnd.choice([
+            "Deciding whether to walk through it line-by-line or give the big picture.",
+            "Picking the clearest angle — not just the most obvious one.",
+            "Choosing the right level of detail for this.",
+            "Finding the explanation that would actually land.",
+        ])
+        compose = _rnd.choice([
+            f"Breaking down{t} in a way that makes sense.",
+            "Writing the explanation so it builds naturally.",
+            "Keeping the code explanation clear without over-simplifying.",
+            "Drafting something that explains the logic, not just the syntax.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── PLANNING ──────────────────────────────────────────────────────────────
+    if cog_op == 'PLAN':
+        understand = _rnd.choice([
+            f"Planning request{t} — pulling out the constraints first.",
+            f"This is about organizing{t} — checking the time and priorities.",
+            f"Looks like a planning question{t} — finding what matters most.",
+            f"Reading the plan request{t} before I start structuring.",
+        ])
+        route_opts = [
+            "Sorting out priorities so the plan doesn't just look busy.",
+            "Figuring out what actually needs to happen versus what's optional.",
+            "Deciding the sequence before I build the structure.",
+            "Identifying the constraint that shapes everything else.",
         ]
+        if is_continuation:
+            route_opts = [
+                "Adjustment to the current plan — keeping the same goal.",
+                "This tweaks the existing plan — staying consistent with it.",
+            ]
+        route = _rnd.choice(route_opts)
+        tool_line = None
         if will_plan:
-            lines.append(_preview_line(
-                "Breaking the schedule into pieces that feel realistic.",
-                "tool",
-                detail="I’m breaking the schedule into manageable pieces so it feels realistic, not overloaded."
-            ))
-        lines.append(_preview_line(
-            "Drafting something structured but simple enough to follow.",
-            "compose",
-            active=True,
-            detail="I’m putting together something structured enough to help, but simple enough to follow."
-        ))
+            tool_line = _rnd.choice([
+                "Breaking this into steps that feel manageable.",
+                "Splitting the plan into pieces so it's actually followable.",
+            ])
+        compose = _rnd.choice([
+            "Drafting something structured but not overly rigid.",
+            "Putting together a plan that's clear without being overwhelming.",
+            "Writing something practical — not just a list of obvious things.",
+            "Making the plan feel workable, not just theoretical.",
+        ])
+        lines = [
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+        ]
+        if tool_line:
+            lines.append(_preview_line(tool_line, "tool", detail=tool_line))
+        lines.append(_preview_line(compose, "compose", active=True, detail=compose))
         return _dedupe_preview_lines(lines)
 
-    if effective_mode == _INTENT_NAVIGATION:
-        lines = [
-            _preview_line(
-                "Route question — sorting out destination from the travel details.",
-                "understand",
-                detail="This is a route question, so I’m separating the destination from the travel details first."
-            ),
-            _preview_line(
-                "This ties to the current route — keeping it in view.",
-                "route",
-                detail="This ties back to the current route, so I’m keeping the same route in view."
-            ) if is_continuation else _preview_line(
-                "Pinning down the route details before giving directions.",
-                "route",
-                detail="I’m pinning down the route details first so the directions stay clear."
-            ),
-        ]
-        if is_correction:
-            lines.append(_preview_line(
-                "Part of the route might be off — double-checking before continuing.",
-                "tool",
-                detail="Part of the route may be off, so I’m rechecking that before I continue."
-            ))
-        elif will_search:
-            lines.append(_preview_line(
-                "Checking the route details before giving directions.",
-                "tool",
-                detail="I’m checking the route details before I give directions."
-            ))
-        lines.append(_preview_line(
-            "Putting this into clear, step-by-step directions.",
-            "compose",
-            active=True,
-            detail="I’m putting this into direct route steps so it stays easy to follow."
-        ))
-        return _dedupe_preview_lines(lines)
+    # ── CREATIVE WRITING ──────────────────────────────────────────────────────
+    if cog_op == 'CREATE':
+        understand = _rnd.choice([
+            f"Creative prompt{t} — choosing a direction before I start.",
+            f"This is more creative than factual{t} — picking an angle.",
+            f"Reading what kind of creative output you actually want{t}.",
+            f"Getting a feel for the tone{t} before I write anything.",
+        ])
+        route = _rnd.choice([
+            "Matching the style to the prompt — not defaulting to generic.",
+            "Deciding on voice and structure before drafting.",
+            "The tone here matters — locking that in first.",
+            "Not going for the obvious — finding an angle that fits this specifically.",
+        ])
+        compose = _rnd.choice([
+            f"Drafting{t} — keeping it intentional, not templated.",
+            "Writing something that actually fits the prompt.",
+            "Putting this together with the tone in mind.",
+            "Drafting — no filler, no obvious beats.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
 
-    if effective_mode == _INTENT_LIVE_INFO:
-        lines = [
-            _preview_line(
-                "This looks time-sensitive — checking what needs to be current.",
-                "understand",
-                detail="This looks time-sensitive, so I’m checking what needs to be current."
-            ),
-            _preview_line(
-                "Deciding if this needs a current source or just a clear answer.",
-                "route",
-                detail="I’m deciding whether this needs a current source or just a clear answer."
-            ),
-        ]
+    # ── COMPARISON ────────────────────────────────────────────────────────────
+    if cog_op == 'COMPARE':
+        understand = _rnd.choice([
+            f"Comparison question{t} — figuring out what dimension matters.",
+            f"You're weighing two things{t} — identifying what the real difference is.",
+            f"Reading what you're actually comparing{t}.",
+            f"Comparison{t} — checking which angle makes this useful.",
+        ])
+        route = _rnd.choice([
+            "Deciding whether to do a side-by-side or a recommendation.",
+            "Choosing the comparison criteria that actually matter here.",
+            "Not just listing differences — finding which one is relevant to you.",
+            "Picking the right level of detail for the comparison.",
+        ])
+        compose = _rnd.choice([
+            f"Writing a comparison of{t} that's direct and useful.",
+            "Putting together the comparison — clear distinctions, no padding.",
+            "Drafting the side-by-side in a way that lands cleanly.",
+            "Making the comparison specific instead of generic.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── EXPLAIN WHY ───────────────────────────────────────────────────────────
+    if cog_op == 'EXPLAIN_WHY':
+        understand = _rnd.choice([
+            f"Why question{t} — looking for the actual reason.",
+            f"You're asking why{t} — tracing back to the root cause.",
+            f"Reading what's behind{t}.",
+            f"Looking for the real explanation{t}, not just a surface answer.",
+        ])
+        route = _rnd.choice([
+            "Finding the cause that actually explains it — not just the closest one.",
+            "Checking if this is a straightforward cause or something layered.",
+            "Deciding how deep to go before it stops being useful.",
+            "Looking for the 'why' that changes how you'd act on it.",
+        ])
+        compose = _rnd.choice([
+            f"Explaining why{t} — grounding it in the actual mechanism.",
+            "Writing the reason clearly without burying it in caveats.",
+            "Putting together the explanation — cause, not just correlation.",
+            "Drafting an answer that actually explains, not just describes.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── EXPLAIN HOW ───────────────────────────────────────────────────────────
+    if cog_op == 'EXPLAIN_HOW':
+        understand = _rnd.choice([
+            f"How-to question{t} — finding the right starting point.",
+            f"Process question{t} — mapping out the steps.",
+            f"You want to know how to{t} — reading what you already know first.",
+            f"This is a how question{t} — figuring out the right level of detail.",
+        ])
+        route = _rnd.choice([
+            "Picking the simplest path that actually works.",
+            "Deciding whether to show steps or explain the concept first.",
+            "Finding the angle that makes this easiest to follow.",
+            "Choosing the right level — not too basic, not too dense.",
+        ])
+        compose = _rnd.choice([
+            f"Walking through{t} step by step.",
+            "Building the explanation so each part sets up the next.",
+            "Writing it so you can follow along and actually do it.",
+            f"Laying out how{t} works — clear order, no skipped steps.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── DEFINE ────────────────────────────────────────────────────────────────
+    if cog_op == 'DEFINE':
+        understand = _rnd.choice([
+            f"Definition question{t} — finding the part that actually explains it.",
+            f"You're asking what{t} is — narrowing to the core meaning.",
+            f"Concept question{t} — figuring out what level of answer fits.",
+            f"Reading what you need from a definition of{t}.",
+        ])
+        route = _rnd.choice([
+            "Deciding between a short definition and a fuller explanation.",
+            "Checking if this needs context or just the core meaning.",
+            "Not just a dictionary answer — finding the useful framing.",
+            "Choosing the right depth so the definition actually helps.",
+        ])
+        tool_line = None
         if will_search:
-            lines.append(_preview_line(
-                "Checking the latest source material before making this sound certain.",
-                "tool",
-                detail="I’m checking the latest source material before I make the answer sound certain."
-            ))
-        lines.append(_preview_line(
-            "Putting together a direct answer that stays current.",
-            "compose",
-            active=True,
-            detail="I’m aiming for a direct answer that stays current without padding it with unnecessary filler."
-        ))
+            tool_line = _rnd.choice([
+                "Checking a source before I make this sound definitive.",
+                "Verifying the definition before I commit to it.",
+            ])
+        elif is_continuation and active_ctx.is_active():
+            tool_line = _rnd.choice([
+                "This follows the current thread — tying it back.",
+                "Connecting this to what we were already on.",
+            ])
+        compose = _rnd.choice([
+            f"Writing the definition of{t} — tight and useful.",
+            "Keeping the answer specific — no unnecessary padding.",
+            "Drafting a clean definition that actually answers it.",
+            "Putting together a clear explanation without over-explaining.",
+        ])
+        lines = [
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+        ]
+        if tool_line:
+            lines.append(_preview_line(tool_line, "tool", detail=tool_line))
+        lines.append(_preview_line(compose, "compose", active=True, detail=compose))
         return _dedupe_preview_lines(lines)
 
-    if effective_mode == _INTENT_EXACT_FACT:
-        lines = [
-            _preview_line(
-                "Fact question — narrowing down the part that actually answers it.",
-                "understand",
-                detail="This is a straightforward concept question, so I’m narrowing down the part that actually answers it."
-            ),
-            _preview_line(
-                "Checking if this needs a source or just a clean explanation.",
-                "route",
-                detail="I’m checking whether this needs a source or just a clean explanation."
-            ),
-        ]
-        if is_continuation and active_ctx.is_active():
-            lines.append(_preview_line(
-                "This follows the current thread — tying it back before answering.",
-                "tool",
-                detail="This follows the current thread, so I’m tying it back before I answer."
-            ))
-        elif will_search:
-            lines.append(_preview_line(
-                "Looking for something with real support before making it sound certain.",
-                "tool",
-                detail="I’m checking the part that gives the answer real support before I make it sound certain."
-            ))
-        lines.append(_preview_line(
+    # ── MATH / CALCULATION ────────────────────────────────────────────────────
+    if cog_op == 'SOLVE_MATH':
+        understand = _rnd.choice([
+            f"Math problem{t} — reading what you're actually solving for.",
+            f"Calculation{t} — figuring out the right approach first.",
+            f"Number question{t} — identifying what's given and what's asked.",
+            f"This is a{t} problem — mapping out what we have.",
+        ])
+        route = _rnd.choice([
+            "Choosing the right method before I start computing.",
+            "Making sure I understand the setup before I run through it.",
+            "Finding the clean solution path — not just the first one.",
+            "Checking the formula or rule that applies here.",
+        ])
+        compose = _rnd.choice([
+            "Walking through the solution step by step.",
+            "Showing the work so the answer makes sense.",
+            "Solving it cleanly — numbers and logic, not just a result.",
+            f"Writing out the solution to{t} with each step visible.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
+
+    # ── FIND INFO (fact / live info) ──────────────────────────────────────────
+    if cog_op == 'FIND_INFO':
+        understand = _rnd.choice([
+            f"Looking up{t} — checking what kind of answer this needs.",
+            f"Information request{t} — figuring out what's actually being asked.",
+            f"Fact question{t} — narrowing to the part that answers it.",
+            f"Reading the{t} question to find the real ask.",
+        ])
+        route = _rnd.choice([
+            "Checking if this needs a current source or just a clear answer.",
+            "Deciding whether to reach for a source or answer directly.",
+            "Figuring out how current this needs to be.",
+            "Checking if this is time-sensitive before I answer.",
+        ])
+        tool_line = None
+        if will_search:
+            tool_line = _rnd.choice([
+                "Checking the latest source before I make this sound certain.",
+                "Pulling from a source — not guessing on something verifiable.",
+                "Verifying this before I commit to the answer.",
+            ])
+        elif is_continuation and active_ctx.is_active():
+            tool_line = _rnd.choice([
+                "This follows the current thread — carrying it forward.",
+                "Tying this back to what we were already on.",
+            ])
+        compose = _rnd.choice([
+            f"Putting together a direct answer to{t}.",
+            "Writing a clear, grounded answer — no unnecessary filler.",
             "Keeping the answer tight and specific.",
-            "compose",
-            active=True,
-            detail="I’m keeping the answer concise and specific instead of drifting into extra explanation."
-        ))
-        return _dedupe_preview_lines(lines)
-
-    if effective_mode == _INTENT_CREATIVE:
+            "Answering directly without reaching past what I can confirm.",
+        ])
         lines = [
-            _preview_line(
-                "This is more creative than factual — picking a direction first.",
-                "understand",
-                detail="This is more creative than factual, so I’m choosing a direction before I start writing."
-            ),
-            _preview_line(
-                "Matching the tone to the prompt instead of going generic.",
-                "route",
-                detail="The tone matters here, so I’m matching the style to the prompt instead of reaching for something generic."
-            ),
-            _preview_line(
-                "Drafting something that feels intentional and specific to this.",
-                "compose",
-                active=True,
-                detail="I’m drafting something that feels intentional and specific to this prompt."
-            ),
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
         ]
+        if tool_line:
+            lines.append(_preview_line(tool_line, "tool", detail=tool_line))
+        lines.append(_preview_line(compose, "compose", active=True, detail=compose))
         return _dedupe_preview_lines(lines)
 
-    if effective_mode == _INTENT_REACTION:
+    # ── NAVIGATION ────────────────────────────────────────────────────────────
+    if cog_op == 'NAVIGATE':
+        understand = _rnd.choice([
+            f"Route question{t} — separating destination from travel details.",
+            f"Navigation{t} — figuring out where you're going and from where.",
+            f"Directions request{t} — getting the key details first.",
+            f"Reading the route question{t} before I start mapping.",
+        ])
+        route_opts = [
+            "Pinning down the route details before I give directions.",
+            "Checking the start point and destination before anything else.",
+            "Getting the route clear before I commit to directions.",
+        ]
+        if is_continuation:
+            route_opts = [
+                "This ties to the current route — keeping that in view.",
+                "Continuing the same route — not resetting.",
+            ]
+        route = _rnd.choice(route_opts)
+        tool_line = None
+        if is_correction:
+            tool_line = _rnd.choice([
+                "Part of the route may be off — rechecking before I continue.",
+                "Correction on the route — double-checking that part.",
+            ])
+        elif will_search:
+            tool_line = _rnd.choice([
+                "Checking the route details before I give directions.",
+                "Verifying the route before I commit to it.",
+            ])
+        compose = _rnd.choice([
+            "Putting this into clear, step-by-step directions.",
+            "Writing the route in order — easy to follow.",
+            "Laying out the steps so they're clean and direct.",
+            "Turning the route into something actually followable.",
+        ])
         lines = [
-            _preview_line(
-                "Sounds like a reaction — checking what part needs clarifying.",
-                "understand",
-                detail="This feels like a reaction, so I’m checking what part needs clarifying."
-            ),
-            _preview_line(
-                "Separating the frustration from the actual misunderstanding.",
-                "route",
-                detail="I’m separating the frustration from the actual misunderstanding so the reply stays useful."
-            ),
-            _preview_line(
-                "Writing a follow-up that addresses the friction point directly.",
-                "compose",
-                active=True,
-                detail="I’m putting together a follow-up that answers the friction point directly."
-            ),
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
         ]
+        if tool_line:
+            lines.append(_preview_line(tool_line, "tool", detail=tool_line))
+        lines.append(_preview_line(compose, "compose", active=True, detail=compose))
         return _dedupe_preview_lines(lines)
 
-    if effective_mode == _INTENT_EXPLAINER:
-        lines = [
-            _preview_line(
-                "This needs a clear explanation — finding the part that needs unpacking.",
-                "understand",
-                detail="This needs a clear explanation, so I’m isolating the part that actually needs unpacking."
-            ),
-            _preview_line(
-                "Finding the simplest angle so the explanation stays easy to follow.",
-                "route",
-                detail="I’m finding the simplest angle first so the explanation stays easy to follow."
-            ),
-        ]
-        if focus and not is_short:
-            lines.append(_preview_line(
-                f"Keeping the explanation on {focus} so it doesn’t drift.",
-                "tool",
-                detail=f"I’m keeping the explanation focused on {focus} so it doesn’t drift into side topics."
-            ))
-        lines.append(_preview_line(
-            "Breaking this down into something easier to follow.",
-            "compose",
-            active=True,
-            detail="I’m putting this into a simpler explanation that clears it up without overcomplicating it."
-        ))
-        return _dedupe_preview_lines(lines)
+    # ── REACT (correction / follow-up pushback) ───────────────────────────────
+    if cog_op == 'REACT':
+        understand = _rnd.choice([
+            "This sounds like a reaction — figuring out what's off.",
+            "Feels like you're pushing back — reading why.",
+            "Something didn't land right — checking what needs clarifying.",
+            "This is a correction or disagreement — reading it carefully.",
+        ])
+        route = _rnd.choice([
+            "Separating the frustration from the actual misunderstanding.",
+            "Finding the part that actually needs addressing.",
+            "Not getting defensive — finding the real friction point.",
+            "Identifying whether this is a misread on my end or yours.",
+        ])
+        compose = _rnd.choice([
+            "Writing a follow-up that addresses the friction directly.",
+            "Putting together a response that actually clears it up.",
+            "Keeping the reply direct — no over-explaining.",
+            "Drafting something that resolves it without making it a big deal.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(route, "route", detail=route),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
 
-    if effective_mode == _INTENT_TRANSLATION:
-        lines = [
-            _preview_line(
-                "Checking the target language and the text to translate.",
-                "understand",
-                detail="I’m checking the target language and whether you already gave the text to translate."
-            ),
-            _preview_line(
-                "Using the text from this chat — no need to search elsewhere.",
-                "route",
-                detail="Translation should come from the text in this chat, not from search or outside lookup."
-            ),
-            _preview_line(
-                "Translating this while keeping the meaning intact.",
-                "compose",
-                active=True,
-                detail="I’m keeping the wording natural while preserving the original meaning."
-            ),
-        ]
-        return _dedupe_preview_lines(lines)
-
-    if effective_mode == _INTENT_TEXT_TASK:
-        lines = [
-            _preview_line(
-                "Checking what you want done to the text.",
-                "understand",
-                detail="I’m checking what you want done to the text and whether the text is already in the chat."
-            ),
-            _preview_line(
-                "Working from your text here — no need to search outside.",
-                "route",
-                detail="This kind of request should work from your text here, not from outside search."
-            ),
-            _preview_line(
-                "Reworking the text while keeping what you meant intact.",
-                "compose",
-                active=True,
-                detail="I’m changing the wording or structure while keeping the meaning aligned to your request."
-            ),
-        ]
-        return _dedupe_preview_lines(lines)
-
+    # ── GENERAL FALLBACK ──────────────────────────────────────────────────────
     if effective_mode == _INTENT_GENERAL and _EXPLICIT_LOCAL_FILE_SEARCH_RE.search(q):
-        lines = [
-            _preview_line(
-                "File request — separating the file cue from the search terms.",
-                "understand",
-                detail="This is asking about local files, so I’m separating the file cue from the search terms first."
-            ),
-            _preview_line(
-                "Checking local files and attachments.",
-                "tool",
-                detail="I’m checking the local files or attachments tied to this chat instead of treating this like a web lookup."
-            ),
-            _preview_line(
-                "Looking for the closest match before answering.",
-                "compose",
-                active=True,
-                detail="I’m looking for the closest filename or document-content match before I answer."
-            ),
-        ]
-        return _dedupe_preview_lines(lines)
+        understand = _rnd.choice([
+            "File request — separating the file cue from the search terms.",
+            "This looks like a file lookup — reading what you're searching for.",
+        ])
+        tool_line = _rnd.choice([
+            "Checking local files and attachments.",
+            "Looking through the attached files instead of treating this like a web search.",
+        ])
+        compose = _rnd.choice([
+            "Looking for the closest match before answering.",
+            "Finding the best file match before I answer.",
+        ])
+        return _dedupe_preview_lines([
+            _preview_line(understand, "understand", detail=understand),
+            _preview_line(tool_line, "tool", detail=tool_line),
+            _preview_line(compose, "compose", active=True, detail=compose),
+        ])
 
+    understand = _rnd.choice([
+        f"Reading what you're actually asking{t}.",
+        f"Taking a second to understand{t} before I reply.",
+        f"Checking what you need{t} before I start.",
+        f"Let me read this properly{t} before answering.",
+    ])
+    route = _rnd.choice([
+        "Figuring out the right angle before I reply.",
+        "Deciding the best way to approach this.",
+        "Sorting out what kind of answer fits here.",
+        "Picking the approach that stays useful and direct.",
+    ])
     lines = [
-        _preview_line(
-            "Let me read what you’re actually asking here.",
-            "understand",
-            detail="I’m reading the request closely first so I can respond to what you actually asked."
-        ),
-        _preview_line(
-            "Figuring out the right angle before I reply.",
-            "route",
-            detail="I’m sorting out the right angle before I answer so the response stays coherent."
-        ),
+        _preview_line(understand, "understand", detail=understand),
+        _preview_line(route, "route", detail=route),
     ]
     if will_use_history and is_continuation:
         lines.append(_preview_line(
-            "This connects to the current thread — carrying that forward.",
+            _rnd.choice([
+                "This connects to the current thread — carrying that forward.",
+                "Picking up from where we left off.",
+                "Thread context is here — keeping it in view.",
+            ]),
             "tool",
-            detail="This connects to the current thread, so I’m carrying that forward."
+            detail="Carrying the conversation thread forward."
         ))
     elif has_attachment:
         lines.append(_preview_line(
-            "There’s something attached — checking it first.",
+            _rnd.choice([
+                "There's something attached — checking it first.",
+                "Attachment here — reading it before I settle on the answer.",
+            ]),
             "tool",
-            detail="There’s something attached here, so I’m checking it before I settle on the answer."
+            detail="Checking the attachment before I answer."
         ))
     lines.append(_preview_line(
-        "Putting together a direct answer now.",
-        "compose",
-        active=True,
-        detail="I’m putting together a direct answer that stays grounded and easy to follow."
+        _rnd.choice([
+            "Putting together a direct answer now.",
+            "Writing the reply — staying grounded and clear.",
+            "Drafting a response that actually answers it.",
+            "Pulling this into a clean, direct reply.",
+        ]),
+        "compose", active=True,
+        detail="Putting together a direct answer."
     ))
     return _dedupe_preview_lines(lines)
 
@@ -4813,29 +4967,94 @@ _FILIPINO_HARD_WORDS:   frozenset = _FILIPINO_HARD - _FILIPINO_HARD_PHRASES
 
 # ── Taglish few-shot examples — loaded once from maria_training_data.json ─────
 def _load_taglish_few_shots() -> list:
-    """Return (user_input, maria_output) pairs whose response contains real Taglish."""
+    """Return (user_input, maria_output) pairs that model authentic Taglish code-switching.
+
+    Strict filter: rejects theatrical openers, formal Tagalog constructions, and
+    examples where Filipino markers appear only in the final sentence. Survivors
+    are sorted by code-switch density (TL↔EN word adjacencies) so the best
+    examples surface first when sampling. Capped at top 20 for variety.
+    """
     try:
         _path = os.path.join(BASE_DIR, "maria_training_data.json")
         with open(_path, encoding="utf-8") as _f:
             _raw = json.load(_f)
-        _tl_markers = {
-            "naman", "kasi", "yung", "ba", "lang", "pala", "kumusta", "oo",
-            "sige", "grabe", "naku", "pero", "talaga", "yun", "diba", "meron",
-            "wala", "pwede", "gusto", "hindi", "salamat", "paalam", "ingat",
-            "tara", "ano", "ako", "ka", "ko", "mo", "mga", "nila", "sila",
-        }
-        _shots = []
-        for _ex in _raw.get("training_examples", []):
-            _inp = _ex.get("input", "").strip()
-            _out = _ex.get("output", "").strip()
-            if not _inp or not _out:
-                continue
-            _words = set(re.findall(r"[a-z]+", _out.lower()))
-            if _words & _tl_markers:
-                _shots.append((_inp, _out))
-        return _shots
     except Exception:
         return []
+
+    # Unambiguously Filipino tokens — particles, pronouns, common conversational words
+    _TL = frozenset({
+        "naman", "kasi", "yung", "ba", "lang", "nalang", "pala", "eh",
+        "diba", "nga", "pero", "grabe", "talaga", "yun", "ganun", "ganito",
+        "meron", "wala", "walang", "pwede", "gusto", "hindi", "di",
+        "sige", "tara", "anong", "kumusta", "naku", "nandito", "tapos",
+        "mo", "ko", "ka", "ako", "ikaw", "tayo", "natin",
+        "ang", "ng", "na", "sa",
+    })
+    # Short unambiguous English anchor words
+    _EN = frozenset({
+        "i", "you", "we", "is", "are", "was", "have", "the", "a",
+        "this", "that", "my", "your", "can", "not", "just", "so",
+        "and", "or", "but", "if", "when", "how", "what", "to",
+        "in", "on", "for", "with", "do", "get",
+    })
+
+    # Theatrical openers that teach bilingual ping-pong — reject these
+    _BAD_OPENER = re.compile(
+        r'^(oo\s+naman|ay\s+naku|syempre|ang\s+\w+\s+ko\s+ay|'
+        r'maraming\b|marami\b)',
+        re.IGNORECASE
+    )
+    # Formal / literary Tagalog — exact words the system prompt bans
+    _FORMAL = re.compile(
+        r'\b(nais|iyong|pagkatao|tungkol\s+sa|maaari|mayroon\s+kang|'
+        r'ang\s+aking|sapagkat|subalit|datapwat|samakatuwid|'
+        r'kababayan|ay\s+maging|makatulong\s+sa\s+mga)\b',
+        re.IGNORECASE
+    )
+
+    def _transition_count(text: str) -> int:
+        """Count TL↔EN word adjacencies — proxy for mid-sentence code-switch density."""
+        words = re.findall(r"[a-z]+", text.lower())
+        return sum(
+            1 for i in range(len(words) - 1)
+            if (words[i] in _TL and words[i + 1] in _EN) or
+               (words[i] in _EN and words[i + 1] in _TL)
+        )
+
+    candidates = []
+    for _ex in _raw.get("training_examples", []):
+        _inp = _ex.get("input", "").strip()
+        _out = _ex.get("output", "").strip()
+        if not _inp or not _out:
+            continue
+        if len(_out) < 25 or len(_out) > 300:
+            continue
+        if _BAD_OPENER.match(_out):
+            continue
+        if _FORMAL.search(_out):
+            continue
+        _words = set(re.findall(r"[a-z]+", _out.lower()))
+        if len(_words & _TL) < 2:
+            continue
+        # For responses long enough to span multiple sentences: at least one TL word
+        # must appear outside the final sentence — prevents "appended Filipino" pattern.
+        # Strip empty fragments first so trailing punctuation doesn't fool the check.
+        if len(_out) > 100:
+            _sents = [s for s in re.split(r"[.!?]+", _out) if s.strip()]
+            if len(_sents) > 1:
+                _non_last = " ".join(_sents[:-1])
+                if not (set(re.findall(r"[a-z]+", _non_last.lower())) & _TL):
+                    continue
+        _tc = _transition_count(_out)
+        # Require at least one TL↔EN adjacent pair — zero means pure English with
+        # Filipino words only appearing as isolated islands, not real code-switching
+        if _tc < 1:
+            continue
+        candidates.append((_tc, _inp, _out))
+
+    # Highest code-switch density first; cap at 20 to preserve variety
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return [(inp, out) for _, inp, out in candidates[:20]]
 
 _TAGLISH_FEW_SHOTS: list = _load_taglish_few_shots()
 
@@ -5993,7 +6212,7 @@ def _build_no_bs_fallback(query: str, is_filipino: bool = False) -> str:
         return "I can't reliably resolve the exact text to translate from this turn alone. Send the exact text again."
     if re.search(r'\bexplain|meaning|what do you mean\b', q, re.IGNORECASE):
         return "My draft here doesn't feel grounded enough, so I don't want to bluff. Point me to the exact part you want explained."
-    return "I’m not confident this answer is grounded enough, so I don’t want to bluff. Give me a bit more context and I’ll keep it precise."
+    return "I'm not confident this answer is grounded enough, so I don't want to bluff. Give me a bit more context and I'll keep it precise."
 
 
 def _should_force_no_bs_fallback(query: str, response: str, query_mode: str,
@@ -6767,9 +6986,19 @@ _UI_FONT_CSS = "'Inter','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSys
 
 # ── Chat typography tuning ───────────────────────────────────────────────────
 _CHAT_BODY_FONT_PX = 15
-_CHAT_BODY_LINE_HEIGHT = 1.65
-_CHAT_BODY_LETTER_SPACING = "0.005em"
-_CHAT_BODY_WORD_SPACING = "0.01em"
+_CHAT_BODY_LINE_HEIGHT = 1.5
+# String forms used in QSS; float forms used in BubbleRichTextLabel so that
+# the measurement font (QTextDocument) and the render font are always identical.
+# Edit ONE pair and both systems update automatically — no manual sync needed.
+_CHAT_BODY_LETTER_SPACING     = "0.005em"
+_CHAT_BODY_LETTER_SPACING_EM  = 0.005        # float mirror of the string above
+_CHAT_BODY_WORD_SPACING       = "0.01em"
+_CHAT_BODY_WORD_SPACING_EM    = 0.01         # float mirror of the string above
+# User bubbles use slightly wider spacing for a distinct visual weight.
+_USER_BUBBLE_LETTER_SPACING     = "0.02em"
+_USER_BUBBLE_LETTER_SPACING_EM  = 0.02       # float mirror of the string above
+_USER_BUBBLE_WORD_SPACING       = "0.05em"
+_USER_BUBBLE_WORD_SPACING_EM    = 0.05       # float mirror of the string above
 _CHAT_HEADING_1_PX = 21
 _CHAT_HEADING_2_PX = 18
 _CHAT_HEADING_3_PX = 16
@@ -6777,14 +7006,14 @@ _CHAT_BUBBLE_PAD_X = 20
 _CHAT_BUBBLE_PAD_TOP = 16
 _CHAT_BUBBLE_PAD_BOTTOM = 12
 _CHAT_BLOCK_SPACING = 6
-_CHAT_LIST_ITEM_MARGIN = "4px 0"
+_CHAT_LIST_ITEM_MARGIN = "2px 0"
 
 # ── Static HTML/CSS wrapper injected once per bubble ────────────────────────
 # Building this string costs ~10 µs.  With dozens of streaming updates per
 # response we were doing it on EVERY chunk — now it's built exactly once at
 # module import time and reused for every message.
 _BUBBLE_CSS_HEADER: str = """<style>
-    * { font-family: 'Inter','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; }
+    * { font-family: 'Inter','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif; font-size: 15px; }
     .beautiful-link {
         color: #3a3a3a;
         text-decoration: none;
@@ -6798,7 +7027,7 @@ _BUBBLE_CSS_HEADER: str = """<style>
     .inline-code,
     .highlight-keyword {
         color: #2f3640;
-        font-size: 0.92em;
+        font-size: 14px;
         font-weight: 400;
         letter-spacing: 0;
         line-height: 1.2;
@@ -6807,7 +7036,7 @@ _BUBBLE_CSS_HEADER: str = """<style>
         font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', 'Monaco', 'Courier New', monospace;
         background-color: #EDEEF0;
         color: #1a1f2e;
-        font-size: 0.875em;
+        font-size: 13px;
         font-weight: 500;
     }
     .highlight-keyword {
@@ -6842,15 +7071,20 @@ _BUBBLE_CSS_HEADER: str = """<style>
         opacity: 0.9;
     }
     p  { margin: 0; padding: 0; }
-    br { line-height: 1.65; }
-    h1 { font-size: 1.4em; font-weight: 600; color: #141414; margin: 14px 0 4px 0; line-height: 1.25; letter-spacing: -0.01em; }
-    h2 { font-size: 1.2em; font-weight: 600; color: #1a1a1a; margin: 12px 0 3px 0; line-height: 1.28; letter-spacing: -0.005em; }
-    h3 { font-size: 1.07em; font-weight: 600; color: #1a1a1a; margin: 10px 0 2px 0; line-height: 1.3; }
+    br { line-height: 1.5; }
+    h1 { font-size: 21px; font-weight: 600; color: #141414; margin: 10px 0 3px 0; line-height: 1.25; letter-spacing: -0.01em; }
+    h2 { font-size: 18px; font-weight: 600; color: #1a1a1a; margin: 8px 0 2px 0; line-height: 1.28; letter-spacing: -0.005em; }
+    h3 { font-size: 16px; font-weight: 600; color: #1a1a1a; margin: 7px 0 2px 0; line-height: 1.3; }
+    h4 { font-size: 15px; font-weight: 600; color: #2a2a2a; margin: 6px 0 1px 0; line-height: 1.3; }
+    h5 { font-size: 14px; font-weight: 600; color: #3a3a3a; margin: 4px 0 1px 0; line-height: 1.3; }
+    h6 { font-size: 14px; font-weight: 600; color: #4a4a4a; margin: 3px 0 1px 0; line-height: 1.3; }
+    ul, ol { margin: 2px 0; padding-left: 20px; }
+    li { margin: 2px 0; line-height: 1.5; }
 </style>"""
 
 _INLINE_HIGHLIGHT_STYLE = (
     "color: #2f3640; "
-    "font-size: 0.92em; "
+    "font-size: 14px; "
     "font-weight: 400; "
     "line-height: 1.2; "
     "letter-spacing: 0;"
@@ -6873,12 +7107,12 @@ def _render_inline_pill(text: str, *, monospace: bool = False, emoji: bool = Fal
         return (
             f'<span style="font-family:{font_family}; color:#1a1f2e; '
             'background-color:#EDEEF0; '
-            'font-size:0.875em; font-weight:500; letter-spacing:0; line-height:1.2;">'
+            'font-size:13px; font-weight:500; letter-spacing:0; line-height:1.2;">'
             f'\u2009{escaped}\u2009</span>'
         )
     return (
         f'<span style="font-family:{font_family}; color:#2F3640; '
-        'font-size:0.92em; font-weight:400; letter-spacing:0; line-height:1.2;">'
+        'font-size:14px; font-weight:400; letter-spacing:0; line-height:1.2;">'
         f'{escaped}</span>'
     )
 
@@ -6985,36 +7219,117 @@ def _neutralize_legacy_highlight_html(text: str) -> str:
     return text
 
 def apply_inline_formatting(text: str) -> str:
-    """ENHANCED: Apply beautiful, streaming-style inline formatting to text"""
+    """Apply inline markdown formatting to text, producing list-aware HTML.
+
+    Produces the same <ul>/<ol> structure as StructuredStreamingRenderer._do_render
+    so that session-reloaded bubbles (single QLabel path) match the live-streaming
+    finalized state visually — lists are indented in both cases.
+    """
     if not text:
         return ""
 
-    # Normalize any raw model-produced HTML first so unsupported attributes do
-    # not leak into the visible bubble text. We keep readable text and hrefs,
-    # then apply Maria's own formatting/linkification below.
     text = sanitize_bubble_input(text)
-
-    # Convert markdown tables to HTML first (before any other processing)
     text = markdown_table_to_html(text)
-
-    # Convert LaTeX/math notation to readable Unicode + styled HTML spans
     text = convert_latex_to_readable(text)
 
-    # 🔥 STREAMING-STYLE FORMATTING (like modern chat apps)
-    lines = text.split('\n')
+    _INLINE_HEADING_RE = re.compile(r'(?<=[^\n])(#{1,6}\s+\S)')
+    text = _INLINE_HEADING_RE.sub(lambda m: '\n' + m.group(1), text)
+
+    # Collapse runs of blank lines to one — LLMs often emit double blank lines
+    # which would otherwise stack two spacers and create huge paragraph gaps.
+    _raw_lines = text.split('\n')
+    lines = []
+    _prev_blank = False
+    for _ln in _raw_lines:
+        _is_blank = not _ln.strip()
+        if _is_blank and _prev_blank:
+            continue
+        lines.append(_ln)
+        _prev_blank = _is_blank
+
     processed_lines = []
 
+    _in_bullet   = False
+    _in_numbered = False
+    _LIST_STYLE  = f'margin:2px 0;padding-left:20px;'
+    _ITEM_STYLE  = f'margin:{_CHAT_LIST_ITEM_MARGIN};line-height:{_CHAT_BODY_LINE_HEIGHT};'
+
+    def _close_list():
+        nonlocal _in_bullet, _in_numbered
+        if _in_bullet:
+            processed_lines.append('</ul>')
+            _in_bullet = False
+        if _in_numbered:
+            processed_lines.append('</ol>')
+            _in_numbered = False
+
+    _URL_BARE_RE = re.compile(
+        r'(?<!href=["\'])https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\-.?=&#%]*'
+        r'|(?<!href=["\'])www\.[-\w.]+\.[a-zA-Z]{2,}[/\w\-.?=&#%]*'
+    )
+    _URL_MD_RE = re.compile(r'\[([^\]]+)\]\((https?://[^\)]+)\)')
+
+    def _apply_inline(ln: str) -> str:
+        """Apply bold/italic/code/links/keywords to a single line of text."""
+        # 1. Protect inline code spans with placeholders
+        spans: list = []
+
+        def _grab_span(m):
+            spans.append(_render_inline_pill(m.group(1), monospace=True))
+            return f'\x00CS{len(spans)-1}\x00'
+
+        ln = _RE_MD_CODE_SPAN.sub(_grab_span, ln)
+        # 2. Bold / italic / strikethrough / math
+        ln = _RE_MD_BOLD.sub(r'<strong>\1</strong>', ln)
+        ln = _RE_MD_BOLD2.sub(r'<strong>\1</strong>', ln)
+        ln = _RE_MD_ITALIC.sub(r'<em>\1</em>', ln)
+        ln = _RE_MD_ITALIC2.sub(r'<em>\1</em>', ln)
+        ln = _RE_MD_STRIKE.sub(r'<s>\1</s>', ln)
+        ln = _RE_MD_MATH.sub(r'<span class="math-inline">\1</span>', ln)
+        # 3. Restore code spans
+        for i, cs in enumerate(spans):
+            ln = ln.replace(f'\x00CS{i}\x00', cs)
+        # 4. Markdown links [text](url) — must come before bare-URL pass
+        def _md_link(m):
+            disp = m.group(1).strip()
+            url  = m.group(2).strip()
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+            return f'<a href="{url}" class="beautiful-link" target="_blank" rel="noopener">{disp}</a>'
+        ln = _URL_MD_RE.sub(_md_link, ln)
+        # 5. Bare URLs
+        def _bare_link(m):
+            url  = m.group(0)
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+            disp = url.replace('https://', '').replace('http://', '')
+            if disp.startswith('www.'):
+                disp = disp[4:]
+            if len(disp) > 40:
+                disp = disp[:35] + '…'
+            return f'<a href="{url}" class="beautiful-link" target="_blank" rel="noopener">{disp}</a>'
+        ln = _URL_BARE_RE.sub(_bare_link, ln)
+        # 6. Highlight keywords
+        for kw in ('NOTE:', 'TIP:', 'WARNING:', 'IMPORTANT:', '🚨', '✅', '⚠️', '💡', '📌'):
+            if kw in ln:
+                ln = ln.replace(kw, _render_inline_pill(kw, emoji=any(ord(c) > 127 for c in kw)))
+        return ln
+
     for line in lines:
-        if not line.strip():
-            # Use a small spacer instead of <br> to avoid double-spacing when joined
-            processed_lines.append('<span style="display:block;height:10px;"></span>')
+        stripped = line.strip()
+
+        if not stripped:
+            _close_list()
+            processed_lines.append('<span style="display:block;height:6px;"></span>')
             continue
 
-        # 🔥 PRESERVE CODE BLOCKS (handled separately)
-        if line.strip().startswith('```'):
+        if stripped.startswith('```'):
+            _close_list()
             processed_lines.append(line)
             continue
-        if _RE_MD_HR.match(line.strip()):
+
+        if _RE_MD_HR.match(stripped):
+            _close_list()
             processed_lines.append(
                 '<table width="100%" cellspacing="0" cellpadding="0" style="margin:0;">'
                 '<tr><td height="14"></td></tr>'
@@ -7024,118 +7339,63 @@ def apply_inline_formatting(text: str) -> str:
             )
             continue
 
-        # 🔥 HEADINGS: ### ## # → <h3> <h2> <h1>
-        _heading_m = _RE_MD_HEADING.match(line.strip())
+        if re.fullmatch(r'#{1,6}\s*', stripped):
+            _close_list()
+            continue
+
+        _heading_m = _RE_MD_HEADING.match(stripped)
         if _heading_m:
+            _close_list()
             _hlevel = len(_heading_m.group(1))
             _htag   = f'h{_hlevel}'
             _htext  = _heading_m.group(2)
-            # Still apply bold/italic inside headings
             _htext  = _RE_MD_BOLD.sub(r'<strong>\1</strong>', _htext)
             _htext  = _RE_MD_ITALIC.sub(r'<em>\1</em>', _htext)
             processed_lines.append(f'<{_htag}>{_htext}</{_htag}>')
             continue
 
-        # 🔥 FIXED ORDER: Process formatting in correct sequence
+        # Bullet list item: leading -, *, or •
+        _bullet_m = re.match(r'^[-*•]\s+(.+)', stripped)
+        if _bullet_m:
+            if _in_numbered:
+                processed_lines.append('</ol>')
+                _in_numbered = False
+            if not _in_bullet:
+                processed_lines.append(f'<ul style="{_LIST_STYLE}">')
+                _in_bullet = True
+            processed_lines.append(f'<li style="{_ITEM_STYLE}">{_apply_inline(_bullet_m.group(1))}</li>')
+            continue
 
-        # 1. Protect code spans first (`code`)
-        # Find all code spans and replace with placeholders
-        code_spans = []
+        # Numbered list item: 1. text  or  1) text
+        _numbered_m = re.match(r'^\d+[.)]\s+(.+)', stripped)
+        if _numbered_m:
+            if _in_bullet:
+                processed_lines.append('</ul>')
+                _in_bullet = False
+            if not _in_numbered:
+                processed_lines.append(f'<ol style="{_LIST_STYLE}">')
+                _in_numbered = True
+            processed_lines.append(f'<li style="{_ITEM_STYLE}">{_apply_inline(_numbered_m.group(1))}</li>')
+            continue
 
-        def replace_code_spans(match):
-            code = match.group(1)
-            placeholder = f'\x00CSPAN{len(code_spans)}\x00'
-            code_spans.append(_render_inline_pill(code, monospace=True))
-            return placeholder
+        _close_list()
+        processed_lines.append(_apply_inline(line))
 
-        line = _RE_MD_CODE_SPAN.sub(replace_code_spans, line)
-
-        # 2. Handle bold (**text** and __text__)
-        line = _RE_MD_BOLD.sub(r'<strong>\1</strong>', line)
-        line = _RE_MD_BOLD2.sub(r'<strong>\1</strong>', line)
-
-        # 3. Handle italic (*text* and _text_)
-        line = _RE_MD_ITALIC.sub(r'<em>\1</em>', line)
-        line = _RE_MD_ITALIC2.sub(r'<em>\1</em>', line)
-
-        # 4. Handle strikethrough (~~text~~)
-        line = _RE_MD_STRIKE.sub(r'<s>\1</s>', line)
-
-        # 5. Handle inline math ($math$)
-        line = _RE_MD_MATH.sub(r'<span class="math-inline">\1</span>', line)
-
-        # 6. Restore code spans
-        for i, code_span in enumerate(code_spans):
-            line = line.replace(f'\x00CSPAN{i}\x00', code_span)
-
-        # 7. Handle bullet points with better styling
-        if line.strip().startswith('- '):
-            line = _RE_MD_BULLET_DASH.sub('• ', line)
-        elif line.strip().startswith('* '):
-            line = _RE_MD_BULLET_STAR.sub('• ', line)
-        elif _RE_MD_NUMBERED.match(line.strip()):
-            # Keep numbered lists as-is but add class
-            line = f'<span class="numbered-item">{line}</span>'
-
-        # 8. Make URLs clickable with clean styling
-
-        # 8a. First handle Markdown-style links: [display text](url)
-        # This must run BEFORE the bare-URL regex so it doesn't double-linkify.
-        def make_markdown_link(match):
-            display_text = match.group(1).strip()
-            url = match.group(2).strip()
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-            return f'<a href="{url}" class="beautiful-link" target="_blank" rel="noopener">{display_text}</a>'
-
-        line = re.sub(
-            r'\[([^\]]+)\]\((https?://[^\)]+)\)',
-            make_markdown_link,
-            line
-        )
-
-        # 8b. Then handle bare URLs (skip ones already inside an <a> tag)
-        def make_beautiful_link(match):
-            url = match.group(0)
-            if not url.startswith(('http://', 'https://')):
-                url = 'https://' + url
-
-            # Clean display text
-            display_text = url.replace('https://', '').replace('http://', '')
-            if display_text.startswith('www.'):
-                display_text = display_text[4:]
-
-            # Truncate long URLs
-            if len(display_text) > 40:
-                display_text = display_text[:35] + '…'
-
-            return f'<a href="{url}" class="beautiful-link" target="_blank" rel="noopener">{display_text}</a>'
-
-        # Only linkify bare URLs not already inside an href="..."
-        line = re.sub(
-            r'(?<!href=["\'])https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+[/\w\-.?=&#%]*|(?<!href=["\'])www\.[-\w.]+\.[a-zA-Z]{2,}[/\w\-.?=&#%]*',
-            make_beautiful_link,
-            line
-        )
-
-        # 9. Highlight important keywords
-        important_keywords = ['NOTE:', 'TIP:', 'WARNING:', 'IMPORTANT:', '🚨', '✅', '⚠️', '💡', '📌']
-        for keyword in important_keywords:
-            if keyword in line:
-                line = line.replace(keyword, _render_inline_pill(
-                    keyword,
-                    emoji=any(ord(ch) > 127 for ch in keyword)
-                ))
-
-        processed_lines.append(line)
+    _close_list()
 
     result = '<br>'.join(processed_lines)
 
-    # _BUBBLE_CSS_HEADER is included in every bubble's HTML.
-    # QLabel renders RichText by parsing the full HTML string — there is no
-    # separate document stylesheet API (unlike QTextEdit).  The string is
-    # built once per bubble creation or streaming update, so the overhead is
-    # one string concat, not a per-chunk allocation of a new CSS object.
+    # The join inserts <br> between every entry including list markup.
+    # Remove <br> that landed inside <ul>/<ol>/<li> elements so list items
+    # render correctly rather than with extra blank lines.
+    result = re.sub(r'<br>(</?(?:ul|ol|li)[^>]*>)', r'\1', result)
+    result = re.sub(r'(<(?:ul|ol)[^>]*>)<br>', r'\1', result)
+
+    # Clean up dangling markdown markers from truncated streaming responses
+    result = re.sub(r'\*{1,2}$', '', result)
+    result = re.sub(r'_{1,2}$', '', result)
+    result = re.sub(r'\*\*(\w[^*]*)$', r'<strong>\1</strong>', result)
+
     final_html = (
         '<div class="streaming-text-container">'
         + _BUBBLE_CSS_HEADER
@@ -7176,67 +7436,6 @@ def sanitize_bubble_input(text: str) -> str:
     cleaned = html.unescape(cleaned)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
     return cleaned.strip()
-
-
-def render_text_for_bubble(text: str) -> str:
-    """
-    Render text for chat bubble display with proper CSS for expansion
-    """
-    # First apply inline formatting
-    formatted_text = apply_inline_formatting(text)
-
-    # Add CSS that ensures text wraps and expands properly
-    expand_css = """
-    <style>
-        .chat-bubble-content {
-            max-width: 100%;
-            word-wrap: break-word;
-            word-break: break-word;
-            overflow-wrap: break-word;
-            white-space: pre-wrap;
-            line-height: 1.5;
-            font-size: 14px;
-            font-family: 'Inter','Segoe UI Variable','Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;
-        }
-
-        .chat-bubble-content p {
-            margin: 0.5em 0;
-            line-height: 1.5;
-        }
-
-        .chat-bubble-content pre, .chat-bubble-content code {
-            white-space: pre-wrap;
-            word-break: break-all;
-            max-width: 100%;
-            overflow-x: auto;
-        }
-
-        .chat-bubble-content table {
-            max-width: 100%;
-            border-collapse: collapse;
-            margin: 1em 0;
-        }
-
-        .chat-bubble-content table, 
-        .chat-bubble-content th, 
-        .chat-bubble-content td {
-            border: 1px solid #ddd;
-            padding: 8px;
-        }
-    </style>
-    """
-
-    # Wrap in a div with proper CSS
-    html_content = f"""
-    <div class="chat-bubble-content">
-        {expand_css}
-        <div class="text-content">
-            {formatted_text}
-        </div>
-    </div>
-    """
-
-    return html_content
 
 
 def detect_code_language(code: str, hint: str = "") -> str:
@@ -13175,11 +13374,6 @@ class SelfCritiqueLoopEngine:
         """Return True when the self-critique pass is worth running."""
         if is_conversational or is_venting:
             return False
-        # Factual intents always get a critique pass — hallucination risk is highest here.
-        # Use a lower floor (200 chars) since factual answers are often short but still
-        # need accuracy verification.
-        if query_mode in (_INTENT_EXACT_FACT, _INTENT_LIVE_INFO):
-            return len(response) >= 200
         if len(response) < SelfCritiqueLoopEngine.MIN_CHARS:
             return False
         q_lower = query.lower()
@@ -14257,241 +14451,6 @@ class StepItem(QWidget):
         self._slide_anim.start()
 
 
-# =============================================================================
-# MariaThoughtCard — a single flowing-prose "real thought" card
-# =============================================================================
-# This replaces the staged READING / FRAMING / CHECKING / DRAFTING checklist
-# with ONE block of genuine first-person monologue. Instead of stitching
-# together pre-written stage lines, the model streams a full paragraph here
-# that reacts to the specific message — what stood out, what to include,
-# what angle to take. It reads like actual thinking, not a diagnostic scan.
-#
-# Lifecycle:
-#   start()          → show card, pulsing "💭 Thinking…" header, empty body
-#   stream(text)     → replace body with accumulated text (throttled ~20 Hz)
-#   complete(secs)   → finalize header to "💭 Thought for X.Xs", stop pulse
-#
-# The card stays VISIBLE after completion — it IS the thought, the user
-# should be able to read it at rest, not have to click to expand it.
-# =============================================================================
-
-class MariaThoughtCard(QFrame):
-    """A single flowing-prose thought block. Streams one paragraph of Maria's
-    genuine internal monologue as she reads the message and plans her reply.
-
-    Unlike ThinkingStepsWidget (list of discrete pipeline stages), this widget
-    renders ONE continuous body of prose — what Maria is actually thinking,
-    not what the system is doing.
-    """
-
-    height_changed = pyqtSignal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setObjectName("maria_thought_card")
-        self._start_ts = time.monotonic()
-        self._final_secs: float | None = None
-        self._current_text = ""
-        self._pulse_phase = 0.0
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-
-        # ── Header row — small dot + "Thinking…" / "Thought for X.Xs" ────────
-        self._hdr = QWidget(self)
-        self._hdr.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        hdr_lay = QHBoxLayout(self._hdr)
-        hdr_lay.setContentsMargins(16, 11, 14, 6)
-        hdr_lay.setSpacing(8)
-
-        # Label carries both the text and the inline chevron — keeps the chevron
-        # snug beside the timer with no stretch gap.
-        self._hdr_lbl = QLabel(self._hdr)
-        self._hdr_lbl.setFont(QFont("Segoe UI", 11))
-        self._hdr_lbl.setTextFormat(Qt.TextFormat.RichText)
-        self._hdr_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self._hdr_lbl.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        self._hdr_lbl.setText(
-            '<span style="color:#8E8E93;font-style:italic;">Thinking…</span>'
-            '<span style="color:#8E8E93;font-style:italic;">&nbsp;›</span>'
-        )
-
-        # Spacer pushes the label to the left, nothing floated right.
-        hdr_lay.addWidget(self._hdr_lbl)
-        hdr_lay.addStretch(1)
-
-        # Hover affordance — faint tint on the header row signals it's clickable.
-        self._hdr.setStyleSheet("""
-            QWidget {
-                background: transparent;
-                border-radius: 6px;
-            }
-            QWidget:hover {
-                background: rgba(142, 142, 147, 0.08);
-            }
-        """)
-        self._hdr.mousePressEvent = lambda _e: self._toggle()
-
-        # ── Body — the actual thought, as flowing prose ──────────────────────
-        self._body_wrap = QWidget(self)
-        body_wrap_lay = QVBoxLayout(self._body_wrap)
-        body_wrap_lay.setContentsMargins(16, 2, 16, 14)
-        body_wrap_lay.setSpacing(0)
-
-        self._body_lbl = QLabel(self._body_wrap)
-        self._body_lbl.setFont(QFont("Segoe UI", 11))
-        self._body_lbl.setWordWrap(True)
-        self._body_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._body_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        # Muted gray body text — subordinate to the actual response below,
-        # reads as a soft annotation rather than a primary content block.
-        self._body_lbl.setStyleSheet(
-            "color: #8E8E93; background: transparent; line-height: 150%;"
-        )
-        self._body_lbl.setText("")
-        body_wrap_lay.addWidget(self._body_lbl)
-
-        root.addWidget(self._hdr)
-        root.addWidget(self._body_wrap)
-
-        # No card background — thought block sits flush with the chat surface,
-        # matching Claude's own thinking UI (no warm card, no border).
-        self.setStyleSheet("""
-            QFrame#maria_thought_card {
-                background: transparent;
-                border: none;
-            }
-        """)
-
-        # Collapse/expand state + animation
-        self._collapsed = False
-        self._body_anim = QPropertyAnimation(self._body_wrap, b"maximumHeight")
-        self._body_anim.setDuration(180)
-        self._body_anim.setEasingCurve(QEasingCurve.Type.OutQuint)
-        # Drive height_changed on every animation frame so the parent layout
-        # tracks the card height smoothly. valueChanged fires per-frame;
-        # finished fires once at the end for a final clean-up pass.
-        self._body_anim.valueChanged.connect(lambda _: self.height_changed.emit())
-        self._body_anim.finished.connect(lambda: (self.updateGeometry(), self.height_changed.emit()))
-
-        # Header pulse — sine oscillation on the thought glyph while streaming,
-        # keeps it feeling alive without spinning dots.
-        self._pulse_timer = QTimer(self)
-        self._pulse_timer.setInterval(60)
-        self._pulse_timer.timeout.connect(self._on_pulse_tick)
-
-        # Elapsed-time updater while thinking
-        self._time_timer = QTimer(self)
-        self._time_timer.setInterval(120)
-        self._time_timer.timeout.connect(self._refresh_header_elapsed)
-
-    # ── Lifecycle ────────────────────────────────────────────────────────────
-
-    def start(self) -> None:
-        """Begin pulsing + elapsed timer. Called when streaming kicks off."""
-        self._start_ts = time.monotonic()
-        self._final_secs = None
-        self._pulse_timer.start()
-        self._time_timer.start()
-        self._refresh_header_elapsed()
-
-    def stream(self, text: str) -> None:
-        """Replace body with the accumulated streamed text.
-
-        The caller is expected to pass the FULL accumulated prose each time
-        (i.e. _acc, not a delta) — this mirrors ThinkingStepsWidget's stream
-        contract so both widgets can share the same emission pipeline.
-        """
-        txt = (text or "").strip()
-        if txt == self._current_text:
-            return
-        self._current_text = txt
-        # Display polishing: collapse any stray newlines into single paragraph
-        # flow, and swallow the model's tendency to emit leading filler.
-        _display = re.sub(r'\n+', ' ', txt)
-        _display = re.sub(r'\s{2,}', ' ', _display).strip()
-        self._body_lbl.setText(_display)
-        self.height_changed.emit()
-
-    def complete(self, final_text: str | None = None, elapsed_secs: float | None = None) -> None:
-        """Finalize: stop animations, lock in the "Thought for X.Xs" header."""
-        if final_text is not None:
-            self.stream(final_text)
-        self._final_secs = elapsed_secs if elapsed_secs is not None else (time.monotonic() - self._start_ts)
-        self._pulse_timer.stop()
-        self._time_timer.stop()
-        # Reset label opacity in case pulse left it mid-fade
-        eff = self._hdr_lbl.graphicsEffect()
-        if isinstance(eff, QGraphicsOpacityEffect):
-            eff.setOpacity(1.0)
-        self._refresh_header_final()
-
-    def set_text_directly(self, text: str) -> None:
-        """Restore a completed thought from persisted history (no streaming)."""
-        self._current_text = (text or "").strip()
-        _display = re.sub(r'\n+', ' ', self._current_text)
-        _display = re.sub(r'\s{2,}', ' ', _display).strip()
-        self._body_lbl.setText(_display)
-
-    def get_thought_data(self) -> dict:
-        """Serialize the final state for persistence alongside message history."""
-        secs = self._final_secs if self._final_secs is not None else (time.monotonic() - self._start_ts)
-        return {
-            "text":    self._current_text,
-            "elapsed": round(float(secs), 2),
-        }
-
-    # ── Header rendering ─────────────────────────────────────────────────────
-
-    def _refresh_header_elapsed(self) -> None:
-        secs = time.monotonic() - self._start_ts
-        self._hdr_lbl.setText(
-            f'<span style="color:#8E8E93;font-style:italic;">Thinking…</span>'
-            f'<span style="color:#8E8E93;font-style:italic;">&nbsp;&nbsp;{secs:4.1f}s&nbsp;›</span>'
-        )
-
-    def _refresh_header_final(self) -> None:
-        secs = self._final_secs or 0.0
-        arrow = "‹" if self._collapsed else "›"
-        self._hdr_lbl.setText(
-            f'<span style="color:#8E8E93;">Thought for</span>'
-            f'<span style="color:#8E8E93;">&nbsp;</span>'
-            f'<span style="color:#3C3C43;font-weight:600;">{secs:.1f}s</span>'
-            f'<span style="color:#8E8E93;">&nbsp;{arrow}</span>'
-        )
-
-    # ── Pulse animation on the header label while streaming ──────────────────
-
-    def _on_pulse_tick(self) -> None:
-        import math
-        self._pulse_phase = (self._pulse_phase + 0.18) % (2 * math.pi)
-        # Gentle 0.55 → 1.0 breathing on the label itself — feels alive without
-        # needing a separate glyph.
-        opacity = 0.55 + 0.45 * (0.5 + 0.5 * math.sin(self._pulse_phase))
-        eff = self._hdr_lbl.graphicsEffect()
-        if not isinstance(eff, QGraphicsOpacityEffect):
-            eff = QGraphicsOpacityEffect(self._hdr_lbl)
-            self._hdr_lbl.setGraphicsEffect(eff)
-        eff.setOpacity(opacity)
-
-    # ── Collapse / expand ────────────────────────────────────────────────────
-
-    def _toggle(self) -> None:
-        self._collapsed = not self._collapsed
-        self._body_anim.stop()
-        if self._collapsed:
-            self._body_anim.setStartValue(self._body_wrap.height())
-            self._body_anim.setEndValue(0)
-        else:
-            self._body_anim.setStartValue(0)
-            self._body_anim.setEndValue(16777215)
-        # Refresh header so the inline chevron flips direction.
-        if self._final_secs is not None:
-            self._refresh_header_final()
-        self._body_anim.start()
-
-
 class ThinkingStepsWidget(QFrame):
     """Compact collapsible 'Thinking' panel with live step tracking.
 
@@ -14938,10 +14897,9 @@ class ThinkingStepsWidget(QFrame):
             detail = parts[2].strip() if len(parts) > 2 else ""
 
             # ── Streaming update: overwrite label directly, no type animation ──
-            # Used when the worker is streaming prose token-by-token into a step
-            # (e.g. _stream_thinking_prose for ic_result).  The regular "loading"
-            # path calls type_text() which clears-and-retypes every time, which
-            # would fight with the live stream.  This branch just setText()s.
+            # Used when the worker is streaming prose token-by-token into a step.
+            # The regular "loading" path calls type_text() which clears-and-retypes
+            # every time; this branch just setText()s to avoid fighting the stream.
             if status == "stream":
                 if step_id not in self._steps:
                     # First stream event — create in loading state with empty label
@@ -15177,11 +15135,7 @@ class UltraIntelligentWorker(QThread):
     search_status_changed = pyqtSignal(str, str, str)
     # Emits (step_id, status, session_id) to drive the ThinkingStepsWidget
     thinking_step = pyqtSignal(str, str, str)
-    # Emits (phase, text, session_id) to drive the MariaThoughtCard.
-    #   phase ∈ {"start", "stream", "complete"}
-    #   text is the full accumulated prose (not a delta) on stream/complete
-    # Separate from thinking_step because the thought card is ONE flowing
-    # paragraph, not a list of stages — different widget, different contract.
+    # Emits (phase, text, session_id) — phase="start" triggers the dots animation.
     maria_thought = pyqtSignal(str, str, str)
     # Emits (message_id, session_id, task_family) immediately after the routing
     # decision so the main thread can annotate the current user message with the
@@ -15204,8 +15158,8 @@ class UltraIntelligentWorker(QThread):
         # overwhelming the Qt event loop.
         self._batch_buf = ""
         self._batch_last_emit = 0.0
-        self._BATCH_CHARS = 4     # emit small chunks so text trickles in naturally
-        self._BATCH_MS    = 0.05  # ~20 FPS — slow enough to feel like typing
+        self._BATCH_CHARS = 12    # emit in small bursts — still feels like streaming
+        self._BATCH_MS    = 0.05  # ~20 FPS
         # Normal chat replies go through multiple post-processing passes after
         # draft generation. Suppress draft streaming for that path so the UI
         # only shows the reviewed final answer.
@@ -15240,194 +15194,6 @@ class UltraIntelligentWorker(QThread):
         # if the thread happens to be inside an _ollama_call() at cancellation time.
         # Setting _cancelled = True is enough — _run_impl_inner checks it at each
         # step and exits cleanly, which also triggers the finally: _MARIA_PROCESSING=False.
-
-    # ── Streaming internal-thought prose for ic_result step ────────────────────
-    def _stream_thinking_prose(self, user_text: str, mode: str, continuation: str,
-                               is_trivial_social: bool, detail: str) -> str:
-        """Stream Maria's REAL internal thought — one flowing paragraph.
-
-        This is NOT a stage label, NOT a classifier caption, NOT a checklist
-        summary. It's a 3–7 sentence first-person monologue where Maria
-        actually engages with the message: reacts to the specific words,
-        asks herself a question, considers angles, lands on an approach.
-
-        Streamed live into MariaThoughtCard via the `maria_thought` signal.
-        The older `ic_result` step emission is kept (short) so the step panel
-        still registers that intent classification happened, but the real
-        thought now lives in the card above.
-
-        Budget:  num_predict=64, 4 s wall clock on a smaller thought model.
-        Falls back to _compose_intent_thought if streaming yields too little.
-        """
-        _fallback = _compose_intent_thought(user_text, mode, continuation, is_trivial_social)
-
-        # Announce start — the UI creates/shows the thought card now.
-        self.maria_thought.emit("start", "", self.session_id)
-
-        # Brief mode hint so the model knows the frame it's thinking in —
-        # kept as loose context, NOT as a category label to regurgitate.
-        _mode_desc = {
-            _INTENT_EMOTIONAL:   "emotional — they want to be heard, not fixed",
-            _INTENT_CASUAL:      "casual small-talk, no real question",
-            _INTENT_REACTION:    "a reaction to something earlier in our chat",
-            _INTENT_CODE:        "coding / programming help",
-            _INTENT_TRANSLATION: "a translation",
-            _INTENT_TEXT_TASK:   "rewrite / summarize / edit their text",
-            _INTENT_CREATIVE:    "creative writing",
-            _INTENT_PLANNING:    "they want a plan or steps",
-            _INTENT_NAVIGATION:  "directions / a route / a location",
-            _INTENT_LIVE_INFO:   "time-sensitive, needs current info",
-            _INTENT_EXACT_FACT:  "a direct factual question",
-            _INTENT_EXPLAINER:   "they want something explained",
-        }.get(mode, "a general message")
-
-        if continuation == "continuation":
-            _cont_desc = "This continues something you were already working on."
-        elif continuation == "correction":
-            _cont_desc = "They're pushing back on something from before."
-        elif is_trivial_social:
-            _cont_desc = "Trivial social beat — they're just keeping the thread alive."
-        else:
-            _cont_desc = "Fresh message — no prior context to inherit."
-
-        # ── The real-thought system prompt ────────────────────────────────
-        # Key differences from the old prompt:
-        #   1. 3–7 sentences instead of 1–2 — enough to BE a thought.
-        #   2. Explicit instructions to react to the specific words, ask a
-        #      self-question, consider angles, land on an approach.
-        #   3. Explicit ban on sounding like a stage label or process log.
-        #   4. Light Taglish allowed if natural — Maria's voice.
-        #   5. "Okay" and "Hmm" are OK here (they're how real thoughts start);
-        #      only the mechanical "Alright," "Let me," "I'll start by" are banned.
-        _sys = (
-            "You are Maria. Write your REAL INTERNAL THOUGHT right before you "
-            "answer the user — the kind of thing you'd mutter to yourself while "
-            "reading their message and figuring out how to reply.\n\n"
-            "Maria's voice here must stay soft, feminine, kind, and emotionally "
-            "safe. She can be playful or a little flirty-cute, but never mean, "
-            "mocking, harsh, condescending, or judgmental.\n\n"
-            "Write 3 to 7 sentences of flowing first-person prose. This is a "
-            "single paragraph of actual thinking — NOT a plan, NOT a checklist, "
-            "NOT stage labels. Make it feel like thought, not process documentation.\n\n"
-            "What a real thought does:\n"
-            "  • Reacts to the specific words they used (not the abstract category)\n"
-            "  • Asks yourself a question about what they actually want\n"
-            "  • Considers angles — what to include, what to skip, what might trip them up\n"
-            "  • Lands on an approach naturally, like you just decided it\n\n"
-            "Voice: casual, first-person, warm, girly, and affectionate in a natural way; "
-            "a little Taglish if it fits naturally "
-            "(\"okay,\" \"hmm,\" \"sige,\" \"parang\"). Don't force Taglish if it "
-            "doesn't fit. No emojis. No quotes around anything. No bullets. No "
-            "section labels. No preamble like \"Alright,\" or \"Let me\" or "
-            "\"I'll start by\" — those are stage directions, not thoughts.\n\n"
-            "Do not insult the user or anyone they mention. Do not call anyone crazy, "
-            "weird, dumb, desperate, clingy, delusional, or anything similar. If "
-            "something is odd, react gently and curiously, not cruelly.\n\n"
-            "Make the final sentence sound finished. Do not stop mid-sentence "
-            "or trail off.\n\n"
-            "Do NOT answer the user. Do NOT quote their message back. Just think."
-        )
-        _user_prompt = (
-            f"Their message:\n\"{user_text[:400]}\"\n\n"
-            f"Context: this is {_mode_desc}. {_cont_desc}\n\n"
-            f"Now write your real thought as you read this."
-        )
-
-        _acc   = ""
-        _start = time.monotonic()
-        _last_emit = 0.0
-        _thought_model = MODEL_THOUGHT or MODEL_FAST or MODEL
-
-        try:
-            with _OLLAMA_SEMAPHORE:
-                stream = ollama.chat(
-                    model=_thought_model,
-                    messages=[
-                        {"role": "system", "content": _sys},
-                        {"role": "user",   "content": _user_prompt},
-                    ],
-                    stream=True,
-                    options={
-                        "temperature": 0.72,   # keep some texture, but reduce ramble/latency
-                        "num_predict": 124,    # more room for a complete thought before timeout
-                        "num_ctx":     1024,
-                        "num_batch":   256,
-                        "num_gpu":     _NUM_GPU_LAYERS,
-                    },
-                )
-                for chunk in stream:
-                    if self._cancelled:
-                        break
-                    if (time.monotonic() - _start) > 4.0:
-                        print("   ⏱️ maria_thought prose timeout (4s) — using partial")
-                        break
-                    token = ""
-                    if isinstance(chunk, dict):
-                        token = chunk.get("message", {}).get("content", "")
-                    elif hasattr(chunk, "message"):
-                        token = getattr(chunk.message, "content", "")
-                    if token:
-                        _acc += token
-                        _now = time.monotonic()
-                        # ~20 Hz stream updates to the thought card
-                        if (_now - _last_emit) >= 0.05 or len(token) > 8:
-                            self.maria_thought.emit("stream", _acc, self.session_id)
-                            _last_emit = _now
-        except Exception as _e:
-            print(f"   ⚠️ maria_thought stream failed: {_e}")
-
-        # Polish final text: strip wrapping quotes + mechanical filler starters
-        # that the model sometimes adds despite the system prompt.
-        _cand = _acc.strip().strip('"\'""')
-        for _filler in ("Alright, ", "Alright ", "Let me ", "Let's ", "I'll start by ",
-                        "I will start by ", "First, ", "First of all, "):
-            if _cand.lower().startswith(_filler.lower()):
-                _cand = _cand[len(_filler):]
-                if _cand:
-                    _cand = _cand[0].upper() + _cand[1:]
-                break
-        # Guardrail for the thought card: keep Maria's internal prose soft and
-        # non-judgmental even if the smaller thought model drifts snarky.
-        _cand = re.sub(r"\b(lost (his|her|their) mind|crazy|insane|delusional|psycho)\b", "really deep in it", _cand, flags=re.IGNORECASE)
-        _cand = re.sub(r"\b(dumb|stupid|pathetic|desperate|cringe|clingy|weird)\b", "a bit much", _cand, flags=re.IGNORECASE)
-        _cand = re.sub(r"\bwhat's the deal with this (guy|girl|person)\??\s*", "", _cand, flags=re.IGNORECASE)
-        # If the model returned too little, use the template — but even the
-        # template fallback goes into the card so the UI stays consistent.
-        _final = _finalize_maria_thought(_acc, _fallback)
-
-        _elapsed = time.monotonic() - _start
-        self.maria_thought.emit("complete", _final, self.session_id)
-
-        # Still emit a SHORT ic_result step so the pipeline panel below has a
-        # row for "intent resolved" — but no more echoing the full paragraph
-        # into a step label; that lives in the card now.
-        _intent_short = {
-            _INTENT_EMOTIONAL:   "Read it as emotional — they want to feel heard.",
-            _INTENT_CASUAL:      "Just casual — matching the energy.",
-            _INTENT_REACTION:    "It's a reaction to what I said before.",
-            _INTENT_CODE:        "A coding task — focusing on the code itself.",
-            _INTENT_TRANSLATION: "A translation — giving it directly.",
-            _INTENT_TEXT_TASK:   "A rewrite / edit — doing the transformation, not commenting on it.",
-            _INTENT_CREATIVE:    "Creative — leaning into voice, not generic output.",
-            _INTENT_PLANNING:    "They want a plan — pulling constraints from what they said.",
-            _INTENT_NAVIGATION:  "Directions question — focusing on the actual route.",
-            _INTENT_LIVE_INFO:   "Time-sensitive — I need to pull fresh info.",
-            _INTENT_EXACT_FACT:  "Direct fact — keeping it tight.",
-            _INTENT_EXPLAINER:   "They want it explained — building the mental model piece by piece.",
-        }.get(mode, "Figured out the angle.")
-        if continuation == "continuation":
-            _intent_short = "Continues our earlier task — staying in that frame."
-        elif continuation == "correction":
-            _intent_short = "They're correcting something — adjusting from there."
-        elif is_trivial_social:
-            _intent_short = "Just a casual social beat."
-
-        self.thinking_step.emit(
-            "ic_result",
-            f"completed|{_intent_short}|{detail}",
-            self.session_id,
-        )
-        return _final
 
     def run(self):
         # Check if cancelled before starting
@@ -15477,14 +15243,35 @@ class UltraIntelligentWorker(QThread):
         print(f"\n🔥 **SMART MARIA ACTIVATED** - Message ID: {self.message_id}, Session: {self.session_id}")
         self._start_time = time.time()
         print(f"📝 Query: '{self.user_text[:100]}...'")
-        # ── Step 1: input received — create + immediately complete ────────────
+        # ── Step 1: input received — show "Thinking…" card immediately ──────
         _q_preview = self.user_text[:45].rstrip()
         self.thinking_step.emit("input", f"completed|\"{_q_preview}{'...' if len(self.user_text) > 45 else ''}\"", self.session_id)
+        self.maria_thought.emit("start", "", self.session_id)
 
-        # ── TRIVIAL-SOCIAL FAST PATH ────────────────────────────────
-        # For one-word acknowledgements ("nice", "thanks", "ok", "haha", etc.)
-        # skip the entire pipeline and reply directly with MODEL_FAST.
-
+        # ── Inappropriate content guard ───────────────────────────────────────
+        # Fires before any routing, search, or LLM call so sexual solicitations
+        # are never treated as search queries or passed to the model.
+        if self.user_text and _INAPPROPRIATE_RE.search(self.user_text):
+            self.thinking_step.emit(
+                "guardrail",
+                "completed|Inappropriate request detected — declining.",
+                self.session_id,
+            )
+            _has_filipino = bool(
+                set(re.findall(r'\b\w+\b', self.user_text.lower())) & {
+                    "po", "ba", "na", "nga", "kasi", "naman", "yung", "yun",
+                    "ko", "mo", "ako", "ikaw", "siya", "hindi", "wala",
+                    "tayo", "kantot", "jakolin",
+                }
+            )
+            _refusal = (
+                "Huy, hindi ako ganun ha. 😅 Kung may gusto kang malaman o kailangan ng tulong sa kahit ano, andito naman ako!"
+                if _has_filipino else
+                "That's not something I'll engage with. Happy to help with anything else though!"
+            )
+            self.response_ready.emit(_refusal, self.message_id, self.session_id)
+            self.finished_processing.emit(self.message_id, self.session_id)
+            return
 
         # ── File handler: image (vision) or PDF ───────────────────────────────
         if self.image_path and os.path.exists(self.image_path):
@@ -15818,23 +15605,10 @@ class UltraIntelligentWorker(QThread):
                 ))
                 # Exclude coding/programming queries — Maria knows these from training,
                 # Wikipedia adds nothing and only slows the response down.
-                _CODING_TERMS = re.compile(
-                    r'\b(python|javascript|typescript|java|kotlin|swift|rust|go|golang'
-                    r'|c\+\+|c#|php|ruby|dart|scala|perl|bash|powershell'
-                    r'|api|rest|restful|http|https|json|xml|graphql|grpc|websocket'
-                    r'|function|class|method|variable|loop|array|list|dict|tuple'
-                    r'|decorator|generator|iterator|closure|lambda|async|await'
-                    r'|algorithm|data structure|linked list|hash map|binary tree'
-                    r'|git|docker|kubernetes|sql|nosql|mongodb|postgres|mysql'
-                    r'|react|vue|angular|node|express|django|flask|fastapi|spring'
-                    r'|code|coding|program|programming|debug|debugging|refactor'
-                    r'|import|library|framework|package|module|dependency'
-                    r'|frontend|backend|fullstack|devops|deployment|ci.cd'
-                    r'|machine learning|neural network|deep learning|llm|gpt|ai model'
-                    r'|numpy|pandas|pytorch|tensorflow|scikit|matplotlib)\b',
-                    re.IGNORECASE
-                )
-                _is_coding_query = bool(_CODING_TERMS.search(query_lower))
+                try:
+                    _is_coding_query = bool(_CODING_TERMS.search(query_lower))
+                except Exception:
+                    _is_coding_query = False
                 # Short factual queries (≥ 4 words) are just as valid as long ones.
                 # "Who wrote Hamlet?" is 3 words — lower the bar so we retrieve first.
                 needs_wiki = (has_factual_keyword and word_count >= 4
@@ -15962,15 +15736,7 @@ class UltraIntelligentWorker(QThread):
                 self.finished_processing.emit(self.message_id, self.session_id)
                 return
 
-            _ic_result_detail = (f"Routing decided after "
-                                 f"{_trace_steps_count} checks  "
-                                 f"(mode: {_query_mode})")
-            self._stream_thinking_prose(
-                self.user_text, _query_mode, _continuation,
-                _is_trivial_social, _ic_result_detail,
-            )
-
-            # �� Pre-compute query signals (needed by retrieval tasks below) ���
+            # Pre-compute query signals (needed by retrieval tasks below)
             _q_lower = self.user_text.lower()
             _q_words = self.user_text.split()
             _preview_tool_state = {
@@ -16680,18 +16446,17 @@ class UltraIntelligentWorker(QThread):
 
             # ── Step 2: entering retrieval phase ──────────────────────────────
 
-            # Fire all four retrieval tasks concurrently, collect with 12 s timeout
+            # Fire local RAG + web RAG concurrently (wiki and tagalog RAG removed —
+            # web RAG covers factual queries; local RAG covers domain knowledge)
             _retrieval_tasks = {
-                "wiki":        _task_wiki,
                 "local_rag":   _task_local_rag,
-                "tagalog_rag": _task_tagalog_rag,
                 "web_rag":     _task_web_rag,
             }
-            with ThreadPoolExecutor(max_workers=4, thread_name_prefix="maria_retrieval") as _rpool:
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="maria_retrieval") as _rpool:
                 _futures_map = {_rpool.submit(fn): name for name, fn in _retrieval_tasks.items()}
                 from concurrent.futures import wait
 
-                _done, _not_done = wait(_futures_map.keys(), timeout=1.5)
+                _done, _not_done = wait(_futures_map.keys(), timeout=4.0)
 
                 for _fut in _done:
                     _rname = _futures_map[_fut]
@@ -16711,9 +16476,9 @@ class UltraIntelligentWorker(QThread):
                         except Exception:
                             pass
 
-            wiki_context        = _retrieval_results["wiki"]
+            wiki_context        = ""
             rag_context         = _retrieval_results["local_rag"]
-            tagalog_rag_context = _retrieval_results["tagalog_rag"]
+            tagalog_rag_context = ""
             web_rag_context     = _retrieval_results["web_rag"]
 
             # ── Step 3: retrieval done, building context/prompt ────────────────
@@ -16734,52 +16499,131 @@ class UltraIntelligentWorker(QThread):
                 self.finished_processing.emit(self.message_id, self.session_id)
                 return
 
-            # Keep ONLY real emergencies
-            real_emergencies = [
-                'sunog!', 'sunog ng', 'nasusunog', 'apoy',
-                'magnanakaw!', 'holdap!', 'nakawan!',
-                'tulong!', 'saklolo!', 'aksidente!', 'nasugatan!',
-                'pulis!', 'krimen!', 'attack!', 'danger!'
+            # ── Emergency Detection ─────────────────────────────────────────
+            # FIX 1: Expanded keyword set — no longer requires '!' suffix.
+            # Covers casual phrasing ("smoke", "on fire", "chest pain") that
+            # a panicking user would type without punctuation.
+            _EMERGENCY_FIRE_WORDS = [
+                'sunog', 'nasusunog', 'nag-aapoy', 'apoy',
+                'fire', 'burning', 'flame', 'blaze', 'smoke',
+                'grease fire', 'kitchen fire', 'on fire', 'filling with smoke',
+            ]
+            _EMERGENCY_MEDICAL_WORDS = [
+                'tulong', 'saklolo', 'aksidente', 'nasugatan', 'nasaktan',
+                'help', 'injured', 'bleeding', 'unconscious', 'not breathing',
+                'chest pain', 'chest tightness', 'chest feels tight',
+                'heart attack', 'stroke', 'seizure', 'choking', 'overdose',
+                'panic attack', 'can\'t breathe', 'difficulty breathing',
+                'emergency', 'hindi makalanghap',
+            ]
+            _EMERGENCY_CRIME_WORDS = [
+                'magnanakaw', 'holdap', 'nakawan', 'kawatan', 'nanloloko',
+                'thief', 'robber', 'robbery', 'burglar', 'intruder',
+                'being attacked', 'someone broke in', 'break-in',
+                'pulis', 'krimen', 'attack', 'danger', 'rape', 'kidnap',
             ]
 
-            has_real_emergency = any(emergency in self.user_text.lower() for emergency in real_emergencies)
-            is_asking_for_help = any(
-                word in self.user_text.lower() for word in ['help me', 'what should i do', 'ano gagawin', 'paano'])
+            text_lower = self.user_text.lower()
 
-            if has_real_emergency and not is_asking_for_help:
-                print("   🚨 REAL EMERGENCY DETECTED — generating AI response")
+            _fire_hit    = any(w in text_lower for w in _EMERGENCY_FIRE_WORDS)
+            _medical_hit = any(w in text_lower for w in _EMERGENCY_MEDICAL_WORDS)
+            _crime_hit   = any(w in text_lower for w in _EMERGENCY_CRIME_WORDS)
+            has_real_emergency = _fire_hit or _medical_hit or _crime_hit
 
-                # Determine emergency type
-                text_lower = self.user_text.lower()
-                if 'sunog' in text_lower or 'apoy' in text_lower or 'fire' in text_lower:
+            # FIX 2: REMOVED the `not is_asking_for_help` guard that previously
+            # bypassed emergency mode when the user asked "what should I do?".
+            # A panicking person asking for help IS the emergency case — we
+            # must never skip the triage path because they phrased it calmly.
+
+            if has_real_emergency:
+                print("   🚨 REAL EMERGENCY DETECTED — generating triage response")
+
+                # Determine primary emergency type (priority: FIRE > MEDICAL > CRIME)
+                if _fire_hit and _medical_hit:
+                    emergency_type = 'FIRE_MEDICAL'   # compound — use special prompt
+                elif _fire_hit:
                     emergency_type = 'FIRE'
-                elif any(w in text_lower for w in ['magnanakaw', 'holdap', 'nakawan', 'thief', 'robber']):
-                    emergency_type = 'THIEF'
-                elif any(w in text_lower for w in ['saklolo', 'aksidente', 'nasugatan', 'medical', 'injured']):
+                elif _medical_hit:
                     emergency_type = 'MEDICAL'
+                elif _crime_hit:
+                    emergency_type = 'THIEF'
                 else:
                     emergency_type = 'GENERAL'
 
                 lang_instruction = (
                     "Respond in natural Filipino/Taglish." if is_filipino else "Respond in English."
                 )
+
+                # Detect if user has already called emergency services — if so,
+                # skip the "call 911" instruction and jump straight to action steps.
+                _911_already_called = any(phrase in text_lower for phrase in [
+                    'already called 911', 'already called the police', 'already called police',
+                    'already called an ambulance', 'already called ambulance',
+                    'already called the fire', 'called 911', 'called the police',
+                    'called an ambulance', 'called for help', 'help is on the way',
+                    'on the way', 'they are on the way', 'they\'re on the way',
+                    'nakatawag na', 'tinawagan ko na', 'naka-call na', 'papunta na sila',
+                    '911 na', 'may nakatawag na',
+                ])
+
+                # Strict triage prompt — imperative-first, life over property,
+                # no diagnosing symptoms (chest pain → call 911, not "panic attack"),
+                # fire-specific: turn off heat before smothering.
+                if _911_already_called:
+                    _rule_2 = (
+                        "2. The user has ALREADY CALLED emergency services. "
+                        "DO NOT tell them to call 911 again — they know. "
+                        "Skip immediately to the most critical ACTION they can take RIGHT NOW while waiting for responders."
+                    )
+                else:
+                    _rule_2 = (
+                        "2. Your VERY FIRST sentence must tell them to call 911 (Philippines: 911 or 117) "
+                        "if there is any risk to human life or they report physical symptoms."
+                    )
+
+                _triage_rules = f"""
+CRITICAL SAFETY RULES FOR THIS RESPONSE — FOLLOW EXACTLY:
+1. PRIORITY ORDER is always: Human life > Injury > Fire/Hazard > Property > Pets.
+{_rule_2}
+3. Use IMPERATIVE COMMANDS ONLY (Apply, Press, Turn off, Leave, Do NOT, Move).
+4. NEVER diagnose. Chest tightness or difficulty breathing during any emergency = possible medical emergency. Do NOT call it a panic attack or anxiety.
+5. FIRE TRIAGE ORDER: (a) Turn off the heat source. (b) Smother flames — lid or fire blanket. (c) Do NOT use water on grease fires. (d) Leave immediately if fire is not contained in 10 seconds.
+6. BLEEDING TRIAGE ORDER: (a) Apply firm direct pressure with a clean cloth. (b) Do NOT remove the cloth — add more on top if it soaks through. (c) Keep pressure constant until responders arrive. (d) Elevate the limb above heart level if possible.
+7. NEVER tell them to search for items while actively bleeding or while a fire is burning.
+8. NEVER use cheerleader phrases: no "You got this!", "Stay positive", "You can do it", or "I believe in you".
+9. NEVER recommend breathing exercises as a primary action when physical danger is present.
+10. Pets: instruct to leave if not immediately findable — do NOT re-enter a burning building for a pet.
+11. Keep response SHORT (4-6 sentences MAX). No headers. No bullet lists. Commands only.
+"""
+
+                if emergency_type == 'FIRE_MEDICAL':
+                    _situation_brief = (
+                        "There is BOTH a fire emergency AND a possible medical emergency (physical symptoms reported). "
+                        "Prioritize life safety first, then fire suppression."
+                    )
+                elif emergency_type == 'FIRE':
+                    _situation_brief = "There is a FIRE emergency."
+                elif emergency_type == 'MEDICAL':
+                    _situation_brief = "There is a MEDICAL emergency."
+                elif emergency_type == 'THIEF':
+                    _situation_brief = "There is a CRIME/SECURITY emergency."
+                else:
+                    _situation_brief = "There is a life-threatening emergency."
+
                 emergency_prompt = (
-                    f"You are Maria, a Filipina AI assistant. Someone is reporting a real {emergency_type} emergency.\n"
-                    f"Their message: \"{self.user_text}\"\n\n"
+                    f"You are Maria, an AI assistant providing emergency triage guidance.\n"
+                    f"{_situation_brief}\n\n"
+                    f"User message: \"{self.user_text}\"\n\n"
+                    f"{_triage_rules}\n"
                     f"{lang_instruction}\n\n"
-                    f"Give a SHORT (3-5 sentences), CALM, and IMMEDIATELY USEFUL response:\n"
-                    f"1. Acknowledge the emergency with urgency (🚨 emoji is fine)\n"
-                    f"2. Tell them the single most important action to take RIGHT NOW\n"
-                    f"3. Tell them to call 911 (or the relevant emergency number in the Philippines)\n"
-                    f"4. Reassure them briefly\n\n"
-                    f"Be human and direct. No bullet lists. No repetitive headers. Speak like a real person helping in a crisis."
+                    f"Respond NOW with direct, imperative-only commands. Life first, property last."
                 )
 
                 try:
                     ai_resp = _ollama_call(
                         model=MODEL,
                         messages=[{"role": "user", "content": emergency_prompt}],
-                        options={"temperature": 0.35, "num_predict": 250, "num_ctx": 1024, "num_gpu": _NUM_GPU_LAYERS},
+                        options={"temperature": 0.1, "num_predict": 300, "num_ctx": 1024, "num_gpu": _NUM_GPU_LAYERS},
                     )
                     if isinstance(ai_resp, dict):
                         response = ai_resp.get('message', {}).get('content', '').strip()
@@ -16788,12 +16632,49 @@ class UltraIntelligentWorker(QThread):
                     else:
                         response = ''
                 except Exception as e:
-                    print(f"   ⚠️ AI emergency response failed: {e} — using fallback")
-                    # Concise fallback
-                    if is_filipino:
-                        response = f"🚨 **EMERGENCY!** Manatiling kalmado. Tumawag agad sa 911. Lalabas ka sa ligtas na lugar at hintayin ang mga responder. Nandito lang ako — kaya mo 'to! 💪"
+                    print(f"   ⚠️ AI emergency response failed: {e} — using hardcoded triage fallback")
+                    # Hardcoded triage fallbacks — safe by design, no cheerleading
+                    _prefix = ("🚨 **Tulong ay papunta na!** " if _911_already_called
+                               else ("🚨 **TUMAWAG AGAD SA 911.** " if is_filipino else "🚨 **CALL 911 NOW.** "))
+                    if emergency_type in ('FIRE', 'FIRE_MEDICAL'):
+                        if is_filipino:
+                            response = (
+                                f"{_prefix}"
+                                "I-off ang pinagmumulan ng apoy kung ligtas. "
+                                "Huwag gumamit ng tubig sa grease fire — takpan ng lid o fire blanket. "
+                                "Kung hindi maapula sa loob ng 10 segundo, LUMABAS NA AGAD. "
+                                "Huwag na hanapin ang pusa — lumabas muna ikaw."
+                            )
+                        else:
+                            response = (
+                                f"{_prefix}"
+                                "Turn off the heat source if you can safely reach it. "
+                                "Do NOT use water — smother with a lid or fire blanket. "
+                                "If the fire is not out in 10 seconds, LEAVE IMMEDIATELY. "
+                                "Do not search for your cat — get yourself out first."
+                            )
+                    elif emergency_type == 'MEDICAL':
+                        if is_filipino:
+                            response = (
+                                f"{_prefix}"
+                                "Pindutin nang malakas ang sugat gamit ang malinis na tela — huwag bitawan. "
+                                "Kung nababasa na ang tela, dagdagan pa — huwag alisin ang una. "
+                                "Itaas ang sugatan na bahagi ng katawan kung maaari. "
+                                "Hintayin ang mga responder — huwag gumalaw ng labis."
+                            )
+                        else:
+                            response = (
+                                f"{_prefix}"
+                                "Apply firm direct pressure with a clean cloth — do not release. "
+                                "If the cloth soaks through, add more on top — do NOT remove the first one. "
+                                "Elevate the injury above heart level if possible. "
+                                "Stay still and maintain pressure until responders arrive."
+                            )
                     else:
-                        response = f"🚨 **EMERGENCY!** Stay calm. Call 911 immediately. Get to a safe location and wait for responders. You've got this — help is coming! 💪"
+                        if is_filipino:
+                            response = f"{_prefix}Pumunta sa ligtas na lugar. Hintayin ang mga responder."
+                        else:
+                            response = f"{_prefix}Move to a safe location. Maintain pressure and wait for responders."
 
                 # Check if cancelled before sending response
                 if self._cancelled:
@@ -17446,14 +17327,64 @@ class UltraIntelligentWorker(QThread):
                     "   If user is casual/chill → be casual back. Short replies. Particles. Maybe emoji.\n"
                     "   If user is flirty → deflect with humor, keep it light. 'Charot!' is your friend.\n"
                     "   If user is serious → still Taglish, but toned down. Professional pero approachable.\n"
-                    "   Match the user's Filipino/English ratio exactly. Mirror their energy."
+                    "   Match the user's Filipino/English ratio exactly. Mirror their energy.\n\n"
+
+                    "REGISTER LOCK — hindi pwedeng mag-drift mid-reply:\n"
+                    "   Once you open in Taglish, STAY Taglish for the whole response.\n"
+                    "   Do NOT slip into full formal English mid-paragraph — kahit technical ang topic.\n"
+                    "   Technical Taglish looks like: 'Yung issue kasi is memory overflow — basta, i-free mo yung objects na di na kailangan.'\n"
+                    "   NOT: start Taglish → switch to 'The memory overflow occurs because...' halfway through.\n"
+                    "   One voice. One register. The whole reply.\n\n"
+
+                    "PARTICLE GRAMMAR — each particle has a specific job, place it correctly:\n"
+                    "   kasi   → gives a reason or softens a correction. PLACE: after the subject or after a comma.\n"
+                    "            ✅ 'Kasi yung value mo is undefined pa.'\n"
+                    "            ✅ 'Mali yung approach mo kasi is para sa ibang case yun.'\n"
+                    "            ❌ 'Mali kasi.' (too bare — 'kasi' must introduce the reason)\n\n"
+                    "   naman  → mild contrast, turn-taking, or 'on the other hand'. PLACE: right after the subject.\n"
+                    "            ✅ 'Okay naman yung plan mo — may small gap lang.'\n"
+                    "            ✅ 'Hindi naman imposible, pero time-consuming.'\n"
+                    "            ❌ 'Naman okay siya.' (wrong position — naman follows the subject)\n\n"
+                    "   eh     → mild resignation or acknowledgment filler. PLACE: end of a clause.\n"
+                    "            ✅ 'Mahirap nga eh, pero kakayanin mo.'\n"
+                    "            ✅ 'Di ko rin alam eh — let me check.'\n"
+                    "            ❌ 'Eh mahirap.' (wrong position — eh does not open sentences)\n\n"
+                    "   lang   → minimizer ('just', 'only'). PLACE: right after the word it modifies.\n"
+                    "            ✅ 'Maliit lang na issue yun — fixable in one line.'\n"
+                    "            ✅ 'Try mo muna, then lang kami mag-debug together.'\n"
+                    "            ❌ 'Lang try mo.' (wrong — lang follows what it minimizes)\n\n"
+                    "   ba     → soft check-in or question marker. PLACE: after the verb or after the main phrase.\n"
+                    "            ✅ 'Gets mo ba yung explanation?'\n"
+                    "            ✅ 'Okay ka ba?'\n"
+                    "            ❌ 'Ba gets mo?' (wrong — ba does not open questions)\n\n"
+                    "   nga    → confirms or emphasizes something just said. PLACE: right after the adjective/verb.\n"
+                    "            ✅ 'Tama nga — yun ang point.'\n"
+                    "            ✅ 'Totoo nga, pero may exception.'\n"
+                    "            ❌ 'Nga tama.' (wrong position)\n\n"
+                    "   diba   → soft tag question ('right?', 'isn't it?'). PLACE: end of sentence or after a pause.\n"
+                    "            ✅ 'Mas okay mag-save early, diba?'\n"
+                    "            ✅ 'Yung approach natin is correct na, diba?'\n"
+                    "            ❌ 'Diba mas okay?' (wrong — diba is a tag, not an opener)\n\n"
+                    "   pala   → marks a realization or new information. PLACE: right after the verb or subject.\n"
+                    "            ✅ 'Hindi pala yun yung error — nasa line 3 pala.'\n"
+                    "            ✅ 'May ganyan pala sa Python — di ko rin alam noon.'\n"
+                    "            ❌ 'Pala may ganyan.' (wrong — pala follows the thing being discovered)\n\n"
+
+                    "SWITCHING POSITION RULE:\n"
+                    "   Switch languages at CLAUSE boundaries, not sentence boundaries and not mid-phrase.\n"
+                    "   ✅ 'Yung issue mo kasi is [English explanation] — [Filipino particle] [English detail].'\n"
+                    "   ✅ 'So naman [English clause], pero [Filipino particle] [English clause].'\n"
+                    "   ❌ [Full English sentence]. [Full Tagalog sentence]. (bilingual ping-pong)\n"
+                    "   ❌ 'The issue is [English]. Ang problema ay [Tagalog repeat].' (redundant translate)\n"
+                    "   The Filipino particles act as GLUE between English clauses — they do not start their own full sentences."
                 )
                 # ── Inject few-shot examples from maria_training_data.json ──────
                 if _TAGLISH_FEW_SHOTS:
                     import random as _rnd
-                    _shots = _rnd.sample(_TAGLISH_FEW_SHOTS, min(4, len(_TAGLISH_FEW_SHOTS)))
+                    _shots = _rnd.sample(_TAGLISH_FEW_SHOTS, min(2, len(_TAGLISH_FEW_SHOTS)))
                     _lang_instruction += (
-                        "\n\nEXAMPLES — these are real Maria conversations. Copy this exact voice and Taglish mix:\n"
+                        "\n\nEXAMPLES — authentic Taglish. Notice how Filipino particles "
+                        "glue English phrases mid-sentence, NOT sentence-by-sentence alternation:\n"
                         + "\n".join(
                             f'   User: "{_q}"\n   Maria: "{_a}"'
                             for _q, _a in _shots
@@ -17491,8 +17422,7 @@ class UltraIntelligentWorker(QThread):
             # the single source of truth: _continuation (Fix 4 — unified logic).
             _context_bridge = ""
             if (_continuation in ("continuation", "correction")
-                    and _active_ctx.is_active()
-                    and len(self.user_text.split()) <= 15):
+                    and _active_ctx.is_active()):
                 for _hm in reversed(self.history[-10:]):
                     if _hm.get('role') == 'assistant':
                         _last_assistant_content = _hm.get('content', '')[:300].strip()
@@ -18114,16 +18044,10 @@ DON'T — these kill the vibe instantly:
             # 🔥 CONTEXT SHIFT DETECTION
             # If recent history contains jokes but the current query looks like a genuine question,
             # inject a reminder so the LLM doesn't keep treating it as a joke session.
-            recent_history = _history_context_window(
-                self.history,
-                model=MODEL,
-                keep_recent=12,
-                active_ctx=_active_ctx,
-            )
             prior_has_jokes = any(
                 any(kw in msg.get('content', '').lower() for kw in
                     ['joke', 'biro', 'patawa', 'anong tawag', 'nadinig mo ba', 'punchline'])
-                for msg in recent_history
+                for msg in self.history[-12:]
                 if msg.get('role') == 'assistant'
             )
             joke_request_keywords = ['joke', 'biro', 'patawa', 'anong tawag', 'magbigay ng', 'may biro']
@@ -18587,6 +18511,13 @@ DON'T — these kill the vibe instantly:
                 'research paper', 'write me', 'write an', 'full explanation',
                 'comprehensive', 'detailed explanation', 'in-depth', 'complete guide',
                 'sulat ng', 'gumawa ng essay', 'magsulat ng',
+                # Planning/scheduling — inherently multi-step and verbose
+                'plan my week', 'plan my day', 'plan my month', 'weekly plan',
+                'daily plan', 'schedule my', 'make a schedule', 'create a schedule',
+                'create a plan', 'make a plan', 'organize my', 'help me plan',
+                'workout plan', 'meal plan', 'study plan', 'budget plan',
+                'itinerary', 'routine', 'gawain', 'iskedyul', 'plano',
+                'productivity', 'maximum productivity',
             ]
             _simple_keywords = [
                 'do you know', 'alam mo ba', 'what is', 'ano yung', 'ano ang', 'who is',
@@ -18594,7 +18525,10 @@ DON'T — these kill the vibe instantly:
                 'may alam ka ba', 'do you know', 'have you heard'
             ]
 
-            _needs_longform = any(kw in _q_lower for kw in _longform_keywords)
+            _needs_longform = (
+                any(kw in _q_lower for kw in _longform_keywords)
+                or _query_mode == _INTENT_PLANNING  # schedules/plans are always multi-step
+            )
             _needs_detail = (
                 is_math or is_code or is_research
                 or any(kw in _q_lower for kw in _detail_keywords)
@@ -18615,7 +18549,7 @@ DON'T — these kill the vibe instantly:
                 'define', 'describe', 'difference', 'compare', 'give me', 'list',
                 'summarize', 'example', 'ano ang', 'ano yung', 'bakit', 'pano',
             ])
-            _truly_simple = _is_simple and not _needs_detail and not _complex_short_signals
+            _truly_simple = _is_simple and not _needs_detail and not _complex_short_signals and not _needs_longform
 
             if is_venting:
                 num_predict = 200
@@ -18628,7 +18562,7 @@ DON'T — these kill the vibe instantly:
             elif is_math:
                 num_predict = 1024  # Math needs step-by-step working; continuation handles overflow
             elif _needs_longform:
-                num_predict = 1200  # Essays/reports/explanations
+                num_predict = 2048  # Schedules/essays/plans need full room
             elif _needs_detail:
                 num_predict = 1024  # Detailed answers
             else:
@@ -18652,18 +18586,34 @@ DON'T — these kill the vibe instantly:
             # ── Skip main generation if ToolPlanner / ReAct / direct lookup already answered ──
             if not _planner_handled and not _react_handled and not _ref_handled:
                 raw_response = ""
-                # Extended retry ladder: progressively smaller ctx + fewer GPU layers
-                _ctx_attempts = [CONTEXT_LIMIT, 8192, 4096, 2048, 1024]
+
+                # ── Adaptive context: match num_ctx to query complexity ────────
+                # Casual exchanges don't need 8192 — smaller ctx = faster TTFT
+                # and less KV-cache pressure on GPU. Complex queries keep full ctx.
+                if _query_mode in (_INTENT_CASUAL, _INTENT_EMOTIONAL, _INTENT_REACTION):
+                    _adaptive_ctx = 2048
+                elif _query_mode in (_INTENT_GENERAL, _INTENT_EXPLAINER,
+                                     _INTENT_EXACT_FACT, _INTENT_LIVE_INFO,
+                                     _INTENT_NAVIGATION, _INTENT_TRANSLATION):
+                    _adaptive_ctx = 4096
+                else:  # code, math, planning, creative, text_task → full context
+                    _adaptive_ctx = CONTEXT_LIMIT
+
+                print(f"   📐 Adaptive ctx={_adaptive_ctx} for mode={_query_mode}")
+
+                # Retry ladder: start at adaptive ctx, step down on OOM
+                _ctx_attempts = [_adaptive_ctx] + [
+                    c for c in [4096, 2048, 1024] if c < _adaptive_ctx
+                ]
                 _ollama_crashed = False
 
                 for _attempt_idx, _ctx_try in enumerate(_ctx_attempts):
                     try:
-                        # BUG-FIX: capping at 400 on retries was causing cutoffs —
-                        # a 600-token answer is still reasonable even on smaller ctx.
-                        _predict = num_predict if _ctx_try == CONTEXT_LIMIT else min(num_predict, 600)
+                        # First attempt gets full num_predict; retries are capped
+                        _predict = num_predict if _attempt_idx == 0 else min(num_predict, 600)
                         # On retry: strip knowledge blob from messages to save tokens
                         _msgs_to_use = messages
-                        if _ctx_try < CONTEXT_LIMIT:
+                        if _attempt_idx > 0:
                             print(f"   ⚠️ Retrying with smaller ctx={_ctx_try}, stripped knowledge blob")
                             _msgs_to_use = [m for m in messages
                                             if not any(k in m.get('content', '') for k in
@@ -18912,7 +18862,7 @@ DON'T — these kill the vibe instantly:
 
                 # Only attempt continuation on real responses, not OOM/error messages
                 _should_continue = not _ollama_crashed and len(raw_response.strip()) >= 10
-                _MAX_CONT = 1
+                _MAX_CONT = 2 if _needs_longform else 1
                 _cont_count = 0
                 while (_should_continue
                        and not self._cancelled
@@ -19090,6 +19040,10 @@ DON'T — these kill the vibe instantly:
                 if _cleaned != final_response:
                     print(f"   🧹 Artifact opener stripped")
                     final_response = _cleaned
+                _cleaned = _strip_artifact_ending(final_response)
+                if _cleaned != final_response:
+                    print(f"   🧹 Artifact ending stripped")
+                    final_response = _cleaned
 
             # ── Step 2: Hallucination scan ────────────────────────────────────
             if not _is_clean_mode:
@@ -19111,8 +19065,7 @@ DON'T — these kill the vibe instantly:
                             "worth verifying the specifics.)*"
                         )
 
-            # ── Step 3: PDV Verifier (planning intent only, if plan was generated) ──
-            # Checks the response against the execution plan and auto-fixes gaps.
+
             if (_pdv_active and _plan_block and not self._cancelled
                     and not _is_clean_mode and len(final_response) > 100):
                 self.thinking_step.emit(
@@ -19139,67 +19092,11 @@ DON'T — these kill the vibe instantly:
                 _INTENT_PLANNING, _INTENT_CODE, _INTENT_EXPLAINER,
                 _INTENT_TRANSLATION, _INTENT_TEXT_TASK
             )
-            if (not _is_clean_mode and not _is_serious_mode
-                    and is_filipino and user_lang in ['tl', 'fil', 'tagalog', 'filipino']):
-                final_response = enhance_with_filipino_flavor(final_response, user_lang)
-
-            # ── Step 6: SelfCritiqueLoopEngine ───────────────────────────────
-            if (not self._cancelled
-                    and not _is_clean_mode
-                    and not is_venting
-                    and len(final_response) >= SelfCritiqueLoopEngine.MIN_CHARS):
-                self.search_status_changed.emit(
-                    build_reasoning_tool_text(
-                        self.user_text, _query_mode, "review",
-                        active_ctx=_active_ctx, history=self.history,
-                        tool_state=_preview_tool_state
-                    ),
-                    "🔎", self.session_id
-                )
-                self.thinking_step.emit(
-                    "self_critique",
-                    "loading|Rereading the draft to make sure it actually answers what was asked.",
-                    self.session_id
-                )
-                try:
-                    final_response, _critique_result = SelfCritiqueLoopEngine.run(
-                        query=self.user_text,
-                        response=final_response,
-                        model=_active_model,
-                        is_conversational=_conversational,
-                        is_venting=is_venting,
-                        query_mode=_query_mode,
-                    )
-                    if _critique_result is not None:
-                        _review_thought = (
-                            "Self-review found issues — revised the weak parts."
-                            if _critique_result.needs_revision
-                            else "Self-review passed — no changes needed."
-                        )
-                        self.thinking_step.emit(
-                            "self_critique",
-                            f"completed|{_review_thought}|"
-                            f"Accuracy: {_critique_result.score_accuracy:.1f}/10  "
-                            f"Completeness: {_critique_result.score_completeness:.1f}/10  "
-                            f"Clarity: {_critique_result.score_clarity:.1f}/10",
-                            self.session_id
-                        )
-                        print(f"   🔎 Critique: overall={_critique_result.overall}/10  "
-                              f"revised={_critique_result.needs_revision}")
-                    else:
-                        self.thinking_step.emit(
-                            "self_critique",
-                            "completed|Short reply — skipping the review pass.",
-                            self.session_id
-                        )
-                except Exception as _ce:
-                    print(f"   ⚠️ Self-critique error: {_ce}")
-                    self.thinking_step.emit("self_critique", "completed|Review skipped.", self.session_id)
-                self.search_status_changed.emit("", "", self.session_id)
-
             # ── Step 5: Final cleanup ─────────────────────────────────────────
             final_response = clean_output(final_response)
             final_response = _strip_casual_fillers(final_response, _query_mode)
+            if not _is_clean_mode:
+                final_response = _one_question_rule(final_response)
 
             # ── Emit ─────────────────────────────────────────────────────────
             is_relevant, relevance_issue = validate_response_relevance(self.user_text, final_response)
@@ -28237,7 +28134,12 @@ class EmergencySystem:
 
             if not recipients:
                 print("   ❌ No responder addresses configured — set MARIA_RESPONDER_* env vars")
-                return False
+                print("   ℹ️  Falling back to sender address as self-alert")
+                sender = self.config['EMAIL']['SENDER'].strip()
+                if sender:
+                    recipients = [sender]
+                else:
+                    return False
 
             msg['To'] = ", ".join(recipients)
 
@@ -28329,35 +28231,29 @@ class EmergencySystem:
 
         print(f"\n🔍 EMERGENCY DETECTION CHECKING: '{text_lower}'")
 
-        # KEY FIX: Check if user is ASKING what to do vs REPORTING
-        asking_patterns = [
-            r'ano ang gagawin ko',
-            r'anong gagawin ko',
-            r'what should i do',
-            r'what do i do',
-            r'paano gagawin',
-            r'how should i'
-        ]
+        # NOTE: The former "is_asking_for_help" bypass has been REMOVED.
+        # A user describing an active emergency AND asking what to do is
+        # still an emergency — routing them to normal chat is dangerous.
+        # The keyword and pattern checks below are sufficient to distinguish
+        # a genuine emergency from a casual question about emergency topics.
 
-        is_asking_for_help = any(re.search(pattern, text_lower, re.IGNORECASE)
-                                 for pattern in asking_patterns)
-
-        if is_asking_for_help:
-            print(f"   ❓ USER IS ASKING FOR ADVICE, NOT REPORTING EMERGENCY")
-            return False, '', ''
-
-        # Check for explicit emergency reporting patterns (bypass all filters)
+        # Check for explicit emergency reporting patterns (highest confidence)
         explicit_emergency_patterns = [
-            # Filipino patterns - REPORTING (not asking)
-            (r'^(maria\s+)?tulong\s+(may|meron)\s+(magnanakaw|nakaw|holdap)(?!\s+ano)', 'THIEF', 'FILIPINO'),
-            (r'^(maria\s+)?tulong\s+(may|meron)\s+sunog(?!\s+ano)', 'FIRE', 'FILIPINO'),
-            (r'^(maria\s+)?tulong\s+(may|meron)\s+(aksidente|nasugatan)(?!\s+ano)', 'MEDICAL', 'FILIPINO'),
-            (r'^(maria\s+)?saklolo\s+(may|meron)(?!\s+ano)', 'MEDICAL', 'FILIPINO'),
+            # Filipino patterns
+            (r'(tulong|saklolo).{0,30}(magnanakaw|nakaw|holdap)', 'THIEF', 'FILIPINO'),
+            (r'(tulong|saklolo).{0,30}sunog', 'FIRE', 'FILIPINO'),
+            (r'(tulong|saklolo).{0,30}(aksidente|nasugatan|nasaktan)', 'MEDICAL', 'FILIPINO'),
+            (r'may\s+sunog', 'FIRE', 'FILIPINO'),
+            (r'nasusunog\s+(na\s+)?(ang|ang aking|yung)', 'FIRE', 'FILIPINO'),
 
-            # English patterns - REPORTING (not asking)
-            (r'^(maria\s+)?help\s+(there\'?s?|we have)\s+(thief|robber)(?!\s+what)', 'THIEF', 'ENGLISH'),
-            (r'^(maria\s+)?help\s+(there\'?s?|we have)\s+fire(?!\s+what)', 'FIRE', 'ENGLISH'),
-            (r'^(maria\s+)?help\s+(there\'?s?|we have)\s+(accident|injured)(?!\s+what)', 'MEDICAL', 'ENGLISH'),
+            # English patterns — describe active situations
+            (r'(kitchen|house|room|building)\s+(is\s+)?(on\s+fire|filling with smoke|burning)', 'FIRE', 'ENGLISH'),
+            (r'(grease|stove|oven|pan)\s+fire', 'FIRE', 'ENGLISH'),
+            (r'(my\s+)?(chest|heart)\s+(feels?\s+tight|pain|is\s+tight)', 'MEDICAL', 'ENGLISH'),
+            (r"(can'?t|cannot|having trouble)\s+breath", 'MEDICAL', 'ENGLISH'),
+            (r'(having\s+a?\s+)?(heart attack|stroke|seizure)', 'MEDICAL', 'ENGLISH'),
+            (r"(there'?s?|i\s+see|i\s+smell)\s+(smoke|fire|flames?)", 'FIRE', 'ENGLISH'),
+            (r'help\s+(there\'?s?|we\s+have)\s+(thief|robber|intruder)', 'THIEF', 'ENGLISH'),
         ]
 
         # Check explicit patterns first (these are definitely emergencies)
@@ -29323,9 +29219,10 @@ class _SkeletonLoader(QWidget):
         self.update()
 
     def stop(self):
-        self._timer.stop()
-
-    # ── CPU paint path ────────────────────────────────────────────────────
+        try:
+            self._timer.stop()
+        except RuntimeError:
+            pass
 
     def _paint_cpu(self):
         """Original QPainter shimmer — identical to the pre-GPU implementation."""
@@ -29360,68 +29257,159 @@ class BubbleRichTextLabel(QLabel):
     which causes the last line of assistant bubbles to clip until a later reflow.
     This label measures the HTML with QTextDocument directly, so the bubble height
     is correct on the first layout pass.
+
+    Typography is pinned to a fixed QFont built from the design constants, never
+    derived from self.font() (QSS-resolved). This prevents the intermittent
+    typography shifts that occur when Qt applies QSS asynchronously relative to
+    layout passes during session reload.
+
+    letter_spacing_em / word_spacing_em MUST match the QSS letter-spacing /
+    word-spacing set on this label.  QLabel renders with those CSS values but our
+    measurement QTextDocument does not see them unless we apply them to the base
+    font.  Omitting them causes the document to underestimate line width, which
+    produces a 1-line height for text that actually wraps to 2 lines in the
+    renderer — the second line is then silently clipped.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, letter_spacing_em: float = 0.0, word_spacing_em: float = 0.0, **kwargs):
         super().__init__(*args, **kwargs)
         self._doc = QTextDocument(self)
         self._doc.setDocumentMargin(0)
         _opt = self._doc.defaultTextOption()
         _opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         self._doc.setDefaultTextOption(_opt)
-        # Cache keys — avoid re-parsing HTML when nothing changed
+
+        # Fixed base font — built once from design constants, never from QSS.
+        # All em-based sizes in _BUBBLE_CSS_HEADER are now absolute px, so this
+        # font only affects bare text with no CSS class. Setting it here ensures
+        # idealWidth() and size() calculations are always stable.
+        self._base_font = QFont()
+        self._base_font.setFamilies(["Inter", "Segoe UI Variable", "Segoe UI"])
+        self._base_font.setPixelSize(_CHAT_BODY_FONT_PX)
+
+        # ── Critical: mirror QSS letter-spacing / word-spacing on the font ──
+        # QLabel renders with these CSS properties applied, but our separate
+        # QTextDocument does NOT receive QSS — so it measures text as if there
+        # is no extra spacing.  For a long user message (e.g. 72 chars at 15px):
+        #   letter-spacing 0.02em → +0.3 px/char × 72 chars ≈ +22 px
+        #   word-spacing   0.05em → +0.75 px/word × 12 words ≈ +9 px
+        # Total ≈ 31 px of unaccounted width causes the document to think the
+        # text fits on one line when it actually wraps to two — the second line
+        # is silently clipped because heightForWidth() only reserves one line.
+        # Applying the same values to QFont makes idealWidth() / size() agree
+        # with the actual renderer.
+        if letter_spacing_em:
+            letter_spacing_px = letter_spacing_em * _CHAT_BODY_FONT_PX
+            self._base_font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, letter_spacing_px)
+        if word_spacing_em:
+            word_spacing_px = word_spacing_em * _CHAT_BODY_FONT_PX
+            self._base_font.setWordSpacing(word_spacing_px)
+
+        self._doc.setDefaultFont(self._base_font)
+
+        # ── Single source of truth: render font = measurement font ────────────
+        # setFont() makes QLabel use _base_font (with letter/word spacing baked
+        # in) when painting text.  As long as the QSS on this widget does NOT
+        # set font-size / font-family / letter-spacing / word-spacing, this font
+        # wins permanently — no QSS override, no drift, no sync required.
+        # The QSS on this label must only contain non-font properties (color,
+        # background-color, padding, margin).
+        self.setFont(self._base_font)
+
+        # Cache keys — avoid re-parsing HTML when nothing changed.
+        # _doc_cache_font removed: document font is fixed, not QSS-derived.
         self._doc_cache_text: Optional[str] = None
         self._doc_cache_fmt  = None
-        self._doc_cache_font = None
 
     def _sync_document(self) -> None:
         text = self.text() or ""
         fmt  = self.textFormat()
-        font = self.font()
-        if (text == self._doc_cache_text and
-                fmt  == self._doc_cache_fmt and
-                font == self._doc_cache_font):
-            return  # content unchanged — skip expensive setHtml/setPlainText
+        if text == self._doc_cache_text and fmt == self._doc_cache_fmt:
+            return
         self._doc_cache_text = text
         self._doc_cache_fmt  = fmt
-        self._doc_cache_font = font
-        self._doc.setDefaultFont(font)
+        # Set the font BEFORE loading content so Qt uses it as the document
+        # default during parsing, and AGAIN AFTER because setHtml / setPlainText
+        # may clear or replace document state (including the default font) when
+        # it internally rebuilds the document from the new content.
+        self._doc.setDefaultFont(self._base_font)
         if fmt == Qt.TextFormat.RichText:
             self._doc.setHtml(text)
         else:
             self._doc.setPlainText(text)
+        # Re-assert after load — critical for letter/word spacing to take effect
+        # on the measurement passes (idealWidth / size) that follow.
+        self._doc.setDefaultFont(self._base_font)
+
+    # ── Width-measurement safety margin ──────────────────────────────────────
+    # QTextDocument.idealWidth() can underreport the rendered text width by
+    # 1-4 px due to subpixel glyph advance rounding (the document measures in
+    # floating-point device pixels then floors; QLabel's painter rounds up).
+    # When the text width is exactly at the label boundary this causes QLabel
+    # to wrap a word to a second line, but heightForWidth() — which also uses
+    # the document — sees the text fitting on one line and returns a 1-line
+    # height.  The second line is then silently clipped.
+    #
+    # Adding _IDEAL_W_BUFFER px to idealWidth() prevents this edge case by
+    # ensuring the bubble is always slightly wider than the minimum measured
+    # fit.  heightForWidth() subtracts the same amount so it stays in sync:
+    # when sizeHint says the bubble is (measured + buffer) wide, heightForWidth
+    # at that width correctly predicts a single-line height too.
+    _IDEAL_W_BUFFER: int = 6   # px — covers ≤4 px rounding + 2 px safety margin
 
     def hasHeightForWidth(self) -> bool:
         return True
 
     def heightForWidth(self, width: int) -> int:
+        """Return the pixel height required to display the text at *width* px.
+
+        We subtract _IDEAL_W_BUFFER from the inner width before measuring so
+        that the predicted wrap point matches the wider bubble produced by
+        sizeHint (which adds the buffer to idealWidth).  Without this, the
+        document would think the text fits on one line at (idealWidth+buffer)
+        px and report a 1-line height, while QLabel's renderer wraps at the
+        true idealWidth — producing a clipped second line.
+        """
         self._sync_document()
         margins = self.contentsMargins()
-        inner_width = max(
+        raw_inner = max(
             int(width) - margins.left() - margins.right() - self.indent() * 2,
             0
         )
-        self._doc.setTextWidth(inner_width)
+        # Measure at (inner_width - buffer) so the document triggers wrapping
+        # at the same breakpoint that sizeHint's extra-wide bubble avoids.
+        measure_w = max(raw_inner - self._IDEAL_W_BUFFER, 1)
+        self._doc.setTextWidth(measure_w)
         return math.ceil(self._doc.size().height()) + margins.top() + margins.bottom()
 
     def sizeHint(self) -> QSize:
+        """Return the preferred size of the label.
+
+        Width:  min(idealWidth + _IDEAL_W_BUFFER, maximumWidth).
+                The buffer prevents the rendered text from being exactly at the
+                label edge, which triggers a spurious wrap → height mismatch.
+        Height: heightForWidth(hint_w) — uses the compensated measure_w so the
+                document's wrap prediction matches QLabel's actual rendering.
+        """
         self._sync_document()
         margins = self.contentsMargins()
         max_w = self.maximumWidth()
         max_inner_w = max_w - margins.left() - margins.right() if 0 < max_w < 16777215 else 480
         self._doc.setTextWidth(-1)
-        ideal_inner_w = math.ceil(self._doc.idealWidth())
+        # Add buffer to cover subpixel rounding underreport (see class note).
+        ideal_inner_w = math.ceil(self._doc.idealWidth()) + self._IDEAL_W_BUFFER
         hint_inner_w = min(max(ideal_inner_w, 0), max(max_inner_w, 0))
         hint_w = hint_inner_w + margins.left() + margins.right()
         return QSize(max(0, hint_w), self.heightForWidth(hint_w))
 
     def setText(self, text: str) -> None:
-        self._doc_cache_text = None  # invalidate cache on text change
+        self._doc_cache_text = None
         super().setText(text)
         self.updateGeometry()
 
     def changeEvent(self, event):
         if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
-            self._doc_cache_font = None  # invalidate cache on font/style change
+            # Font cache removed — base font is fixed. updateGeometry() still
+            # needed so the layout recalculates after QSS color changes.
             self.updateGeometry()
         super().changeEvent(event)
 
@@ -29448,6 +29436,31 @@ class ModernMessageBubble(QFrame):
         # Transparent frame — all painting done in paintEvent for gradient+sheen
         self.setStyleSheet("ModernMessageBubble { background: transparent; border: none; }")
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+
+        # ── Pre-compute width constraints BEFORE label creation ──────────────
+        # Width must be known before setText() so the label's first sizeHint()
+        # call (triggered during adjustSize()) uses the correct maximumWidth.
+        # If maximumWidth is set AFTER setText the document measures at the Qt
+        # default (16 777 215 px) and the first layout pass produces a wrong
+        # (too-tall or too-short) height — which is then used for scroll math.
+        _vp = parent
+        while _vp and not isinstance(_vp, QScrollArea):
+            _vp = _vp.parent() if hasattr(_vp, 'parent') else None
+        if _vp and isinstance(_vp, QScrollArea):
+            raw_parent_width = _vp.viewport().width()
+        else:
+            raw_parent_width = parent.width() if parent else 0
+        raw_parent_width = raw_parent_width if raw_parent_width > 100 else 600
+
+        _side_fb = max((raw_parent_width - 1080) // 2, 32)
+        col_width = min(raw_parent_width - 2 * _side_fb, 1080)
+
+        if is_user:
+            _bubble_max_w = min(max(int(col_width * 0.72), 220), 560)
+        else:
+            _bubble_max_w = max(col_width, 300)
+        # Inner label width = bubble width minus horizontal padding on both sides.
+        _label_inner_max = max(_bubble_max_w - 2 * _CHAT_BUBBLE_PAD_X, 0)
 
         # ── Main layout ──────────────────────────────────────────────────────
         layout = QVBoxLayout(self)
@@ -29549,7 +29562,19 @@ class ModernMessageBubble(QFrame):
         # Parent at construction so this label never briefly registers as a
         # top-level OS window before layout.addWidget reparents it. During
         # chunked session load this prevents the rapid white-popup flash.
-        self.label = BubbleRichTextLabel(self)
+        #
+        # Spacing values come from the module-level _*_EM constants, which are
+        # the authoritative float mirrors of the QSS string constants.
+        # BubbleRichTextLabel applies them to _base_font AND calls setFont()
+        # so measurement and rendering use the exact same font object.
+        # The QSS below intentionally omits all font properties (font-size,
+        # font-family, letter-spacing, word-spacing) so it can never drift
+        # out of sync with the measurement font.
+        self.label = BubbleRichTextLabel(
+            self,
+            letter_spacing_em=_USER_BUBBLE_LETTER_SPACING_EM if is_user else _CHAT_BODY_LETTER_SPACING_EM,
+            word_spacing_em=_USER_BUBBLE_WORD_SPACING_EM   if is_user else _CHAT_BODY_WORD_SPACING_EM,
+        )
         self.text_label = self.label   # alias for backward compat
 
         self.label.setWordWrap(True)
@@ -29560,40 +29585,65 @@ class ModernMessageBubble(QFrame):
             Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        if is_user:
-            # Shrink to fit content — don't expand to fill available width
-            self.label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        else:
-            self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
+        # Both user and assistant labels use Expanding width so the label
+        # always fills the bubble's full inner width.
+        #
+        # Why this matters for user bubbles:
+        #   With Preferred width the label gets exactly sizeHint().width() inside
+        #   the VBox.  If sizeHint() underestimates by even 1 px (QTextDocument
+        #   idealWidth() rounds subpixel advances down), QLabel's renderer wraps
+        #   the last word to a new line that lies outside the label's 1-line
+        #   height -- clipping it silently.  Expanding ensures the label always
+        #   fills bubble_inner_width, which is >= sizeHint().width(), so text
+        #   is never clipped by a sizeHint underestimate.
+        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+        # Font properties (font-size, font-family, letter-spacing, word-spacing)
+        # are intentionally absent from this QSS.  They are baked into _base_font
+        # inside BubbleRichTextLabel and applied via setFont() — the same font
+        # object the QTextDocument uses for measurement.  Putting font properties
+        # here would create a second source of truth that could silently diverge
+        # from the measurement font and reintroduce text-clipping bugs.
         self.label.setStyleSheet(f"""
             QLabel {{
                 color: {text_color};
-                font-size: {'15px' if is_user else f'{_CHAT_BODY_FONT_PX}px'};
                 background-color: transparent;
                 padding: 0px;
                 margin: 0px;
-                font-family: "Segoe UI Variable", "Segoe UI", -apple-system, sans-serif;
-                letter-spacing: {'0.02em' if is_user else _CHAT_BODY_LETTER_SPACING};
-                word-spacing: {'0.05em' if is_user else _CHAT_BODY_WORD_SPACING};
             }}
         """)
 
-        # Apply markdown formatting — same function used by streaming path (one source of truth)
-        # apply_inline_formatting() includes _BUBBLE_CSS_HEADER in the returned HTML,
-        # which is the correct way to style a QLabel — it has no .document() method.
+        # CRITICAL: set width constraints on the label BEFORE setText.
+        # BubbleRichTextLabel.sizeHint() reads self.maximumWidth() to pick the
+        # constrained text width for QTextDocument measurement.  If maximumWidth
+        # is the Qt default (16 777 215) when sizeHint() is first called, the
+        # fallback 480 px is used -- producing a wrong height baked into the
+        # layout before the real constraint arrives.  Setting it here, before
+        # setText(), ensures every sizeHint() call uses the correct label width.
+        self.label.setMaximumWidth(_label_inner_max)
+        self.label.setMinimumWidth(0)
+
+        # Apply markdown formatting -- same function used by streaming path
         formatted_text = apply_inline_formatting(text)
         self.label.setText(formatted_text)
-        # Guard: QTimer.singleShot is NOT parented to self.label, so deleting the
-        # label (e.g. via clear_messages → deleteLater) does NOT cancel this timer.
-        # Capture the reference and wrap in try/except so a stale call is a no-op.
+
+        # adjustSize() on the label so heightForWidth is evaluated at the
+        # correct maximumWidth (already set above).
+        # Batch load: synchronous so _sync_center_wrap_height reads the true
+        # word-wrapped height on the same call stack (fixes scroll anchor bug).
+        # Live mode: defer 0 ms to let Qt finish painting the current frame.
         _lbl = self.label
         def _safe_adjust_label():
             try:
                 _lbl.adjustSize()
             except RuntimeError:
                 pass
-        QTimer.singleShot(0, _safe_adjust_label)
+        _window = self.window()
+        if getattr(_window, 'batch_render_mode', False):
+            _safe_adjust_label()
+        else:
+            QTimer.singleShot(0, _safe_adjust_label)
 
         # Force text color via palette too (QLabel RichText ignores some CSS)
         palette = self.label.palette()
@@ -29603,7 +29653,6 @@ class ModernMessageBubble(QFrame):
 
         layout.addWidget(self.label)
 
-        # ── Button row (copy + thumbs for assistant) ─────────────────────────
         button_row = QWidget(self)
         button_row.setFixedHeight(30)
         button_row.setStyleSheet("background-color: transparent;")
@@ -29681,53 +29730,26 @@ class ModernMessageBubble(QFrame):
         self._ts_fade_out.setEasingCurve(QEasingCurve.Type.InQuart)
         layout.addWidget(ts_lbl)
 
-        # ── Sizing ────────────────────────────────────────────────────────────
-        # Walk up to the QScrollArea viewport to get the real available width,
-        # matching the same logic used in resizeEvent. This ensures live messages
-        # and history-loaded messages use identical widths (fixes the narrow-bubble
-        # bug where parent.width() was 0 before first paint).
-        _vp = parent
-        while _vp and not isinstance(_vp, QScrollArea):
-            _vp = _vp.parent() if hasattr(_vp, 'parent') else None
-        if _vp and isinstance(_vp, QScrollArea):
-            raw_parent_width = _vp.viewport().width()
-        else:
-            raw_parent_width = parent.width() if parent else 0
-        raw_parent_width = raw_parent_width if raw_parent_width > 100 else 600
-
-        # True column width: viewport is capped at 1080px by messages_widget,
-        # then 64px left + 64px right messages_layout margins are subtracted.
-        col_width = min(raw_parent_width, 1080) - 128
-
-        # Sizing: user bubbles are compact (Preferred, ~72 % of column) so the
-        # left-stretch in the row wrapper pushes them to the right edge.
-        # Assistant bubbles expand to the full readable column.
+        # ── Final bubble sizing ────────────────────────────────────────────────────────────
+        # Label width/policy and raw_parent_width were set up at the top of
+        # __init__ before setText() so sizeHint() has been accurate since
+        # the first layout pass.  Apply the same pre-computed cap to the bubble.
         if is_user:
-            _max_w = min(max(int(col_width * 0.72), 220), 560)
-            self.setMaximumWidth(_max_w)
+            self.setMaximumWidth(_bubble_max_w)
             self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         else:
-            _full_w = max(col_width, 300)
-            self.setMaximumWidth(_full_w)
+            self.setMaximumWidth(_bubble_max_w)
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.setMinimumWidth(0)
         self.adjustSize()
-
-        # Label width follows bubble
-        self.label.setMaximumWidth(max(self.maximumWidth() - 32, 0))
-        self.label.setMinimumWidth(0)
 
         # Force visibility
         self.setVisible(True)
         self.label.setVisible(True)
         self.copy_btn.setVisible(True)
 
-        if not self._delegate_width_constraints(raw_parent_width):
-            # Fallback for any non-standard host that does not expose the
-            # centralized bubble-width helper.
-            self.label.setMaximumWidth(max(self.maximumWidth() - 32, 0))
-            self.label.setMinimumWidth(0)
-
+        # Let the centralized helper sync constraints (handles future viewport resizes).
+        self._delegate_width_constraints(raw_parent_width)
     def _delegate_width_constraints(self, viewport_width: int = 0) -> bool:
         owner = self.parent()
         while owner:
@@ -29862,7 +29884,8 @@ class ModernMessageBubble(QFrame):
         if self._delegate_width_constraints(raw_w):
             return
 
-        col_width = min(raw_w, 1080) - 128  # fallback only
+        _side_fb = max((raw_w - 1080) // 2, 32)
+        col_width = min(raw_w - 2 * _side_fb, 1080)  # fallback only
         if self._is_user:
             new_max = min(max(int(col_width * 0.72), 220), 560)
             self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
@@ -30481,7 +30504,10 @@ class SearchStatusWidget(QWidget):
 
     # ── Cleanup ─────────────────────────────────────────────────────────────
     def stop(self):
-        self._spin_timer.stop()
+        try:
+            self._spin_timer.stop()
+        except RuntimeError:
+            pass  # Qt already deleted the timer; nothing to stop
 
 
 class IntentPreviewWidget(QFrame):
@@ -30943,19 +30969,15 @@ class CallDialog(QDialog):
         self.is_muted  = False
 
         self._coqui_tts     = None
-        self._vosk_model    = None
-        self._vosk_rec      = None
-        self._pyaudio       = None
         self._listening_thread = None
         self._stop_listening   = False
         self._is_speaking      = False
         self._tts_available    = False
         self._stt_available    = False
 
-        # NOTE: _init_engines() is NOT called here — it loads heavy ML models
-        # (Coqui TTS, Vosk STT) which would block the main thread and freeze
-        # the entire UI. Instead we open the dialog immediately and load
-        # engines in the background via _init_engines_bg().
+        # NOTE: _init_engines() is NOT called here — it loads Coqui TTS which
+        # would block the main thread and freeze the UI. Open dialog immediately
+        # and load engines in the background via _init_engines_bg().
 
         self._wave_timer = QTimer(self)
         self._wave_timer.timeout.connect(self._tick_wave)
@@ -30980,7 +31002,7 @@ class CallDialog(QDialog):
         threading.Thread(target=self._init_engines_bg, daemon=True).start()
 
     def _init_engines_bg(self):
-        """Load Coqui TTS and Vosk STT in a background thread so the UI never freezes."""
+        """Load Coqui TTS in a background thread so the UI never freezes."""
         try:
             from TTS.api import TTS as CoquiTTS
             _tts_device = _preferred_torch_device()
@@ -30995,39 +31017,14 @@ class CallDialog(QDialog):
             self._tts_available = False
             print(f"Coqui TTS not available: {e}")
 
-        VOSK_MODEL_PATH = None
         try:
-            from vosk import Model, KaldiRecognizer, SetLogLevel
-            import pyaudio as _pyaudio_mod
-            SetLogLevel(-1)
-            if VOSK_MODEL_PATH is None:
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                candidates = [
-                    d for d in os.listdir(script_dir)
-                    if os.path.isdir(os.path.join(script_dir, d))
-                    and d.startswith("vosk-model")
-                ]
-                if candidates:
-                    preferred = [c for c in candidates if "small" not in c]
-                    chosen = preferred[0] if preferred else candidates[0]
-                    VOSK_MODEL_PATH = os.path.join(script_dir, chosen)
-                    print(f"Vosk: auto-detected model -> {chosen}")
-            if VOSK_MODEL_PATH and os.path.exists(VOSK_MODEL_PATH):
-                self._vosk_model    = Model(VOSK_MODEL_PATH)
-                self._vosk_rec      = KaldiRecognizer(self._vosk_model, 16000)
-                self._vosk_rec.SetWords(True)
-                self._pyaudio       = _pyaudio_mod.PyAudio()
-                self._stt_available = True
-                print("Vosk STT ready (offline)")
-            else:
-                print("Vosk model not found.")
-                self._vosk_model = self._vosk_rec = self._pyaudio = None
-        except ImportError:
-            print("Vosk not installed.")
-            self._vosk_model = self._vosk_rec = self._pyaudio = None
-        except Exception as e:
-            print(f"Vosk init error: {e}")
-            self._vosk_model = self._vosk_rec = self._pyaudio = None
+            import speech_recognition as _sr_check  # noqa: F401
+            import pyaudio as _pa_check              # noqa: F401
+            self._stt_available = True
+            print("Google STT ready (online via SpeechRecognition)")
+        except ImportError as e:
+            self._stt_available = False
+            print(f"Google STT not available: {e}")
 
         # Engines are ready — start the call on the main thread
         QTimer.singleShot(0, self.start_call)
@@ -31176,7 +31173,7 @@ class CallDialog(QDialog):
         body.addLayout(ctrl)
         body.addSpacing(4)
 
-        tip_text = "Speak after the chime" if self._stt_available else "Install vosk + pyaudio + model"
+        tip_text = "Speak after the chime" if self._stt_available else "Install SpeechRecognition + pyaudio"
         tip = QLabel(tip_text)
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         tip.setStyleSheet(f"color: {THEME['text_placeholder']}; font-size: 10px; background: transparent;")
@@ -31254,7 +31251,7 @@ class CallDialog(QDialog):
     def _start_listening_loop(self):
         if not self.is_active or not self._stt_available:
             if not self._stt_available:
-                self._show_speaking("(Vosk not available)")
+                self._show_speaking("(SpeechRecognition not available)")
             return
         if self._listening_thread and self._listening_thread.is_alive():
             return
@@ -31262,128 +31259,66 @@ class CallDialog(QDialog):
         self._listening_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self._listening_thread.start()
 
-    def _find_mic_device(self, want_sr=16000):
-        import pyaudio as _pa
-        pa = self._pyaudio
-        api_priority = {"windows wasapi": 0, "mme": 1, "windows directsound": 2}
-        candidates = []
-        for i in range(pa.get_device_count()):
-            try:
-                info = pa.get_device_info_by_index(i)
-                if info.get("maxInputChannels", 0) < 1:
-                    continue
-                api  = pa.get_host_api_info_by_index(info["hostApi"])["name"].lower()
-                prio = api_priority.get(api, 99)
-                default_sr = int(info.get("defaultSampleRate", 44100))
-                candidates.append((prio, i, api, default_sr, info["name"]))
-            except Exception:
-                continue
-        candidates.sort(key=lambda x: x[0])
-        for sr in [want_sr, 44100, 48000]:
-            for prio, idx, api, default_sr, name in candidates:
-                try:
-                    s = pa.open(format=_pa.paInt16, channels=1, rate=sr,
-                                input=True, input_device_index=idx, frames_per_buffer=512)
-                    s.stop_stream(); s.close()
-                    print(f"Mic: [{idx}] {name} via {api} @ {sr} Hz")
-                    return idx, sr
-                except Exception:
-                    continue
-        return None, want_sr
-
     def _listen_loop(self):
-        import json, time, struct
-        from vosk import KaldiRecognizer
-        import pyaudio as _pa
-
-        CHUNK   = 2048
-        VOSK_SR = 16000
-
-        device_index, actual_sr = self._find_mic_device(VOSK_SR)
-        if device_index is None:
-            self._show_speaking("No mic found - check Windows mic permissions")
-            print("No working microphone found")
-            return
-
-        self._vosk_rec = KaldiRecognizer(self._vosk_model, VOSK_SR)
-        self._vosk_rec.SetWords(True)
-
-        resample_ratio = None
-        if actual_sr != VOSK_SR:
-            print(f"Mic @ {actual_sr} Hz - resampling to {VOSK_SR} Hz")
-            resample_ratio = VOSK_SR / actual_sr
-
-        def resample_chunk(data, ratio):
-            samples = struct.unpack(f"{len(data)//2}h", data)
-            n_out = max(1, int(len(samples) * ratio))
-            out = []
-            for i in range(n_out):
-                src = i / ratio
-                lo  = int(src)
-                hi  = min(lo + 1, len(samples) - 1)
-                frac = src - lo
-                val = int(samples[lo] * (1 - frac) + samples[hi] * frac)
-                out.append(max(-32768, min(32767, val)))
-            return struct.pack(f"{len(out)}h", *out)
-
+        import time
         try:
-            stream = self._pyaudio.open(
-                format=_pa.paInt16, channels=1, rate=actual_sr,
-                input=True, input_device_index=device_index,
-                frames_per_buffer=CHUNK,
-            )
-        except Exception as e:
-            self._show_speaking(f"Mic open error: {e}")
-            print(f"Mic open error: {e}")
+            import speech_recognition as sr
+        except ImportError:
+            self._show_speaking("pip install SpeechRecognition pyaudio")
             return
+
+        r = sr.Recognizer()
+        r.pause_threshold = 0.8
+        r.dynamic_energy_threshold = True
 
         self._show_speaking("Listening...")
-        print("Vosk listen loop started")
+        print("Google STT listen loop started")
 
         try:
-            while self.is_active and not self._stop_listening:
-                if getattr(self, "_is_speaking", False):
-                    stream.read(CHUNK, exception_on_overflow=False)
-                    time.sleep(0.02)
-                    continue
+            mic = sr.Microphone()
+            with mic as source:
+                r.adjust_for_ambient_noise(source, duration=0.5)
+                while self.is_active and not self._stop_listening:
+                    if getattr(self, "_is_speaking", False):
+                        time.sleep(0.1)
+                        continue
+                    try:
+                        audio = r.listen(source, timeout=5, phrase_time_limit=20)
+                    except sr.WaitTimeoutError:
+                        continue
+                    except Exception as e:
+                        print(f"Mic listen error: {e}")
+                        break
 
-                data = stream.read(CHUNK, exception_on_overflow=False)
-                if resample_ratio is not None:
-                    data = resample_chunk(data, resample_ratio)
+                    if not self.is_active or self._stop_listening:
+                        break
 
-                samples = struct.unpack(f"{len(data)//2}h", data)
-                peak = max(abs(s) for s in samples) if samples else 0
-                if peak > 300:
-                    print(f"Mic peak={peak}  ", end="\r", flush=True)
-
-                if self._vosk_rec.AcceptWaveform(data):
-                    result = json.loads(self._vosk_rec.Result())
-                    text   = result.get("text", "").strip()
-                    print("Vosk result:", repr(text))
-                    if text:
-                        self._show_speaking(f"You: {text}")
-                        self._vosk_rec = KaldiRecognizer(self._vosk_model, VOSK_SR)
-                        self._vosk_rec.SetWords(True)
-                        self._is_speaking = True
-                        self._handle_user_speech(text)
-                        while getattr(self, "_is_speaking", False) and self.is_active:
-                            time.sleep(0.1)
-                        self._show_speaking("Listening...")
-                else:
-                    partial = json.loads(self._vosk_rec.PartialResult()).get("partial", "").strip()
-                    if partial:
-                        self._show_speaking(f"You: {partial}...")
-                        print(f"Partial: {partial:<60}", end="\r", flush=True)
-
+                    self._show_speaking("Recognising...")
+                    try:
+                        text = r.recognize_google(audio).strip()
+                        if text:
+                            print("Google STT result:", repr(text))
+                            self._is_speaking = True
+                            self._handle_user_speech(text)
+                            while getattr(self, "_is_speaking", False) and self.is_active:
+                                time.sleep(0.1)
+                            if self.is_active and not self._stop_listening:
+                                self._show_speaking("Listening...")
+                    except sr.UnknownValueError:
+                        if self.is_active and not self._stop_listening:
+                            self._show_speaking("Listening...")
+                    except sr.RequestError as e:
+                        self._show_speaking(f"Network error: {e}")
+                        time.sleep(1)
+                    except Exception as e:
+                        print(f"STT error: {e}")
+                        if self.is_active:
+                            self._show_speaking("Listening...")
         except Exception as e:
-            print(f"Vosk listen loop error: {e}")
+            print(f"Mic open error: {e}")
+            self._show_speaking(f"Mic error: {e}")
         finally:
-            try:
-                stream.stop_stream()
-                stream.close()
-            except Exception:
-                pass
-            print("Vosk listen loop ended")
+            print("Google STT listen loop ended")
 
     def _handle_user_speech(self, text):
         """Called from the listen loop (background thread) when the user finishes speaking."""
@@ -31446,9 +31381,6 @@ class CallDialog(QDialog):
         except Exception: pass
         try:
             import simpleaudio as sa; sa.stop_all()
-        except Exception: pass
-        try:
-            if self._pyaudio: self._pyaudio.terminate()
         except Exception: pass
         self.accept()
 
@@ -33071,97 +33003,176 @@ class _WritingEditorWidget(QWidget):
 
 
 class _OhmsLawVisualization(QWidget):
-    """Right-panel tube with animated electron balls — minimal dark style."""
+    """Right-panel circuit diagram — compact premium light mode."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._current = 3.0
-        self._phase = 0.0
-        import random as _rnd
-        _rnd.seed(42)
-        self._balls = [
-            (_rnd.random(), _rnd.random(), _rnd.uniform(5, 9),
-             _rnd.random() < 0.35, _rnd.uniform(0, 1))
-            for _ in range(48)
-        ]
-        self.setMinimumSize(280, 140)
+        self._voltage    = 9.0
+        self._resistance = 3.0
+        self._current    = 3.0
+        self._phase      = 0.0
+        self._pulse      = 0.0
+        self.setMinimumSize(220, 120)
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
     def _tick(self):
-        speed = 0.004 + min(0.022, self._current * 0.003)
+        speed       = 0.004 + min(0.028, self._current * 0.003)
         self._phase = (self._phase + speed) % 1.0
+        self._pulse = (self._pulse + 0.05) % 1.0
         self.update()
 
     def set_values(self, voltage: float, resistance: float, current: float) -> None:
-        self._current = max(0.0, float(current))
+        self._voltage    = max(0.0, float(voltage))
+        self._resistance = max(0.1, float(resistance))
+        self._current    = max(0.0, float(current))
         self.update()
+
+    def _wire_color(self):
+        t = min(1.0, self._current / 18.0)
+        r = int(67  + (109 - 67)  * t)
+        g = int(56  + (40  - 56)  * t)
+        b = int(202 + (217 - 202) * t)
+        return QColor(r, g, b)
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
         w, h = self.width(), self.height()
-        pad_x, pad_y = 24, h * 0.18
-        tube_w = w - pad_x * 2
-        tube_h = h - pad_y * 2
-        tx, ty = pad_x, pad_y
 
-        tube_rect = QRectF(tx, ty, tube_w, tube_h)
-        radius = tube_h / 2.0
-
-        tube_grad = QLinearGradient(QPointF(tx, ty), QPointF(tx, ty + tube_h))
-        tube_grad.setColorAt(0.0,  QColor(80, 80, 90, 160))
-        tube_grad.setColorAt(0.45, QColor(40, 40, 48, 200))
-        tube_grad.setColorAt(1.0,  QColor(25, 25, 32, 180))
+        # Dot grid
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(tube_grad))
-        p.drawRoundedRect(tube_rect, radius, radius)
+        p.setBrush(QBrush(QColor(185, 198, 230, 80)))
+        gs = 18
+        for gx in range(0, w + gs, gs):
+            for gy in range(0, h + gs, gs):
+                p.drawEllipse(QPointF(gx, gy), 1.0, 1.0)
 
-        p.setPen(QPen(QColor(120, 120, 130, 120), 1.5))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawRoundedRect(tube_rect, radius, radius)
+        cx1 = int(w * 0.20);  cy1 = int(h * 0.26)
+        cx2 = int(w * 0.92);  cy2 = int(h * 0.80)
+        bat_cy = (cy1 + cy2) // 2
+        bat_h, bat_w = 34, 18
+        res_cx  = int((cx1 + cx2) * 0.56)
+        res_w, res_h = 62, 18
+        res_x1 = res_cx - res_w // 2
+        res_x2 = res_cx + res_w // 2
+        res_y  = cy1 - res_h // 2
+        wc = self._wire_color()
 
-        sheen = QRectF(tx + radius * 0.3, ty + 3, tube_w - radius * 0.6, tube_h * 0.28)
-        sheen_grad = QLinearGradient(QPointF(sheen.left(), sheen.top()),
-                                     QPointF(sheen.left(), sheen.bottom()))
-        sheen_grad.setColorAt(0.0, QColor(255, 255, 255, 45))
-        sheen_grad.setColorAt(1.0, QColor(255, 255, 255, 0))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(sheen_grad))
-        p.drawRoundedRect(sheen, sheen.height() / 2, sheen.height() / 2)
+        # Wires
+        wp = QPen(wc, 2.2)
+        wp.setCapStyle(Qt.PenCapStyle.RoundCap)
+        wp.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(wp);  p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawLine(QPointF(cx1, cy1), QPointF(res_x1, cy1))
+        p.drawLine(QPointF(res_x2, cy1), QPointF(cx2, cy1))
+        p.drawLine(QPointF(cx2, cy1), QPointF(cx2, cy2))
+        p.drawLine(QPointF(cx1, cy2), QPointF(cx2, cy2))
+        p.drawLine(QPointF(cx1, cy1), QPointF(cx1, bat_cy - bat_h // 2))
+        p.drawLine(QPointF(cx1, bat_cy + bat_h // 2), QPointF(cx1, cy2))
 
-        clip = QPainterPath()
-        clip.addRoundedRect(tube_rect.adjusted(2, 2, -2, -2), radius - 2, radius - 2)
-        p.setClipPath(clip)
+        p.setPen(Qt.PenStyle.NoPen);  p.setBrush(QBrush(wc))
+        for px, py in [(cx1, cy1), (cx2, cy1), (cx2, cy2), (cx1, cy2)]:
+            p.drawEllipse(QPointF(px, py), 2.8, 2.8)
 
-        for x_frac, y_frac, ball_r, is_blue, spd_off in self._balls:
-            drift = (x_frac + self._phase * (1.0 + spd_off * 0.6)) % 1.0
-            bx = tx + radius + drift * (tube_w - radius * 2)
-            by = ty + tube_h * 0.15 + y_frac * tube_h * 0.70
+        # Battery
+        bat_rect = QRectF(cx1 - bat_w / 2, bat_cy - bat_h / 2, bat_w, bat_h)
+        bg = QLinearGradient(QPointF(bat_rect.left(), 0), QPointF(bat_rect.right(), 0))
+        bg.setColorAt(0.0, QColor(255, 255, 255))
+        bg.setColorAt(1.0, QColor(238, 242, 255))
+        p.setBrush(QBrush(bg));  p.setPen(QPen(wc, 1.6))
+        p.drawRoundedRect(bat_rect, 4, 4)
+        nub = QRectF(cx1 - 4, bat_cy - bat_h / 2 - 4, 8, 5)
+        p.setBrush(QBrush(wc));  p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(nub, 2, 2)
+        bf = QFont("Segoe UI", 8, QFont.Weight.Bold)
+        p.setFont(bf)
+        p.setPen(QColor(30, 155, 75))
+        p.drawText(QRectF(cx1 - 7, bat_cy - bat_h / 2 + 3, 14, 12),
+                   Qt.AlignmentFlag.AlignCenter, "+")
+        p.setPen(QColor(195, 45, 45))
+        p.drawText(QRectF(cx1 - 7, bat_cy + bat_h / 2 - 15, 14, 12),
+                   Qt.AlignmentFlag.AlignCenter, "\u2212")
 
-            bg = QRadialGradient(QPointF(bx - ball_r * 0.3, by - ball_r * 0.3), ball_r)
-            if is_blue:
-                bg.setColorAt(0.0, QColor(160, 200, 255, 230))
-                bg.setColorAt(0.6, QColor(90, 140, 220, 200))
-                bg.setColorAt(1.0, QColor(50, 90, 180, 120))
-            else:
-                bg.setColorAt(0.0, QColor(240, 240, 245, 230))
-                bg.setColorAt(0.6, QColor(180, 180, 190, 200))
-                bg.setColorAt(1.0, QColor(120, 120, 135, 120))
+        # Resistor glow when high current
+        res_rect = QRectF(res_x1, res_y, res_w, res_h)
+        if self._current > 6.0:
+            glow_t = min(1.0, (self._current - 6.0) / 12.0)
+            ga     = int(glow_t * (18 + 14 * abs(self._pulse * 2 - 1)))
+            gc     = QColor(wc.red(), wc.green(), wc.blue(), ga)
+            for off in [5, 3, 2]:
+                p.setBrush(Qt.BrushStyle.NoBrush)
+                p.setPen(QPen(gc, off * 2))
+                p.drawRoundedRect(res_rect.adjusted(-off, -off, off, off), 6, 6)
 
+        rg = QLinearGradient(QPointF(0, res_y), QPointF(0, res_y + res_h))
+        rg.setColorAt(0.0, QColor(255, 255, 255))
+        rg.setColorAt(1.0, QColor(230, 236, 255))
+        p.setBrush(QBrush(rg));  p.setPen(QPen(wc, 1.7))
+        p.drawRoundedRect(res_rect, 5, 5)
+
+        # Electron dots (clipped)
+        cp = QPainterPath()
+        cp.addRoundedRect(res_rect.adjusted(2, 2, -2, -2), 3, 3)
+        p.setClipPath(cp)
+        N = 5
+        dot_r = 2.6 + min(1.5, self._current * 0.08)
+        for i in range(N):
+            t  = ((i / N) + self._phase) % 1.0
+            dx = res_x1 + 9 + t * (res_w - 18)
+            dy = res_y + res_h / 2
+            dg = QRadialGradient(QPointF(dx - 0.8, dy - 1.0), dot_r * 1.6)
+            dg.setColorAt(0.0, QColor(210, 228, 255))
+            dg.setColorAt(0.5, QColor(wc.red(), wc.green(), wc.blue(), 225))
+            dg.setColorAt(1.0, QColor(max(0, wc.red()-40),
+                                      max(0, wc.green()-30),
+                                      min(255, wc.blue()), 130))
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QBrush(bg))
-            p.drawEllipse(QRectF(bx - ball_r, by - ball_r, ball_r * 2, ball_r * 2))
-
+            p.setBrush(QBrush(dg))
+            p.drawEllipse(QPointF(dx, dy), dot_r, dot_r)
         p.setClipping(False)
+
+        # Current arrow
+        mid_x = (cx1 + cx2) / 2.0
+        arr_y = cy1 - 15
+        al = 26
+        ax1, ax2 = mid_x - al, mid_x + al
+        for tk in [8, 5]:
+            p.setPen(QPen(QColor(wc.red(), wc.green(), wc.blue(), 16), tk))
+            p.drawLine(QPointF(ax1, arr_y), QPointF(ax2, arr_y))
+        p.setPen(QPen(wc, 2.0));  p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawLine(QPointF(ax1, arr_y), QPointF(ax2, arr_y))
+        head = QPainterPath()
+        head.moveTo(ax2, arr_y)
+        head.lineTo(ax2 - 8, arr_y - 4.5)
+        head.lineTo(ax2 - 8, arr_y + 4.5)
+        head.closeSubpath()
+        p.setBrush(QBrush(wc));  p.setPen(Qt.PenStyle.NoPen)
+        p.drawPath(head)
+
+        # Labels
+        lf = QFont("Segoe UI", 7)
+        lf.setWeight(QFont.Weight.Medium)
+        p.setFont(lf)
+        p.setPen(wc)
+        p.drawText(QRectF(ax1, arr_y - 13, ax2 - ax1 + 10, 12),
+                   Qt.AlignmentFlag.AlignCenter,
+                   f"I = {self._current:.2f} A")
+        p.setPen(QColor(28, 35, 90))
+        p.drawText(QRectF(2, bat_cy - 8, cx1 - 5, 16),
+                   Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                   f"Vs={self._voltage:.1f}V")
+        p.drawText(QRectF(res_x1, res_y + res_h + 3, res_w, 12),
+                   Qt.AlignmentFlag.AlignCenter,
+                   f"R = {self._resistance:.1f} \u03a9")
+
         p.end()
 
 
 class _OhmsLawWidget(QWidget):
-    """Interactive Ohm's Law widget — clean minimal dark design."""
+    """Interactive Ohm's Law widget — compact full light mode."""
 
     state_changed = pyqtSignal(dict)
     _MIN_RESISTANCE = 0.1
@@ -33174,60 +33185,141 @@ class _OhmsLawWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._building = False
-        self._preset_buttons = []
-        self._displayed_voltage = 9.0
-        self._target_voltage = 9.0
-        self._displayed_current = 3.0
-        self._target_current = 3.0
+        self._building           = False
+        self._preset_buttons     = []
+        self._displayed_voltage  = 9.0
+        self._target_voltage     = 9.0
+        self._displayed_current  = 3.0
+        self._target_current     = 3.0
         self._current_anim_timer = QTimer(self)
         self._current_anim_timer.setInterval(24)
         self._current_anim_timer.timeout.connect(self._animate_step)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self._build_ui()
         self.apply_widget_data({"voltage": 9, "resistance": 3.0})
 
+    # ── Card background: white + rainbow accent bar + right-panel tint ──────
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        clip = QPainterPath()
+        clip.addRoundedRect(QRectF(0, 0, w, h), 16, 16)
+        painter.setClipPath(clip)
+
+        # White body
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor(252, 253, 255)))
+        painter.drawRect(QRectF(0, 0, w, h))
+
+        # Right-panel lavender tint
+        split = w * 0.51
+        rp = QLinearGradient(QPointF(split, 0), QPointF(w, 0))
+        rp.setColorAt(0.0, QColor(243, 245, 255))
+        rp.setColorAt(1.0, QColor(236, 241, 255))
+        painter.setBrush(QBrush(rp))
+        painter.drawRect(QRectF(split, 0, w - split, h))
+
+        # 4px rainbow accent bar
+        bar = QLinearGradient(QPointF(0, 0), QPointF(w, 0))
+        bar.setColorAt(0.00, QColor(79,  70, 229))
+        bar.setColorAt(0.38, QColor(124, 58, 237))
+        bar.setColorAt(0.70, QColor(8,  145, 178))
+        bar.setColorAt(1.00, QColor(6,  182, 212))
+        painter.setBrush(QBrush(bar))
+        painter.drawRect(QRectF(0, 0, w, 4))
+
+        # Subtle 1px border
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(210, 218, 245, 160), 1))
+        painter.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 16, 16)
+
+        painter.setClipping(False)
+        painter.end()
+
     def _build_ui(self):
-        self.setStyleSheet("background: #1e1e26; border-radius: 16px;")
-        root = QHBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        self.setStyleSheet("background: transparent;")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 4, 0, 0)
         root.setSpacing(0)
 
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        root.addLayout(body)
+
+        # ── Left panel ──────────────────────────────────────────────────────
         left = QWidget()
         left.setStyleSheet("background: transparent;")
         ll = QVBoxLayout(left)
-        ll.setContentsMargins(36, 30, 30, 28)
+        ll.setContentsMargins(20, 12, 16, 14)
         ll.setSpacing(0)
 
-        formula = QLabel("V = IR")
-        ff = QFont("Georgia", 26)
+        formula = QLabel("I = V / R")
+        ff = QFont("Georgia", 20)
         ff.setItalic(True)
         ff.setWeight(QFont.Weight.Bold)
         formula.setFont(ff)
-        formula.setStyleSheet("color: #e8e4d8; background: transparent; letter-spacing: 1px;")
+        formula.setStyleSheet("color: #1e1b4b; background: transparent; letter-spacing: 1px;")
         ll.addWidget(formula)
-        ll.addStretch()
+        ll.addSpacing(4)
+
+        self._intensity_badge = QLabel("\u25cf LOW CURRENT")
+        ibf = QFont("Segoe UI", 7)
+        ibf.setWeight(QFont.Weight.DemiBold)
+        self._intensity_badge.setFont(ibf)
+        self._intensity_badge.setStyleSheet(
+            "color: #16a34a; background: transparent; letter-spacing: 0.5px;")
+        ll.addWidget(self._intensity_badge)
+        ll.addSpacing(12)
 
         ll.addWidget(self._make_slider_row("I", 1, 240, is_resistance=False))
-        ll.addSpacing(10)
+        ll.addSpacing(8)
         ll.addWidget(self._make_slider_row("R", 1, 200, is_resistance=True))
-        ll.addSpacing(18)
+        ll.addSpacing(12)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #e0e6f8; color: #e0e6f8;")
+        ll.addWidget(sep)
+        ll.addSpacing(8)
 
         self._result_label = QLabel("")
-        rf = QFont("Georgia", 13)
+        rf = QFont("Georgia", 10)
         rf.setItalic(True)
         self._result_label.setFont(rf)
-        self._result_label.setStyleSheet("color: #e8e4d8; background: transparent;")
+        self._result_label.setStyleSheet("color: #4338ca; background: transparent;")
         ll.addWidget(self._result_label)
+        ll.addSpacing(3)
 
+        self._power_label = QLabel("")
+        pf = QFont("Segoe UI", 9)
+        self._power_label.setFont(pf)
+        self._power_label.setStyleSheet("color: #7c3aed; background: transparent;")
+        ll.addWidget(self._power_label)
+        ll.addStretch()
+
+        # ── Vertical divider ────────────────────────────────────────────────
+        vdiv = QFrame()
+        vdiv.setFrameShape(QFrame.Shape.VLine)
+        vdiv.setFixedWidth(1)
+        vdiv.setStyleSheet("background: #dde4f5; color: #dde4f5;")
+
+        # ── Right panel ─────────────────────────────────────────────────────
         right = QWidget()
         right.setStyleSheet("background: transparent;")
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
         self._visualization = _OhmsLawVisualization()
+        self._visualization.setStyleSheet("background: transparent;")
         rl.addWidget(self._visualization, 1)
 
-        root.addWidget(left, 10)
-        root.addWidget(right, 9)
+        body.addWidget(left, 10)
+        body.addWidget(vdiv)
+        body.addWidget(right, 9)
 
     def _make_slider_row(self, label: str, minimum: int, maximum: int,
                          *, is_resistance: bool) -> QWidget:
@@ -33235,62 +33327,68 @@ class _OhmsLawWidget(QWidget):
         row.setStyleSheet("background: transparent;")
         hl = QHBoxLayout(row)
         hl.setContentsMargins(0, 0, 0, 0)
-        hl.setSpacing(10)
+        hl.setSpacing(8)
 
         lbl = QLabel(label)
-        lf = QFont("Georgia", 11)
+        lf = QFont("Georgia", 10)
         lf.setItalic(True)
         lbl.setFont(lf)
-        lbl.setFixedWidth(18)
-        lbl.setStyleSheet("color: #b0aaaa; background: transparent;")
+        lbl.setFixedWidth(16)
+        lbl.setStyleSheet("color: #6366f1; background: transparent;")
         hl.addWidget(lbl)
 
         val_lbl = QLabel("")
         val_lbl.setFixedWidth(36)
-        val_lbl.setStyleSheet("""
-            color: #d0ccc4;
-            font-size: 11px; font-weight: 600;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
+        val_lbl.setStyleSheet(
+            "color: #1e1b4b; font-size: 10px; font-weight: 700;"
+            "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+            "background: transparent;")
         hl.addWidget(val_lbl)
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setRange(minimum, maximum)
         slider.setSingleStep(1)
         slider.setCursor(Qt.CursorShape.PointingHandCursor)
-        slider.setFixedHeight(20)
+        slider.setFixedHeight(18)
         slider.setStyleSheet("""
             QSlider::groove:horizontal {
-                height: 3px; border-radius: 1px;
-                background: #3a3a48;
+                height: 3px; border-radius: 2px;
+                background: #dde4f8;
             }
             QSlider::sub-page:horizontal {
-                background: #888898;
-                border-radius: 1px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #6366f1, stop:1 #818cf8);
+                border-radius: 2px;
             }
             QSlider::handle:horizontal {
                 width: 14px; height: 14px; margin: -5px 0;
                 border-radius: 7px;
-                background: #c8c4bc;
+                background: #4f46e5;
+                border: 2px solid white;
             }
-            QSlider::handle:horizontal:hover {
-                background: #e8e4dc;
-            }
+            QSlider::handle:horizontal:hover { background: #4338ca; border: 2px solid #c7d2fe; }
+            QSlider::handle:horizontal:pressed { background: #3730a3; }
         """)
         slider.valueChanged.connect(self._update_display)
         hl.addWidget(slider, 1)
 
+        unit = QLabel("A" if not is_resistance else "\u03a9")
+        unit.setFixedWidth(12)
+        unit.setStyleSheet(
+            "color: #94a3b8; font-size: 9px;"
+            "font-family: 'Segoe UI', sans-serif; background: transparent;")
+        hl.addWidget(unit)
+
         if is_resistance:
-            self._resistance_slider = slider
+            self._resistance_slider      = slider
             self._resistance_value_label = val_lbl
-            self._resistance_spin = None
+            self._resistance_spin        = None
         else:
-            self._current_slider = slider
+            self._current_slider      = slider
             self._current_value_label = val_lbl
-            self._voltage_slider = slider
+            self._voltage_slider      = slider
             self._voltage_value_label = val_lbl
-            self._voltage_spin = None
+            self._voltage_spin        = None
 
         return row
 
@@ -33313,9 +33411,10 @@ class _OhmsLawWidget(QWidget):
         if not changed:
             self._current_anim_timer.stop()
 
-        self._result_label.setText(
-            f"V = IR = {self._displayed_voltage:.0f}"
-        )
+        v = self._displayed_voltage
+        i = self._displayed_current
+        self._result_label.setText(f"V = IR = {v:.1f} V")
+        self._power_label.setText(f"\u26a1 P = {v * i:.1f} W")
 
     def _resistance_value(self) -> float:
         return max(self._MIN_RESISTANCE, self._resistance_slider.value() / 10.0)
@@ -33332,7 +33431,7 @@ class _OhmsLawWidget(QWidget):
             "current":    round(i, 2),
         }
 
-    def apply_widget_data(self, data: Optional[dict]) -> None:
+    def apply_widget_data(self, data) -> None:
         data = data or {}
         resistance = max(self._MIN_RESISTANCE, float(data.get("resistance", 3.0)))
         if "current" in data:
@@ -33365,6 +33464,16 @@ class _OhmsLawWidget(QWidget):
             self._current_anim_timer.start()
 
         self._visualization.set_values(v, r, i)
+
+        if i < 5.0:
+            badge_txt, badge_col = "\u25cf LOW CURRENT",  "#16a34a"
+        elif i < 15.0:
+            badge_txt, badge_col = "\u25cf MED CURRENT",  "#d97706"
+        else:
+            badge_txt, badge_col = "\u25cf HIGH CURRENT", "#dc2626"
+        self._intensity_badge.setText(badge_txt)
+        self._intensity_badge.setStyleSheet(
+            f"color: {badge_col}; background: transparent; letter-spacing: 0.5px;")
 
         if not self._building:
             self.state_changed.emit(self.widget_data())
@@ -33466,7 +33575,8 @@ class MariaPyQt(QMainWindow):
         self.current_session_history = []
         self.sidebar_visible = True
         self.tts = SimpleTTS()
-        self._voice_mode  = False   # online voice mode (edge-tts + Google STT)
+        self._voice_mode        = False   # online voice mode (edge-tts + Google STT)
+        self._voice_call_dialog = None    # active CallDialog awaiting a reply (voice call)
         self._tts_thread  = None    # current _OnlineTTSThread instance
         self._media_player = None   # QMediaPlayer for TTS playback
         self._audio_output = None   # QAudioOutput for media player
@@ -33519,23 +33629,24 @@ class MariaPyQt(QMainWindow):
             app.installEventFilter(self)
 
     def cleanup_duplicate_sessions(self):
-        """Clean up duplicate sessions that might cause message duplication"""
+        """Remove sessions whose ID appears more than once in chat_sessions.
+
+        Session IDs are microsecond timestamps so collisions are impossible in
+        normal operation, but corrupted JSON can introduce them.  Previously the
+        dedup key was f"{id}_{title}" which is always unique (since id is already
+        unique), meaning the function never actually removed anything.  Key on id
+        only so genuine ID-level duplicates are caught.
+        """
         unique_sessions = []
-        seen_titles = set()
+        seen_ids = set()
 
-        for session in list(self.chat_sessions):   # iterate a snapshot — safe if chat_sessions mutates
-            # Check for duplicate session IDs or similar content
+        for session in list(self.chat_sessions):
             session_id = session.get('id', '')
-            session_title = session.get('title', '')
-
-            # Create a unique key for this session
-            session_key = f"{session_id}_{session_title}"
-
-            if session_key not in seen_titles:
-                seen_titles.add(session_key)
+            if session_id not in seen_ids:
+                seen_ids.add(session_id)
                 unique_sessions.append(session)
             else:
-                print(f"   🧹 Removing duplicate session: {session_title}")
+                print(f"   🧹 Removing duplicate session: {session.get('title', session_id)}")
 
         removed = len(self.chat_sessions) - len(unique_sessions)
         if removed > 0:
@@ -33613,6 +33724,18 @@ class MariaPyQt(QMainWindow):
             except RuntimeError:
                 pass
             self.thinking_widget = None
+
+        # Also stop the drafting-label pulse timer — it references a
+        # QGraphicsOpacityEffect that is destroyed with the thinking container.
+        # Leaving it running causes RuntimeError on the next tick.
+        try:
+            if getattr(self, '_thinking_label_pulse_timer', None):
+                self._thinking_label_pulse_timer.stop()
+        except RuntimeError:
+            pass
+        self._thinking_label_pulse_timer = None
+        self._thinking_label = None
+        self._thinking_label_opacity = None
 
         self.is_loading_history = True
         self.batch_render_mode = True
@@ -33745,8 +33868,16 @@ class MariaPyQt(QMainWindow):
             print(f"   Loading {len(msgs)} messages for '{session.get('title','Untitled')}'")
             # Pre-build O(1) lookup maps so _lookup_message_feedback/meta never O(n)-scan per message.
             # Without this, loading N messages does N×N string comparisons (O(n²) with large content).
-            self._hist_fb_cache   = {m['content']: m.get('feedback') for m in msgs if m.get('type') == 'assistant'}
-            self._hist_meta_cache = {m['content']: m.get('meta', '') for m in msgs if m.get('type') == 'assistant'}
+            # Key on (index, content) rather than content alone so identical short
+            # responses (e.g. two "Sure!" messages with different feedback) never
+            # collide — the last one would silently overwrite the first.
+            self._hist_fb_cache   = {(i, m['content']): m.get('feedback')
+                                     for i, m in enumerate(msgs) if m.get('type') == 'assistant'}
+            self._hist_meta_cache = {(i, m['content']): m.get('meta', '')
+                                     for i, m in enumerate(msgs) if m.get('type') == 'assistant'}
+            # Build a parallel index map: content → list of (global_index, feedback/meta)
+            # for the slow-path O(n) scan fallback used when the cache is absent.
+            self._hist_msg_indices = {m['content']: i for i, m in enumerate(msgs)}
             self._start_chunked_load(msgs, session_id)
             # NOTE: setUpdatesEnabled(True), _update_sidebar_highlight, streaming
             # replay, and finalize_session_load are all deferred to _load_next_chunk
@@ -33782,6 +33913,12 @@ class MariaPyQt(QMainWindow):
 
             self.messages_widget.setUpdatesEnabled(True)
             self.messages_widget.update()
+            # Re-enable the scroll area viewport — it was suppressed alongside
+            # messages_widget at the top of load_session.  Without this the
+            # viewport stays frozen one extra event-loop tick, causing a brief
+            # skeleton-hangover flash on low-end hardware.
+            if hasattr(self, 'messages_area'):
+                self.messages_area.setUpdatesEnabled(True)
             self._update_sidebar_highlight(session_id)
             QTimer.singleShot(0, self.finalize_empty_session)
             print(f"   ✅ Session switch done (empty session)")
@@ -33852,10 +33989,14 @@ class MariaPyQt(QMainWindow):
             # Session switched to an empty session (no new chunk load was started,
             # so _load_generation was not incremented).  This load owns the shared
             # state — clean it up and abort.
+            # Guard: only clear the caches if they still belong to THIS stale load.
+            # A newer load may have already rebuilt them for the new session;
+            # clearing blindly would force that session onto the slow O(n²) scan path.
+            if getattr(self, '_loading_session_id', None) == loading_sid:
+                self._hist_fb_cache      = None
+                self._hist_meta_cache    = None
+                self._loading_session_id = None
             self._pending_load_msgs  = None
-            self._hist_fb_cache      = None
-            self._hist_meta_cache    = None
-            self._loading_session_id = None
             self._load_cursor        = 0
             self.is_loading_history  = False
             self.batch_render_mode   = False
@@ -33888,12 +34029,10 @@ class MariaPyQt(QMainWindow):
             if msg_file and not os.path.exists(msg_file):
                 msg_file = None
 
-            if message['type'] == 'assistant' and (message.get('thinking_steps') or message.get('maria_thought')):
-                self._insert_thinking_widget_from_history(
-                    message.get('thinking_steps') or [],
-                    preview_data=message.get('intent_preview'),
-                    thought_data=message.get('maria_thought'),
-                )
+            # Note: thinking_steps data is preserved in the session JSON for potential
+            # future use, but _insert_thinking_widget_from_history is currently a no-op
+            # (ThinkingStepsWidget is not restored from history).  The check and call
+            # are removed to avoid per-message overhead during chunked load.
 
             _outer = self.add_message_silent(
                 message['sender'], message['content'], message['type'],
@@ -33919,8 +34058,9 @@ class MariaPyQt(QMainWindow):
         self._pending_load_msgs  = None
         self._loading_session_id = None
         # Release per-load caches (built by load_session before chunking started)
-        self._hist_fb_cache  = None
+        self._hist_fb_cache   = None
         self._hist_meta_cache = None
+        self._hist_msg_indices = None
 
         # ── Replay any buffered streaming chunks (must come AFTER history so
         # the live streaming bubble lands below the last history message) ────
@@ -34258,7 +34398,6 @@ class MariaPyQt(QMainWindow):
                 except RuntimeError:
                     pass
             QTimer.singleShot(100, _fix_bubble_width)
-            QTimer.singleShot(220, _fix_bubble_width)
 
         if persist and not from_history and self.current_session_id:
             self._persist_message(sender, content, msg_type, file_path=image_path)
@@ -34356,9 +34495,12 @@ class MariaPyQt(QMainWindow):
             vp_width = 800
         _sidebar_open = bool(getattr(self, '_right_panel_visible', False))
         _reduced_chat = _sidebar_open and vp_width < 980
-        _gutter = 88 if _reduced_chat else 112
         _floor = 240 if _reduced_chat else 220
-        return max(min(vp_width, 1080) - _gutter, _floor)
+        # Dynamic side margin mirrors _CenterWrap.resizeEvent:
+        # 32px min padding; grows to keep content ≤ 1080px on wide viewports.
+        _side = max((vp_width - 1080) // 2, 32)
+        _col_w = min(vp_width - 2 * _side, 1080)
+        return max(_col_w, _floor)
 
     def _target_bubble_max_width(self, bubble: QWidget, viewport_width: int = 0) -> int:
         """Return the readable max width for a message row within the chat column.
@@ -34372,10 +34514,11 @@ class MariaPyQt(QMainWindow):
             if _reduced_chat:
                 return min(max(int(col_w * 0.72), 200), 480)
             return min(max(int(col_w * 0.72), 220), 560)
-        # Assistant bubble: full readable width
+        # Assistant bubble: fills full readable column (cap raised to 1016 so
+        # the bubble reaches the right edge on mid-size viewports)
         if _reduced_chat:
-            return min(max(int(col_w * 0.99), 360), 820)
-        return min(max(int(col_w * 0.99), 420), 860)
+            return min(max(int(col_w * 0.99), 360), 900)
+        return min(max(int(col_w * 0.99), 420), 1016)
 
     def _apply_bubble_width_constraints(self, bubble: QWidget, viewport_width: int = 0) -> None:
         """Apply adaptive, non-rigid width constraints to one bubble."""
@@ -35332,21 +35475,14 @@ class MariaPyQt(QMainWindow):
         original_message = em.get('text', '')
         location       = em.get('location')        # None until GPS resolves
         email_sent     = em.get('email_sent', False)
-        confirmed_help = em.get('confirmed_help', False)  # Did user confirm they need help?
+        confirmed_help = em.get('confirmed_help', True)  # Always True — detection = intent to get help
 
-        if not first_turn and not confirmed_help:
+        # On follow-up turns, only check for explicit cancellation.
+        # confirmed_help is always True from detection, so no confirmation parsing needed.
+        if not first_turn:
             parsed_confirmation = self._parse_explicit_emergency_confirmation(user_text)
-            if parsed_confirmation is True:
-                # Safety-critical: only an explicit user reply can authorize
-                # the emergency state transition to confirmed_help=True.
-                em['confirmed_help'] = True
-                confirmed_help = True
-                print("   ✅ Explicit user confirmation captured")
-            elif parsed_confirmation is False:
-                # Deterministic cancellation is safer than waiting for the
-                # model to infer the user's intent from a rejection message.
-                em['confirmed_help'] = False
-                print("   🧹 Explicit user cancellation captured")
+            if parsed_confirmation is False:
+                # User explicitly cancelled — end emergency mode immediately.
                 cancel_text = (
                     "Okay, I will not send any alert. If this changes, tell me clearly that you want me to contact responders."
                     if language == 'ENGLISH'
@@ -35372,13 +35508,8 @@ class MariaPyQt(QMainWindow):
                         save_json(SESSION_FILE, self.chat_sessions)
                 return
 
-        lang_instruction = (
-            "Respond in natural Taglish — warm, calm, mid-sentence code-switching. "
-            "Sound like a caring Ate, not a translated script. "
-            "Example: 'Okay lang, nandito ako — sabihin mo lang kung anong nangyayari.'"
-            if language == 'FILIPINO'
-            else "Always respond in English — warm, calm, direct."
-        )
+        # Emergency responses are always in English — clarity matters more than language matching
+        lang_instruction = "Always respond in clear, correct English — warm, calm, direct. No Tagalog or Taglish."
 
         # Build location status string for the system prompt
         if location:
@@ -35392,45 +35523,42 @@ class MariaPyQt(QMainWindow):
 
 {lang_instruction}
 
-YOUR GOAL: Handle this emergency like a real human — calm, fast, caring. NOT a script-following robot.
+YOUR GOAL: Respond fast and calm. The user already triggered an emergency — help them immediately.
 
 EMERGENCY CONTEXT:
 - Type: {emergency_type}
 - Original message: "{original_message}"
-- User confirmed they need help: {"YES" if confirmed_help else "NOT YET"}
 - Location: {location_status}
 - Alert email sent: {"YES" if email_sent else "NOT YET"}
 
-CONVERSATION RULES — follow these in order:
+YOUR RESPONSE — write ONE short message in clear English:
 
-STEP 1 — CONFIRM THEY NEED HELP (only if not yet confirmed):
-  - First thing: ask the user clearly but warmly if they genuinely need emergency help right now.
-  - Example: "Grabe! Kailangan mo ba talaga ng tulong ngayon?" or "Oh no — do you need me to call for help right now?"
-  - Do NOT send the alert yet. Do NOT ask for location. Just confirm.
-  - When they say yes/oo/sige/go → include [CONFIRMED_HELP] in your response and move to Step 2.
-  - When they say no/hindi/cancel → include [CANCEL_EMERGENCY] in your response.
+1. ACKNOWLEDGE — 1 warm sentence confirming you heard them.
+   Example: "I'm here with you — stay calm, help is on the way!"
 
-STEP 2 — LOCATION IS AUTO-DETECTED (only after [CONFIRMED_HELP]):
-  - Location is being fetched automatically via GPS — you do NOT need to ask for it.
-  - If location_status says "FETCHING", tell the user "detecting your location..." and include [SEND_ALERT] now.
-  - If location is already known, tell the user you found their location and include [SEND_ALERT] now.
-  - Do NOT ask the user where they are.
+2. LOCATION STATUS — say ONE of these (only if alert not yet sent):
+   - If location is "FETCHING": "Getting your location now."
+   - If location is known: "I have your location."
+   - Do NOT say "sending alert" or "nagpapadala" — the app handles that separately.
+   - If alert already sent: skip this, go straight to safety tips.
 
-STEP 3 — AFTER ALERT IS SENT:
-  - Give calm, SHORT (2-3 sentence) safety instructions for {emergency_type}.
-  - Be human. No bullet walls. Keep them calm until help arrives.
+3. SAFETY TIPS — 1 to 2 short sentences specific to {emergency_type}.
+   FIRE: Get out of the building now. Use the stairs, not the elevator.
+   THIEF: Stay hidden and quiet. Do not confront them.
+   MEDICAL: Keep the person still and conscious. Help is coming.
+   POLICE: Stay safe and away from the threat.
 
-TOKENS (invisible to user — include when appropriate):
-  [CONFIRMED_HELP] — user confirmed they need emergency help
-  [SEND_ALERT]     — requests that the app attempt an alert after hard safety checks
-  [CANCEL_EMERGENCY] — user cancelled, end emergency mode
+TOKENS (invisible to user):
+  [SEND_ALERT]       — always include on the FIRST response
+  [CANCEL_EMERGENCY] — include ONLY if user says cancel or stop
 
-SAFETY BOUNDARY:
-  - You are NEVER allowed to authorize a real alert yourself.
-  - [SEND_ALERT] is only a request for the app to consider.
-  - The app will only send if explicit user confirmation was already stored.
-
-IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Maria."""
+RULES:
+- ENGLISH ONLY. No Tagalog, no Taglish. Not even single words.
+- Keep the whole response under 3 sentences.
+- Do NOT ask "do you need help?" — they already said they do.
+- Do NOT ask for their location — it is being fetched automatically.
+- Do NOT end with "Kung mayroon kang..." or any filler closing line.
+- Do NOT use numbered lists or bullet points — write in plain sentences."""
 
         # Build message history
         messages = [{"role": "system", "content": system_prompt}]
@@ -35473,7 +35601,7 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
     def _on_gps_location_ready(self, session_id: str, city: str, region: str, country: str,
                                 lat: float, lon: float, readable: str):
-        """GPS resolved successfully — store in pending_emergency."""
+        """GPS resolved — store location then fire the alert email immediately."""
         em = self._get_pending_emergency(session_id)
         if em:
             em['location'] = readable
@@ -35481,14 +35609,43 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             em['lat'] = lat
             em['lon'] = lon
             print(f"   ✅ GPS stored in emergency context: {readable}")
+            # Fire email immediately now that we have a location — don't wait for AI token
+            self._fire_emergency_email_bg(session_id)
 
     def _on_gps_location_failed(self, session_id: str, reason: str):
-        """GPS failed — mark so AI knows to ask user instead."""
-        print(f"   ⚠️ GPS failed: {reason}")
+        """GPS failed — still fire the alert with whatever location info we have."""
+        print(f"   ⚠️ GPS failed: {reason} — firing alert with fallback location")
         em = self._get_pending_emergency(session_id)
         if em:
             em['gps_fetching'] = False
             em['gps_failed'] = True
+            # Still attempt the email — location will fall back to text extraction
+            self._fire_emergency_email_bg(session_id)
+
+    def _fire_emergency_email_bg(self, session_id: str):
+        """
+        Fire the emergency email in a background thread as soon as we have enough
+        context (location resolved or GPS failed). Does NOT depend on the AI emitting
+        [SEND_ALERT] — the email is sent the moment the emergency is confirmed.
+        """
+        em = self._get_pending_emergency(session_id)
+        if not em:
+            return
+        if em.get('email_sent', False):
+            print("   ℹ️ Email already sent — skipping duplicate fire")
+            return
+
+        def _send():
+            success, status, final_location = self._attempt_confirmed_emergency_alert(session_id)
+            print(f"   📧 Background email result: success={success} location={final_location}")
+            # Update the pending emergency with the result so the AI response can reflect it
+            em2 = self._get_pending_emergency(session_id)
+            if em2 is not None:
+                em2['bg_email_success'] = success
+                em2['bg_email_status'] = status
+                em2['bg_email_location'] = final_location
+
+        _BG_POOL.submit(_send)
 
     def _attempt_confirmed_emergency_alert(self, session_id: str = None) -> tuple[bool, str, str]:
         """
@@ -35595,21 +35752,28 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             location = extracted_location
             print(f"   📍 Location from AI context: {extracted_location}")
 
-        if should_send:
-            # Safety-critical: AI tokens are only requests. Real sending is
-            # allowed only after explicit confirmation was stored.
-            if not em.get('confirmed_help', False):
-                print("   🛑 Ignoring [SEND_ALERT] because confirmed_help is False")
-            success, status, final_location = self._attempt_confirmed_emergency_alert(session_id)
-            if not success and not em.get('confirmed_help', False):
-                status = (
-                    "⚠️ Alert not sent yet. Please explicitly confirm that you want me to contact responders."
-                )
-            elif not success:
-                status = (
-                    f"{status}\n📍 Location: {final_location}\nYou can retry, and you should call 911 immediately."
-                )
-            ai_text = f"{status}\n\n{ai_text}"
+        # Email is fired by _fire_emergency_email_bg as soon as GPS resolves.
+        # Here we just read the result it stored and prepend a status line.
+        bg_success  = em.get('bg_email_success')   # None = still in flight
+        bg_status   = em.get('bg_email_status', '')
+        bg_location = em.get('bg_email_location', location or 'Location not available')
+
+        if bg_success is True:
+            status_line = f"✅ Alert sent!\n📍 Location: {bg_location}"
+            ai_text = f"{status_line}\n\n{ai_text}"
+        elif bg_success is False:
+            status_line = (
+                f"⚠️ Could not send alert automatically — please call 911 immediately!\n"
+                f"📍 Location: {bg_location}"
+            )
+            ai_text = f"{status_line}\n\n{ai_text}"
+        elif em.get('email_sent', False):
+            # Already sent in a prior turn
+            ai_text = f"✅ Alert already sent.\n\n{ai_text}"
+        # else: still in flight (GPS/email both fast so this is rare) — show AI text as-is
+
+        # Strip [SEND_ALERT] from AI text — email is handled above, not by this token
+        ai_text = ai_text.replace('[SEND_ALERT]', '').strip()
 
         if should_cancel:
             print("   🧹 AI cancelled emergency")
@@ -40353,9 +40517,13 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         container.setStyleSheet("background: transparent;")
         container.setLayout(row)
 
-        # Insert before the trailing stretch (index 0 is the stretch)
+        # Insert before the trailing stretch so messages stack from top and the
+        # stretch stays at the bottom providing breathing room.
+        # insertWidget(count - 1) places the new item just before the last item
+        # (the trailing stretch).  Using count would append after the stretch,
+        # pinning messages below the visible scroll area.
         count = self._detail_msgs_layout.count()
-        self._detail_msgs_layout.insertWidget(count, container)
+        self._detail_msgs_layout.insertWidget(max(0, count - 1), container)
 
         # Scroll to bottom
         QTimer.singleShot(30, lambda: self._detail_msg_scroll.verticalScrollBar().setValue(
@@ -41846,11 +42014,10 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         self.messages_widget = QWidget()
         self.messages_widget.setStyleSheet("background-color: transparent;")
         self.messages_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        self.messages_widget.setMaximumWidth(1080)
         self.messages_widget.setMinimumWidth(0)
 
         self.messages_layout = QVBoxLayout(self.messages_widget)
-        self.messages_layout.setContentsMargins(32, 32, 32, 26)
+        self.messages_layout.setContentsMargins(32, 32, 32, 26)  # overwritten by resizeEvent
         self.messages_layout.setSpacing(20)
         self.messages_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         # Prevent the layout from re-imposing a minimum width on messages_widget
@@ -41880,18 +42047,19 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
             def resizeEvent(self_inner, event):
                 super(_CenterWrap, self_inner).resizeEvent(event)
-                # Pin messages_widget to the full readable column width so that
-                # center_wrap_layout's AlignHCenter centers it correctly even
-                # when child widgets report tiny sizeHints (e.g. during early
-                # streaming, before text fills the bubble).
-                # Without this, messages_widget collapses to its children's
-                # sizeHint on every new conversation and appears off-center.
                 try:
                     avail_w = event.size().width()
-                    target_w = min(avail_w, 1080) if avail_w > 100 else 0
-                    if target_w > 0:
-                        outer_self.messages_widget.setFixedWidth(target_w)
-                    outer_self.messages_layout.activate()
+                    if avail_w > 100:
+                        outer_self.messages_widget.setFixedWidth(avail_w)
+                        _side = max((avail_w - 1080) // 2, 32)
+                        outer_self.messages_layout.setContentsMargins(
+                            _side, 32, _side, 26)
+                    # Use lazy updateGeometry() instead of synchronous activate().
+                    # activate() forces a full O(n) layout pass on every resize pixel
+                    # which stalls the UI noticeably with 50+ messages.
+                    # updateGeometry() marks the layout dirty and lets Qt batch the
+                    # reflow on the next event cycle after the resize settles.
+                    outer_self.messages_widget.updateGeometry()
                 except RuntimeError:
                     pass
 
@@ -41902,11 +42070,10 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         center_wrap_layout = QHBoxLayout(center_wrap)
         center_wrap_layout.setContentsMargins(0, 0, 0, 0)
         center_wrap_layout.setSpacing(0)
-        center_wrap_layout.addWidget(
-            self.messages_widget,
-            0,
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
-        )
+        # stretch=1, NO alignment flag — alignment flags in addWidget() prevent
+        # horizontal expansion even for vertical flags like AlignTop.
+        # Dynamic centering is handled via messages_layout side margins in resizeEvent.
+        center_wrap_layout.addWidget(self.messages_widget, 1)
 
         # Keep a reference so scroll_to_bottom and friends can force a height sync
         self._center_wrap = center_wrap
@@ -42774,6 +42941,17 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
         print("   ✅ Generation stopped, context preserved")
 
+    def send_voice_as_chat_message(self, text: str, call_dialog) -> None:
+        """Inject a voice-recognized utterance into the normal chat pipeline.
+
+        Called from CallDialog._dispatch_to_chat (via QTimer on the main thread).
+        Stores the call dialog so that handle_ai_response can deliver the reply
+        back to it via on_voice_reply() for TTS playback.
+        """
+        self._voice_call_dialog = call_dialog   # stash for handle_ai_response
+        self.user_input.setPlainText(text)
+        self.send_message()
+
     def send_message(self):
         try:
             self._send_message_impl()
@@ -42871,17 +43049,14 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         if is_emergency:
             print(f"\n🚨 NEW EMERGENCY DETECTED: {emergency_type} ({language})")
 
-            # Store emergency context — AI will drive the conversation from here
+            # Store emergency context — confirmed immediately, no confirmation step needed.
+            # Detecting the emergency keyword is treated as intent to get help.
             self._set_pending_emergency(self.current_session_id, {
                 'type': emergency_type,
                 'language': language,
                 'text': user_text,
                 'email_sent': False,
-                # Safety-critical state is tracked explicitly and starts false.
-                # The AI cannot promote this flag; only explicit user confirmation can.
-                'confirmed_help': False,
-                # Kept for the older manual flow. It must obey the same
-                # confirmed_help/email_sent helper as the AI-assisted path.
+                'confirmed_help': True,   # Skip confirmation — keyword = intent to get help
                 'asked_for_location': False,
                 'location': None,
             })
@@ -43326,12 +43501,11 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             # 3. Also activate ts_outer's layout so ThinkingStepsWidget itself is
             #    immediately given the correct height (otherwise its geometry lags
             #    one event-loop iteration behind, keeping the bubble border at 28 px).
-            #    Same applies to maria_thought_card_container when it expands/collapses.
             for i in range(self.messages_layout.count()):
                 item = self.messages_layout.itemAt(i)
                 if item and item.widget():
                     w = item.widget()
-                    if w.objectName() in ("thinking_steps_container", "maria_thought_card_container") and w.layout():
+                    if w.objectName() == "thinking_steps_container" and w.layout():
                         w.layout().activate()
 
             # 4. Resize _center_wrap to match new content height so the scroll
@@ -43371,6 +43545,9 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
                 widget = item.widget()
                 try:
                     if widget.objectName() == "thinking_container":
+                        self.messages_layout.removeWidget(widget)
+                        widget.hide()
+                        widget.setParent(None)
                         widget.deleteLater()
                         break
                 except RuntimeError:
@@ -43749,23 +43926,30 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         banner_layout.addWidget(summary_label)
 
-        # Insert at index 1 in chat_layout:
-        # index 0 = messages_area (stretch), index 1 = input_area
-        # We want banner between them, so insert at index 1 (pushes input down to 2)
-        self.chat_layout.insertWidget(1, banner)
+        # Insert between messages_area (index 0) and active_input_host (index 1)
+        # inside active_chat_layout.  chat_layout only holds chat_mode_stack —
+        # inserting there placed the banner below the input bar and outside the
+        # visible window area.
+        if hasattr(self, 'active_chat_layout'):
+            self.active_chat_layout.insertWidget(1, banner)
         self.show_toast("✅ Summary pinned above input")
 
     def _remove_summary_banner(self):
         """Remove the summary banner from the chat layout if it exists."""
-        if not hasattr(self, 'chat_layout'):
-            return
-        for i in range(self.chat_layout.count()):
-            item = self.chat_layout.itemAt(i)
-            if item and item.widget() and item.widget().objectName() == "summary_banner":
-                w = item.widget()
-                self.chat_layout.removeWidget(w)
-                w.deleteLater()
-                return
+        # Banner is inserted into active_chat_layout (not chat_layout) —
+        # search there first, then fall back to chat_layout for any stale
+        # banners created before this fix.
+        for layout_attr in ('active_chat_layout', 'chat_layout'):
+            layout = getattr(self, layout_attr, None)
+            if not layout:
+                continue
+            for i in range(layout.count()):
+                item = layout.itemAt(i)
+                if item and item.widget() and item.widget().objectName() == "summary_banner":
+                    w = item.widget()
+                    layout.removeWidget(w)
+                    w.deleteLater()
+                    return
 
     # ── In-conversation search ───────────────────────────────────────────────
 
@@ -43899,26 +44083,11 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         if thinking:
             self._remove_thinking_container()
 
-            # ── MariaThoughtCard — the ONLY thinking UI ───────────────────────
-            # The step-by-step pipeline trace (ThinkingStepsWidget) and the
-            # staged plan card (IntentPreviewWidget) have both been removed
-            # per product decision — only the flowing-prose thought card shows
-            # on-screen now. The card is created lazily in
-            # handle_maria_thought("start", …) so it only appears for turns
-            # where _stream_thinking_prose actually runs.
-            self._thought_card = None
-            self._thought_card_outer = None
-
-            # ThinkingStepsWidget is disabled — setting to None makes
-            # handle_thinking_step a silent no-op (its existing guard is
-            # `if hasattr(self, '_ts_widget') and self._ts_widget:`), so all
-            # the worker's thinking_step.emit() calls just fall on the floor.
+            # ThinkingStepsWidget is disabled — handle_thinking_step is a no-op.
             self._ts_collapsed_on_stream = False
             self._ts_widget = None
             self._ts_widget_outer = None
 
-            # No legacy dots animation — MariaThoughtCard shows its own
-            # pulsing header when streaming starts.
             self.thinking_widget = None
 
             # Scroll to show it
@@ -43938,61 +44107,36 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
                 pass
 
     def handle_maria_thought(self, phase: str, text: str, session_id: str) -> None:
-        """Route a worker maria_thought update to the MariaThoughtCard.
+        """Show / remove the three-dot thinking animation.
 
-        Phases:
-          start     → create the card (if not already) and begin pulsing
-          stream    → replace body text with accumulated prose
-          complete  → finalize header ("Thought for X.Xs"), stop pulse
+        start    → create ThinkingAnimation bubble (ChatGPT-style dots)
+        stream   → no-op (no prose card anymore)
+        complete → no-op (dots removed on first token in handle_text_chunk)
         """
         if session_id != self.current_session_id:
             return
 
-        # Lazy-create on first "start" — card lives ABOVE the ThinkingStepsWidget.
-        if phase == "start":
-            if getattr(self, '_thought_card', None) is not None:
-                # Already exists for this turn (shouldn't happen, but be safe) —
-                # just reset it to a fresh start state.
-                try:
-                    self._thought_card.start()
-                except RuntimeError:
-                    self._thought_card = None
-
-            if getattr(self, '_thought_card', None) is None:
-                self._thought_card = MariaThoughtCard()
-                self._thought_card.height_changed.connect(self._sync_thinking_layout)
-
-                outer = QWidget()
-                outer.setObjectName("maria_thought_card_container")
-                outer.setSizePolicy(QSizePolicy.Policy.Expanding,
-                                    QSizePolicy.Policy.Minimum)
-                outer_lay = QHBoxLayout(outer)
-                outer_lay.setContentsMargins(0, 2, 24, 2)
-                outer_lay.setSpacing(0)
-                outer_lay.addWidget(self._thought_card, 1)
-                self._thought_card_outer = outer
-
-                # Append the thought card to messages_layout — there's no
-                # ThinkingStepsWidget below it anymore, so just add to the end.
-                self.messages_layout.addWidget(outer)
-
-                self._thought_card.start()
-                QTimer.singleShot(60, self.scroll_to_bottom)
+        if phase != "start":
             return
 
-        # Stream + complete require the card to already exist.
-        card = getattr(self, '_thought_card', None)
-        if card is None:
-            return
+        # Remove any stale thinking container from a previous turn
+        self._remove_thinking_container()
 
-        try:
-            if phase == "stream":
-                card.stream(text)
-            elif phase == "complete":
-                card.complete(final_text=text)
-        except RuntimeError:
-            # Card was deleted (session swap race) — quietly drop the event.
-            pass
+        # Build container row: left-aligned dots bubble, no avatar gap needed
+        container = QWidget()
+        container.setObjectName("thinking_container")
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(16, 6, 16, 6)
+        row.setSpacing(0)
+
+        dots = ThinkingAnimation(container)
+        self.thinking_widget = dots
+        row.addWidget(dots, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        row.addStretch(1)
+
+        self.messages_layout.addWidget(container)
+        QTimer.singleShot(40, self.scroll_to_bottom)
 
     def handle_search_status(self, label: str, icon: str, session_id: str):
         """Show / update the search-status pill beneath the active live artifact."""
@@ -44036,12 +44180,21 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
     def _clear_search_status(self):
         """Remove the search-status pill when Maria starts responding."""
         if hasattr(self, '_search_status_widget') and self._search_status_widget:
-            self._search_status_widget.stop()
-            self._search_status_widget.deleteLater()
+            try:
+                self._search_status_widget.stop()
+            except RuntimeError:
+                pass  # C++ object already deleted by Qt ownership
+            try:
+                self._search_status_widget.deleteLater()
+            except RuntimeError:
+                pass
             self._search_status_widget = None
 
         if hasattr(self, '_search_status_container') and self._search_status_container:
-            self._search_status_container.deleteLater()
+            try:
+                self._search_status_container.deleteLater()
+            except RuntimeError:
+                pass
             self._search_status_container = None
 
     def draft_email(self):
@@ -44225,7 +44378,7 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
                 ('Good afternoon!', 'Tara, ano bang aasikasuhin natin?'),
                 ('Magandang hapon!', 'May gusto ka bang tapusin today?'),
                 ('Good afternoon!', 'Nandito lang ako, do you need something?'),
-                ('Magandang hapon!', 'Kamusta? Ano gusto mong gawin next?'),
+                ('Magandang hapon!', 'Kamusta? Ano ang maitutulong ko?'),
             ])
             emoji = '☀️'
 
@@ -46865,6 +47018,16 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             self._char_queue.clear()
             self._char_timer_active = False
             self._buf_queued_len = 0
+            # Hide cursor FIRST — prevents the raw-markdown text in the stream
+            # editor from remaining visible while the formatted block widget is
+            # being built.  Both the hide and the addWidget call happen before Qt
+            # repaints (event loop hasn't run yet), so the user sees a clean swap.
+            try:
+                if self._cursor:
+                    self._cursor.clear()
+                    self._cursor.hide()
+            except RuntimeError:
+                pass
             # Flush any open code block
             if self._in_code and self._code_buf.strip():
                 self._render_block_now(('code', self._code_buf, self._code_lang))
@@ -46875,13 +47038,6 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             # Drain the queue
             while self._render_queue:
                 self._render_block_now(self._render_queue.pop(0))
-            # Hide live cursor — all content is now in rendered blocks
-            try:
-                if self._cursor:
-                    self._cursor.clear()
-                    self._cursor.hide()
-            except RuntimeError:
-                pass
 
         def render_final(self, text):
             """
@@ -47318,12 +47474,14 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
     def create_streaming_bubble(self):
         """Create a streaming bubble optimized for smooth token streaming."""
-        # Outer wrapper — same alignment as add_message (assistant = left, full width)
+        # Outer wrapper — VBox identical to _insert_bubble's outer so that meta and
+        # branch rows added post-finalization inherit spacing=0 from this layout
+        # rather than the 20px gap that messages_layout.setSpacing(20) would impose.
         outer = QWidget()
         outer.setObjectName("streaming_bubble_outer")
         outer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        outer_layout = QHBoxLayout(outer)
-        outer_layout.setContentsMargins(0, 0, 24, 0)
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
 
         bubble = QFrame()
@@ -47333,7 +47491,7 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         bubble.setProperty("raw_text", "")
 
         bubble_layout = QVBoxLayout(bubble)
-        bubble_layout.setContentsMargins(4, 10, 4, 4)
+        bubble_layout.setContentsMargins(_CHAT_BUBBLE_PAD_X, _CHAT_BUBBLE_PAD_TOP, _CHAT_BUBBLE_PAD_X, _CHAT_BUBBLE_PAD_BOTTOM)
         bubble_layout.setSpacing(4)
 
         # ── Structured blocks container ───────────────────────────────────────
@@ -47394,6 +47552,7 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
                 margin: 0px;
                 font-family: {_UI_FONT};
                 letter-spacing: {_CHAT_BODY_LETTER_SPACING};
+                word-spacing: {_CHAT_BODY_WORD_SPACING};
             }}
         """)
         text_label.setProperty("raw_text", "")
@@ -47463,7 +47622,9 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         bubble.final_label = text_label
         bubble.text_label = text_label
         bubble.meta_lbl = meta_lbl
-        self._last_meta_lbl = meta_lbl
+        # Reset to None — handle_ai_response inserts an external meta row below
+        # the streaming outer after finalization, matching the session-reload layout.
+        self._last_meta_lbl = None
 
         # ── Attach structured streaming renderer ──────────────────────────────
         # Feeds on tokens from handle_text_chunk, renders completed blocks into
@@ -47475,7 +47636,16 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         bubble.setMinimumWidth(0)
         bubble.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
 
-        outer_layout.addWidget(bubble, 1)
+        # Intermediate HBox matches _insert_bubble's bubble_row so that
+        # handle_ai_response can addWidget() meta/branch into the outer VBox
+        # and see spacing=0 instead of messages_layout's spacing=20.
+        bubble_row_w = QWidget(self.messages_widget)
+        bubble_row_w.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        bubble_row_lay = QHBoxLayout(bubble_row_w)
+        bubble_row_lay.setContentsMargins(0, 0, 0, 0)
+        bubble_row_lay.setSpacing(0)
+        bubble_row_lay.addWidget(bubble, 1)
+        outer_layout.addWidget(bubble_row_w)
         self.messages_layout.addWidget(outer)
 
         # Apply width constraints AFTER the bubble is in the layout — mirrors
@@ -47542,6 +47712,8 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             self._stream_start_times = {}
         if message_id not in self._stream_start_times:
             self._stream_start_times[message_id] = time.monotonic()
+            # First token — remove the three-dot thinking animation
+            self._remove_thinking_container()
 
         bubble = self.findChild(QFrame, "streaming_bubble")
         if not bubble:
@@ -48206,15 +48378,12 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
     # ── Public add-message API ────────────────────────────────────────────────
 
     def add_message(self, sender, content, msg_type, persist=True, from_history=False, image_path=None):
-        """Add a message bubble with welcome-screen clearing and persistence."""
-        # Clear the welcome placeholder on first real message
-        if self.messages_layout.itemAt(0) and self.messages_layout.itemAt(0).widget():
-            widget = self.messages_layout.itemAt(0).widget()
-            if isinstance(widget, QFrame) and widget.layout() and widget.layout().itemAt(0):
-                welcome_widget = widget.layout().itemAt(0).widget()
-                if isinstance(welcome_widget, QLabel) and any(g in welcome_widget.text() for g in ("Good Morning", "Good Afternoon", "Good Evening", "Good Night")):
-                    self.clear_messages()
+        """Add a message bubble with welcome-screen clearing and persistence.
 
+        Used exclusively by the emergency AI path.  The welcome screen is managed
+        by chat_mode_stack (_set_chat_visual_state), not by items in messages_layout,
+        so no explicit clearing is needed here.
+        """
         self._insert_bubble(sender, content, image_path)
 
         if persist and not from_history and self.current_session_id:
@@ -48246,10 +48415,16 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         """Find saved feedback for a message during history load."""
         if msg_type != 'assistant':
             return None
-        # Fast path: use the pre-built dict set by load_session (O(1) vs O(n) scan)
+        # Fast path: use the pre-built dict set by load_session (O(1) vs O(n) scan).
+        # Cache is keyed by (load_index, content) to avoid collisions when two
+        # different assistant messages have identical text.
         cache = getattr(self, '_hist_fb_cache', None)
         if cache is not None:
-            return cache.get(content)
+            idx_map = getattr(self, '_hist_msg_indices', {})
+            idx = idx_map.get(content)
+            if idx is not None:
+                return cache.get((idx, content))
+            # content not in index map — fall through to slow scan
         try:
             session = next((s for s in self.chat_sessions if s['id'] == self.current_session_id), None)
             if not session:
@@ -48265,10 +48440,14 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         """Find saved generation metadata for an assistant message during history load."""
         if msg_type != 'assistant':
             return ''
-        # Fast path: use the pre-built dict set by load_session (O(1) vs O(n) scan)
+        # Fast path: use the pre-built dict set by load_session (O(1) vs O(n) scan).
+        # Same (index, content) key as _hist_fb_cache to avoid collisions on identical responses.
         cache = getattr(self, '_hist_meta_cache', None)
         if cache is not None:
-            return cache.get(content, '')
+            idx_map = getattr(self, '_hist_msg_indices', {})
+            idx = idx_map.get(content)
+            if idx is not None:
+                return cache.get((idx, content), '')
         try:
             session = next((s for s in self.chat_sessions if s['id'] == self.current_session_id), None)
             if not session:
@@ -48361,56 +48540,9 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             return False
 
     def _insert_thinking_widget_from_history(self, steps_data: list,
-                                             preview_data: dict = None,
-                                             thought_data: dict = None) -> None:
-        """Rebuild the MariaThoughtCard from persisted data.
-
-        The step-by-step ThinkingStepsWidget and staged IntentPreviewWidget
-        are no longer rendered — only the flowing-prose MariaThoughtCard.
-        Old messages saved with thinking_steps / intent_preview payloads
-        still load cleanly; those fields are just ignored on restore.
-
-        Args:
-          steps_data   : IGNORED — kept in the signature for call-site compat.
-          preview_data : IGNORED — kept in the signature for call-site compat.
-          thought_data : {text, elapsed} dict from MariaThoughtCard.get_thought_data();
-                         when provided, a restored thought card is inserted
-                         above the corresponding assistant message.
-        """
-        # Only MariaThoughtCard is restored — everything else is dead UI.
-        if not (thought_data and isinstance(thought_data, dict) and thought_data.get("text")):
-            return
-
-        try:
-            thought_card = MariaThoughtCard(self.messages_widget)
-            thought_card.height_changed.connect(self._sync_thinking_layout)
-            thought_card.set_text_directly(thought_data["text"])
-            # Freeze the header to the completed state using the persisted
-            # elapsed time (no live timer on a restored card).
-            _secs = float(thought_data.get("elapsed") or 0.0)
-            thought_card._final_secs = _secs
-            thought_card._pulse_timer.stop()
-            thought_card._time_timer.stop()
-            # Manually set the "Thought for X.Xs" header since we bypassed
-            # the normal start()→complete() lifecycle.
-            thought_card._hdr_lbl.setText(
-                f'<span style="color:#8E8E93;">Thought for&nbsp;</span>'
-                f'<span style="color:#3C3C43;font-weight:600;">{_secs:.1f}s</span>'
-            )
-            eff = thought_card._hdr_lbl.graphicsEffect()
-            if isinstance(eff, QGraphicsOpacityEffect):
-                eff.setOpacity(1.0)
-
-            _t_outer = QWidget(self.messages_widget)
-            _t_outer.setObjectName("maria_thought_card_container")
-            _t_outer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-            _t_outer_lay = QHBoxLayout(_t_outer)
-            _t_outer_lay.setContentsMargins(0, 2, 24, 2)
-            _t_outer_lay.setSpacing(0)
-            _t_outer_lay.addWidget(thought_card, 1)
-            self.messages_layout.addWidget(_t_outer)
-        except Exception as _thought_err:
-            print(f"   ⚠️ Could not restore maria_thought: {_thought_err}")
+                                             preview_data: dict = None) -> None:
+        """No-op — ThinkingStepsWidget and thought cards are no longer restored from history."""
+        return
 
     def finalize_session_load(self):
         """Finalize session loading — one clean paint pass, no processEvents."""
@@ -48472,11 +48604,19 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         the fully-settled widget tree, then fix_bubble_cutoff only touches the
         visible subset.  Reversed order would dirty geometry on all bubbles and
         then re-traverse them all in activate().
+
+        Scroll is deferred 30 ms so any remaining QTimer.singleShot(0) geometry
+        callbacks (e.g. label adjustSize) complete before scroll_to_bottom reads
+        sizeHint().  Without the delay, _center_wrap is pinned to a stale height
+        and the scrollbar maximum is wrong, causing the chat to open mid-session
+        instead of at the last message.
         """
         try:
             self._sync_center_wrap_height()
             self.fix_bubble_cutoff()
-            self._schedule_scroll_to_bottom(0)
+            # 30 ms gives the event loop one full paint cycle plus a safety margin
+            # for any pending 0 ms geometry timers to fire before we read sizeHint.
+            self._schedule_scroll_to_bottom(30)
         except RuntimeError:
             pass
 
@@ -48565,131 +48705,6 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         sb = self.messages_area.verticalScrollBar() if hasattr(self, 'messages_area') else None
         if sb and (sb.maximum() - sb.value()) < 60:
             QTimer.singleShot(0, lambda: sb.setValue(sb.maximum()))
-
-    def _render_text_block(self, block, parent_layout, msg_type):
-        """FIXED: Text block rendering with proper markdown"""
-        block_type, text = block if len(block) >= 2 else ("paragraph", str(block))
-
-        formatted_text = apply_inline_formatting(text)
-
-        # Set text color based on sender
-        text_color = THEME['user_text'] if msg_type == 'user' else THEME['assistant_text']
-
-        # Create label
-        content_label = QLabel()
-        content_label.setWordWrap(True)
-        content_label.setTextFormat(Qt.TextFormat.RichText)
-        content_label.setText(formatted_text)
-        content_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        content_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-
-        # Enable OpenExternalLinks for clickable URLs
-        content_label.setOpenExternalLinks(True)
-
-        # 🔥 FIX: Better styling for markdown elements
-        content_label.setStyleSheet(f"""
-            QLabel {{
-                color: {text_color};
-                font-size: {_CHAT_BODY_FONT_PX}px;
-                line-height: {_CHAT_BODY_LINE_HEIGHT};
-                background-color: transparent;
-                padding: 0px;
-                margin: 0px;
-                font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            }}
-            QLabel strong {{
-                font-weight: 600;
-                color: {text_color};
-            }}
-            QLabel em {{
-                font-style: italic;
-                color: {text_color};
-            }}
-            QLabel code {{
-                background-color: rgba(17, 24, 39, 0.065);
-                padding: 2px 6px;
-                border-radius: 7px;
-                font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
-                font-size: 12px;
-                font-weight: 500;
-                color: #2f3640;
-                border: 1px solid rgba(17, 24, 39, 0.12);
-            }}
-            QLabel pre {{
-                background-color: #f6f8fa;
-                padding: 12px;
-                border-radius: 6px;
-                font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
-                font-size: 12px;
-                border: 1px solid #e1e4e8;
-                margin: 8px 0px;
-                white-space: pre-wrap;
-            }}
-            QLabel a {{
-                color: #0066cc;
-                text-decoration: none;
-            }}
-            QLabel a:hover {{
-                text-decoration: underline;
-            }}
-            QLabel ul {{
-                margin-left: 20px;
-                padding-left: 0px;
-            }}
-            QLabel li {{
-                margin: 4px 0px;
-            }}
-        """)
-
-        parent_layout.addWidget(content_label)
-
-    def _render_heading_block(self, block, parent_layout):
-        if len(block) >= 3:
-            text = block[1]
-            level = block[2]
-        else:
-            text = block[1] if len(block) > 1 else ""
-            level = 2
-
-        # Set font size based on heading level
-        font_sizes = {1: _CHAT_HEADING_1_PX, 2: _CHAT_HEADING_2_PX, 3: _CHAT_HEADING_3_PX}
-        font_size = font_sizes.get(level, 15)
-
-        heading_label = QLabel(text)
-        heading_label.setWordWrap(True)
-        heading_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        heading_label.setStyleSheet(f"""
-            QLabel {{
-                color: {THEME['text_primary']};
-                font-size: {font_size}px;
-                font-weight: 600;
-                background-color: transparent;
-                padding: 6px 0px 3px 0px;
-                font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-            }}
-        """)
-
-        parent_layout.addWidget(heading_label)
-
-    def _render_code_block(self, block, parent_layout):
-        """Render code block with messenger style"""
-        if len(block) >= 3:
-            code = block[1]
-            language = block[2]
-        else:
-            code = block[1] if len(block) > 1 else ""
-            language = "generic"
-
-        # Detect language if not provided
-        if language in ["", "text"]:
-            language = detect_code_language(code)
-
-        code_widget = CodeBlockWidget(code, language, self)
-
-        # Make the widget expand to fill available width
-        code_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-
-        parent_layout.addWidget(code_widget)
 
     def setup_scroll_to_bottom_button(self):
         """
@@ -48857,192 +48872,6 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
     def update_message_bubbles_width(self):
         """Legacy — delegates to _reflow_all_bubbles."""
         self._reflow_all_bubbles()
-
-    # In your MessageBubble class or similar:
-    def create_assistant_bubble(self, text: str, message_id: int):
-        bubble = QLabel()
-        bubble.setTextFormat(Qt.TextFormat.RichText)
-        bubble.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse |
-            Qt.TextInteractionFlag.LinksAccessibleByMouse
-        )
-        bubble.setWordWrap(True)
-        bubble.setOpenExternalLinks(True)
-
-        # IMPORTANT: Allow expansion
-        bubble.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred
-        )
-
-        # Use the improved rendering
-        html_text = render_text_for_bubble(text)
-        bubble.setText(html_text)
-
-        # Set maximum width but allow height to expand
-        bubble.setMaximumWidth(800)  # Reasonable max width
-        bubble.setMinimumWidth(0)
-
-        return bubble
-
-    def ensure_proper_layout(self):
-        """Invalidate layout geometry so Qt recalculates on its next paint cycle."""
-        self.messages_widget.updateGeometry()
-        for i in range(self.messages_layout.count()):
-            item = self.messages_layout.itemAt(i)
-            if item and item.widget():
-                item.widget().updateGeometry()
-        # Emit rangeChanged so scrollbar recalibrates after geometry settles
-        QTimer.singleShot(0, lambda: (
-            self.messages_area.verticalScrollBar().rangeChanged.emit(
-                self.messages_area.verticalScrollBar().minimum(),
-                self.messages_area.verticalScrollBar().maximum(),
-            ) if hasattr(self, 'messages_area') else None
-        ))
-
-
-    def _render_bullet_list(self, block, parent_layout):
-        """Render bullet list with messenger style"""
-        items_text = block[1]
-        items = items_text.split('\n') if '\n' in items_text else [items_text]
-
-        list_frame = QFrame()
-        list_layout = QVBoxLayout(list_frame)
-        list_layout.setContentsMargins(8, 2, 8, 2)
-        list_layout.setSpacing(1)
-
-        for item in items:
-            if item.strip():
-                item_widget = QLabel(f"• {item.strip()}")
-                item_widget.setWordWrap(True)
-                item_widget.setStyleSheet(f"""
-                    QLabel {{
-                        color: {THEME['assistant_text']};
-                        font-size: {_CHAT_BODY_FONT_PX}px;
-                        background-color: transparent;
-                        padding: 0px;
-                        font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-                    }}
-                """)
-                list_layout.addWidget(item_widget)
-
-        parent_layout.addWidget(list_frame)
-
-    def _render_numbered_list(self, block, parent_layout):
-        """Render numbered list with messenger style"""
-        items_text = block[1]
-        items = items_text.split('\n') if '\n' in items_text else [items_text]
-
-        list_frame = QFrame()
-        list_layout = QVBoxLayout(list_frame)
-        list_layout.setContentsMargins(8, 2, 8, 2)
-        list_layout.setSpacing(1)
-
-        for i, item in enumerate(items, 1):
-            if item.strip():
-                item_widget = QLabel(f"{i}. {item.strip()}")
-                item_widget.setWordWrap(True)
-                item_widget.setStyleSheet(f"""
-                    QLabel {{
-                        color: {THEME['assistant_text']};
-                        font-size: {_CHAT_BODY_FONT_PX}px;
-                        background-color: transparent;
-                        padding: 0px;
-                        font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-                    }}
-                """)
-                list_layout.addWidget(item_widget)
-
-        parent_layout.addWidget(list_frame)
-
-    def _render_checklist(self, block, parent_layout):
-        """Render checklist with checkboxes"""
-        items_text = block[1]
-        items = items_text.split('\n') if '\n' in items_text else [items_text]
-
-        list_frame = QFrame()
-        list_layout = QVBoxLayout(list_frame)
-        list_layout.setContentsMargins(12, 8, 12, 8)
-        list_layout.setSpacing(4)
-
-        for item in items:
-            if ':' in item:
-                checked_str, task_text = item.split(':', 1)
-                checked = checked_str.strip().lower() == 'true'
-
-                item_frame = QFrame()
-                item_layout = QHBoxLayout(item_frame)
-                item_layout.setContentsMargins(0, 0, 0, 0)
-
-                checkbox = QLabel("☑" if checked else "☐")
-                checkbox.setStyleSheet(f"color: {THEME['text_secondary']}; font-size: 14px;")
-                checkbox.setFixedWidth(20)
-
-                task_label = QLabel(task_text.strip())
-                task_label.setWordWrap(True)
-                task_label.setStyleSheet(f"""
-                    color: {THEME['text_primary']};
-                    font-size: 13px;
-                    background-color: transparent;
-                    text-decoration: {'line-through' if checked else 'none'};
-                    font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-                """)
-
-                item_layout.addWidget(checkbox)
-                item_layout.addWidget(task_label)
-                item_layout.addStretch()
-
-                list_layout.addWidget(item_frame)
-
-        parent_layout.addWidget(list_frame)
-
-    def _render_blockquote(self, block, parent_layout):
-        """Render blockquote"""
-        quote_text = block[1]
-
-        quote_frame = QFrame()
-        quote_frame.setStyleSheet(f"""
-            QFrame {{
-                background-color: {THEME['bg_secondary']};
-                border-left: 4px solid {THEME['border_medium']};
-                margin: 4px 0px;
-            }}
-        """)
-
-        quote_layout = QVBoxLayout(quote_frame)
-        quote_layout.setContentsMargins(12, 8, 12, 8)
-
-        quote_label = QLabel(quote_text)
-        quote_label.setWordWrap(True)
-        quote_label.setStyleSheet(f"""
-            color: {THEME['text_secondary']};
-            font-size: 13px;
-            font-style: italic;
-            background-color: transparent;
-            font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-        """)
-
-        quote_layout.addWidget(quote_label)
-        parent_layout.addWidget(quote_frame)
-
-    def _render_divider(self, block, parent_layout):
-        """Render horizontal divider"""
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setFrameShadow(QFrame.Shadow.Plain)
-        divider.setLineWidth(1)
-        divider.setMidLineWidth(0)
-        divider.setStyleSheet(f"""
-            QFrame {{
-                color: {THEME['border_light']};
-                background-color: {THEME['border_light']};
-                min-height: 1px;
-                max-height: 1px;
-                margin: 8px 12px;
-            }}
-        """)
-        divider.setFixedHeight(1)
-        parent_layout.addWidget(divider)
 
     def _parse_message_datetime(self, msg: dict) -> datetime | None:
         """Best-effort parse of a persisted message timestamp."""
@@ -49216,41 +49045,66 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         if text_label:
             text_label.setProperty("raw_text", final_text)
 
+        # Prose-only messages and code-block messages finalize differently:
+        # - Code blocks: keep the multi-widget structure (CodeBlockWidget) because
+        #   the reload path (_insert_unified_code_bubble) also produces CodeBlockWidget.
+        # - Prose-only: the reload path (ModernMessageBubble) renders ONE QLabel via
+        #   apply_inline_formatting. We MUST switch to the same structure so the live
+        #   finalized state is pixel-identical to the reload state.
+        _has_code = '```' in final_text
         _renderer = getattr(bubble, '_renderer', None)
+
         if _renderer:
             try:
-                if used_final_response:
-                    # Post-processing changed the text — tear down streamed blocks
-                    # and rebuild from the authoritative final text.
-                    _renderer.render_final(final_text)
+                if _has_code:
+                    if used_final_response:
+                        _renderer.render_final(final_text)
+                    else:
+                        _renderer.flush()
                 else:
-                    # Text is identical to what was streamed — the blocks are
-                    # already rendered correctly. Just stop the animation and
-                    # drain any characters still in the typing queue in-place.
-                    # This avoids an O(N) delete-then-rebuild of all rendered widgets.
-                    _renderer.flush()
+                    # Prose-only — stop the renderer immediately.
+                    # Don't waste time building block widgets we are about to discard.
+                    _renderer.clear()
             except RuntimeError:
                 pass
-            if stream_editor:
-                try:
-                    stream_editor.setMaximumHeight(0)
-                    stream_editor.setFixedHeight(0)
-                    stream_editor.hide()
-                    stream_editor.deleteLater()
-                except RuntimeError:
-                    pass
-        else:
-            if text_label:
-                text_label.setText(apply_inline_formatting(final_text))
-                text_label.show()
-            if stream_editor:
-                try:
-                    stream_editor.setMaximumHeight(0)
-                    stream_editor.setFixedHeight(0)
-                    stream_editor.hide()
-                    stream_editor.deleteLater()
-                except RuntimeError:
-                    pass
+
+        # Always hide the stream_editor; it is only for the live typing animation.
+        if stream_editor:
+            try:
+                stream_editor.setMaximumHeight(0)
+                stream_editor.setFixedHeight(0)
+                stream_editor.hide()
+                stream_editor.deleteLater()
+            except RuntimeError:
+                pass
+
+        # ── Prose-only: canonical single-label finalization ────────────────────
+        # Replace the multi-block blocks_container (5 px layout gap per paragraph)
+        # with the single BubbleRichTextLabel used by ModernMessageBubble on reload
+        # (10 px HTML spacer per paragraph). After this switch, live finalized state
+        # and session-reloaded state use the SAME widget: text_label with the SAME
+        # apply_inline_formatting HTML — so they are visually identical.
+        if not _has_code and text_label:
+            try:
+                _bc = bubble.findChild(QWidget, "blocks_container")
+                if _bc:
+                    _bc_lay = _bc.layout()
+                    if _bc_lay:
+                        while _bc_lay.count():
+                            _item = _bc_lay.takeAt(0)
+                            _w = _item.widget() if _item else None
+                            if _w:
+                                _w.deleteLater()
+                    _bc.setMaximumHeight(0)
+                    _bc.hide()
+            except RuntimeError:
+                pass
+            text_label.setText(apply_inline_formatting(final_text))
+            text_label.show()
+        elif not _renderer and text_label:
+            # Fallback: no renderer was attached — just show text_label
+            text_label.setText(apply_inline_formatting(final_text))
+            text_label.show()
 
         typing = bubble.findChild(QLabel, "typing_indicator")
         if typing:
@@ -49352,22 +49206,82 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
                 response_text = final_text
 
-                # ── Compute and display generation metadata ───────────────────
+                # ── Compute generation metadata ───────────────────────────────
+                # Prefer Ollama's exact counts (stashed by _handle_generation_meta)
+                # over the length-based estimate.
                 try:
-                    _t0 = getattr(self, '_stream_start_times', {}).pop(message_id, None)
-                    _elapsed = (time.monotonic() - _t0) if _t0 else 0.0
-                    _tok = max(len(response_text) // 4, 1)
-                    _tps = _tok / _elapsed if _elapsed > 0.5 else 0.0
+                    _stashed = getattr(self, '_pending_gen_meta', {}).pop(message_id, None)
+                    if _stashed:
+                        _elapsed, _tok, _tps = _stashed
+                    else:
+                        _t0 = getattr(self, '_stream_start_times', {}).pop(message_id, None)
+                        _elapsed = (time.monotonic() - _t0) if _t0 else 0.0
+                        _tok = max(len(response_text) // 4, 1)
+                        _tps = _tok / _elapsed if _elapsed > 0.5 else 0.0
                     _meta_parts = [f"Maria  •  {_elapsed:.1f}s", f"{_tok:,} tokens"]
                     if _tps >= 1:
                         _meta_parts.append(f"{_tps:.1f} tok/s")
                     self._last_response_meta = "  •  ".join(_meta_parts)
-                    _mlbl = getattr(self, '_last_meta_lbl', None)
-                    if _mlbl:
-                        _mlbl.setText(self._last_response_meta)
-                        _mlbl.show()
                 except Exception:
                     self._last_response_meta = ""
+
+                # ── Append meta + branch rows into the outer VBox (spacing=0) ────
+                # _message_outer uses QVBoxLayout(spacing=0) created in
+                # create_streaming_bubble, so rows are tight — no 20px gap from
+                # messages_layout.setSpacing(20) that the old insertWidget approach
+                # caused.  This matches _insert_bubble's structure exactly.
+                try:
+                    if _message_outer:
+                        _outer_lay = _message_outer.layout()
+                        if _outer_lay is not None:
+                            # Meta row
+                            _meta_str = getattr(self, '_last_response_meta', '')
+                            _ext_meta_lbl = QLabel(_meta_str)
+                            _ext_meta_lbl.setStyleSheet(f"""
+                                color: {THEME['text_tertiary']};
+                                font-size: 10px;
+                                font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+                                background: transparent;
+                                padding: 0px 6px;
+                                letter-spacing: 0.2px;
+                            """)
+                            _ext_meta_row = QWidget()
+                            _ext_meta_lay = QHBoxLayout(_ext_meta_row)
+                            _ext_meta_lay.setContentsMargins(0, 0, 0, 0)
+                            _ext_meta_lay.setSpacing(0)
+                            _ext_meta_lay.addSpacing(4)
+                            _ext_meta_lay.addWidget(_ext_meta_lbl)
+                            _ext_meta_lay.addStretch()
+                            _outer_lay.addWidget(_ext_meta_row)
+                            self._last_meta_lbl = _ext_meta_lbl
+                            # Branch button row
+                            _sid_cap  = session_id
+                            _cont_cap = final_text
+                            _ext_branch_btn = QPushButton("⑂ Branch")
+                            _ext_branch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                            _ext_branch_btn.setFixedHeight(18)
+                            _ext_branch_btn.setStyleSheet("""
+                                QPushButton {
+                                    background: transparent; border: none;
+                                    font-size: 10px; color: #BBBBBB;
+                                    font-family: 'Segoe UI', sans-serif;
+                                    padding: 0 2px;
+                                }
+                                QPushButton:hover { color: #666666; }
+                            """)
+                            _ext_branch_btn.clicked.connect(
+                                lambda _=False, s=_sid_cap, c=_cont_cap:
+                                    self._branch_from_message(s, c, 'assistant'))
+                            _ext_branch_row = QWidget()
+                            _ext_branch_lay = QHBoxLayout(_ext_branch_row)
+                            _ext_branch_lay.setContentsMargins(0, 0, 0, 2)
+                            _ext_branch_lay.setSpacing(0)
+                            _ext_branch_lay.addSpacing(4)
+                            _ext_branch_lay.addWidget(_ext_branch_btn)
+                            _ext_branch_lay.addStretch()
+                            _outer_lay.addWidget(_ext_branch_row)
+                except Exception as _ext_err:
+                    print(f"   ⚠️ Could not insert meta/branch rows: {_ext_err}")
 
                 # ── Math function plot (injected inline after the bubble) ─────
                 try:
@@ -49437,18 +49351,29 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
             if getattr(self, '_voice_mode', False) and response_text:
                 QTimer.singleShot(200, lambda t=response_text: self._speak_response(t))
 
+            # ── Voice call integration: deliver reply to CallDialog for TTS ──
+            _vcd = getattr(self, '_voice_call_dialog', None)
+            if _vcd is not None and response_text:
+                self._voice_call_dialog = None
+                if _vcd.is_active:
+                    QTimer.singleShot(200, lambda t=response_text, d=_vcd: d.on_voice_reply(t))
+
             self.current_session_history.append({
                 "role": "assistant",
                 "content": response_text
             })
         else:
             print(f"   📋 Response saved but not displayed (different tab)")
-            # Clean up timer entry and compute meta for background sessions
+            # Clean up stashed timing/token entries for this background response
             _t0_bg = getattr(self, '_stream_start_times', {}).pop(message_id, None)
+            _stashed_bg = getattr(self, '_pending_gen_meta', {}).pop(message_id, None)
             try:
-                _elapsed_bg = (time.monotonic() - _t0_bg) if _t0_bg else 0.0
-                _tok_bg = max(len(response_text) // 4, 1)
-                _tps_bg = _tok_bg / _elapsed_bg if _elapsed_bg > 0.5 else 0.0
+                if _stashed_bg:
+                    _elapsed_bg, _tok_bg, _tps_bg = _stashed_bg
+                else:
+                    _elapsed_bg = (time.monotonic() - _t0_bg) if _t0_bg else 0.0
+                    _tok_bg = max(len(response_text) // 4, 1)
+                    _tps_bg = _tok_bg / _elapsed_bg if _elapsed_bg > 0.5 else 0.0
                 _meta_parts_bg = [f"Maria  •  {_elapsed_bg:.1f}s", f"{_tok_bg:,} tokens"]
                 if _tps_bg >= 1:
                     _meta_parts_bg.append(f"{_tps_bg:.1f} tok/s")
@@ -49647,29 +49572,15 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
         # that switching sessions and reloading the app both show the widget.
         try:
             ts = getattr(self, '_ts_widget', None)
-            thought_card = getattr(self, '_thought_card', None)
             steps_data = ts.get_steps_data() if ts else None
-            thought_data = None
-            if thought_card is not None:
-                try:
-                    _td = thought_card.get_thought_data()
-                    # Only persist if the thought has real content — an empty
-                    # or stub card shouldn't rehydrate into an empty block.
-                    if _td and _td.get("text") and len(_td["text"]) > 20:
-                        thought_data = _td
-                except RuntimeError:
-                    pass
-            if steps_data or thought_data:
+            if steps_data:
                 sess = next(
                     (s for s in self.chat_sessions if s['id'] == session_id), None
                 )
                 if sess:
                     for msg in reversed(sess.get('messages', [])):
                         if msg.get('type') == 'assistant':
-                            if steps_data:
-                                msg['thinking_steps'] = steps_data
-                            if thought_data:
-                                msg['maria_thought'] = thought_data
+                            msg['thinking_steps'] = steps_data
                             break
                     save_json(SESSION_FILE, self.chat_sessions)
         except Exception:
@@ -49687,23 +49598,18 @@ IMPORTANT: Never say "Detected: FIRE" or "Type OO or HINDI" like a robot. Be Mar
 
     def _handle_generation_meta(self, message_id: int, session_id: str,
                                 elapsed: float, tokens: int, tps: float):
-        """Show generation stats below the completed response bubble."""
+        """Stash Ollama's accurate generation stats for handle_ai_response to consume.
+
+        The external meta row is created by handle_ai_response (which runs after this
+        signal), so we can't display the label yet — just stash the values keyed by
+        message_id so handle_ai_response picks them up instead of estimating tokens
+        from response length.
+        """
         if session_id != self.current_session_id:
             return
-        meta_lbl = getattr(self, '_last_meta_lbl', None)
-        if meta_lbl is None:
-            return
-        try:
-            elapsed_str = f"{elapsed:.1f}s"
-            tps_str     = f"{tps:.1f} tok/s" if tps >= 1 else ""
-            tok_str     = f"{tokens:,} tokens" if tokens else ""
-            parts = ["Maria", elapsed_str]
-            if tok_str:  parts.append(tok_str)
-            if tps_str:  parts.append(tps_str)
-            meta_lbl.setText("  •  ".join(parts))
-            meta_lbl.show()
-        except RuntimeError:
-            pass  # widget already deleted
+        if not hasattr(self, '_pending_gen_meta'):
+            self._pending_gen_meta = {}
+        self._pending_gen_meta[message_id] = (elapsed, tokens, tps)
 
     def _maybe_update_project_memory(self, session_id: str):
         """After a response completes, check if the session belongs to a project
