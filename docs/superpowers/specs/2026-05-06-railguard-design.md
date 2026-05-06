@@ -43,7 +43,7 @@ _run_impl_inner():
 
 **Expanded English patterns to add:**
 - `get naked for me` / `strip for me`
-- `touch yourself` (directed at Maria)
+- `touch yourself for me` (scoped to avoid false positives like "try it yourself")
 - `be my sex slave` / `be my slave`
 - `rape me` / `rape you`
 
@@ -84,7 +84,7 @@ Filipino/Taglish:
 
 ### Crisis block injection (conditional, ~line 17393)
 
-When `_inject_crisis = True`, append to `system_prompt` before the LLM call:
+When `_inject_crisis = True`, append to `system_prompt` at the **very end of the system prompt build**, after all other injections (ATC, corrections, length rules, etc.), right before the LLM call:
 
 ```
 CRISIS CONTEXT (this turn only):
@@ -127,10 +127,11 @@ Add two rules to Maria's base system prompt, right after the existing core rules
 
 1. Expand `_INAPPROPRIATE_RE` with new English + Filipino patterns (~line 1878)
 2. Add `_SELF_HARM_RE` pattern below `_INAPPROPRIATE_RE` (~line 1895)
-3. Add soft-detect check in `_run_impl_inner` right after Layer 1 hard-stop block (~line 15268)
-4. Add crisis block injection to system prompt build when `_inject_crisis = True` (~line 17393)
-5. Add jailbreak + violence rules to base system prompt (~line 17406)
-6. Run `python -c "import ast; ast.parse(open(..., encoding='utf-8').read())"` after all changes
+3. Initialize `_inject_crisis = False` at the top of `_run_impl_inner`, alongside other local flags
+4. Add soft-detect check in `_run_impl_inner` right after Layer 1 hard-stop block (~line 15268)
+5. Add crisis block injection at the very end of the system prompt build (~line 17393)
+6. Add jailbreak + violence rules to base system prompt (~line 17406)
+7. Run `python -c "import ast; ast.parse(open('Project_Maria/Maria_App_original.py', encoding='utf-8').read())"` after all changes
 
 ---
 
