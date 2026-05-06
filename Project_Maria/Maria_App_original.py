@@ -1900,6 +1900,31 @@ _INAPPROPRIATE_RE = re.compile(
     r')',
     re.I,
 )
+# Self-harm / distress signals — soft detection only (sets a flag, does NOT hard-stop).
+# Scoped to explicit method requests and clear ideation phrases; casual idioms
+# like "I could die laughing" do not match.
+_SELF_HARM_RE = re.compile(
+    r'\b('
+    r'want\s+to\s+die\b'
+    r'|want\s+to\s+kill\s+myself\b'
+    r'|want\s+to\s+hurt\s+myself\b'
+    r'|want\s+to\s+end\s+it\s+all\b'
+    r'|kill\s+myself\b'
+    r'|end\s+my\s+life\b'
+    r'|how\s+(do\s+i|to|can\s+i)\s+(kill|hurt|harm)\s+myself\b'
+    r'|help\s+me\s+(kill|hurt|harm)\s+myself\b'
+    r'|no\s+reason\s+to\s+live\b'
+    r'|tired\s+of\s+living\b'
+    r'|methods?\s+of\s+suicide\b'
+    r'|how\s+to\s+commit\s+suicide\b'
+    r'|commit\s+suicide\b'
+    r'|gusto\s+ko\s+nang?\s+mamatay\b'
+    r'|ayaw\s+ko\s+na\s+mabuhay\b'
+    r'|wala\s+na\s+akong\s+pagasa\b'
+    r'|pagod\s+na\s+ako\s+sa\s+buhay\b'
+    r')',
+    re.I,
+)
 # ── Module-level compiled patterns for detect_language ────────────────────────
 _RE_WORDS          = re.compile(r"[a-z\']+")
 # ── Module-level compiled patterns for WebRAG cache key / query rewrite ────────
