@@ -15298,6 +15298,14 @@ class UltraIntelligentWorker(QThread):
             self.finished_processing.emit(self.message_id, self.session_id)
             return
 
+        # ── Self-harm soft detection ──────────────────────────────────────────
+        # Does NOT short-circuit. Sets a flag so the system prompt can inject
+        # crisis resources for this turn — Maria then responds naturally.
+        _inject_crisis = False
+        if self.user_text and _SELF_HARM_RE.search(self.user_text):
+            _inject_crisis = True
+            print("   🆘 Self-harm signal detected — crisis resources will be injected.")
+
         # ── File handler: image (vision) or PDF ───────────────────────────────
         if self.image_path and os.path.exists(self.image_path):
             ext = os.path.splitext(self.image_path)[1].lower()
