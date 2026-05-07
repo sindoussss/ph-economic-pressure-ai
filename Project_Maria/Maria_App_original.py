@@ -47,7 +47,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QDialog, QInputDialog, QMessageBox, QFileDialog, QColorDialog, QMenu, QSizePolicy,
                              QGraphicsDropShadowEffect, QProgressBar, QGridLayout, QLineEdit,
                              QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QToolButton, QTreeWidget, QTreeWidgetItem,
-                             QTabWidget, QStackedWidget, QPlainTextEdit, QSlider)
+                             QTabWidget, QStackedWidget, QPlainTextEdit, QSlider, QTextBrowser)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot, pyqtProperty, QTimer, QPropertyAnimation, QEasingCurve, QRect, QRectF, QSize, QEvent, \
     QPoint, QSequentialAnimationGroup, QParallelAnimationGroup, QPointF, QObject
 from PyQt6.QtGui import (QFont, QFontDatabase, QPalette, QColor, QTextCursor, QTextCharFormat,
