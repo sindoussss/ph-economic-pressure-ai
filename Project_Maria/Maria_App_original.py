@@ -25990,7 +25990,6 @@ class CodeButton(_IconButtonBase):
     """Shield icon for Bantay (disaster companion) panel."""
 
     def _draw(self, p, w, h):
-        from PyQt6.QtGui import QPainterPath
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         self._paint_bg(p, w, h)
@@ -35496,11 +35495,10 @@ class MariaPyQt(QMainWindow):
             p.drawEllipse(int(cx - rc), int(cy - rc), rc * 2, rc * 2)
 
         def _icon_code(p, s):
-            from PyQt6.QtGui import QPainterPath
             cx  = s / 2
             pad = s * 0.18
             top = s * 0.12
-            mid = s * 0.58
+            mid = s * 0.55
             bot = s * 0.92
             path = QPainterPath()
             path.moveTo(cx, top)
@@ -42127,12 +42125,13 @@ RULES:
     def open_bantay_panel(self):
         self.main_stack.setCurrentIndex(4)
         self.bantay_widget.apply_bulletin(self.bantay_widget._bulletin)
-        gps = GPSLocationWorker(parent=self)
-        gps.location_ready.connect(
-            lambda city, region, country, lat, lon, readable:
-                self.bantay_widget.refresh_location(readable)
-        )
-        gps.start()
+        if not hasattr(self, '_bantay_gps_worker') or not self._bantay_gps_worker.isRunning():
+            self._bantay_gps_worker = GPSLocationWorker(parent=self)
+            self._bantay_gps_worker.location_ready.connect(
+                lambda city, region, country, lat, lon, readable:
+                    self.bantay_widget.refresh_location(readable)
+            )
+            self._bantay_gps_worker.start()
 
     def _create_chat_list_page(self):
         """Full-panel chat list shown when chat icon is pressed in mini sidebar."""
@@ -50297,6 +50296,8 @@ RULES:
             # Flush synchronously — we're shutting down
             save_json_immediate(path, entry["data"])
 
+        if hasattr(self, '_disaster_watcher') and self._disaster_watcher.isRunning():
+            self._disaster_watcher.cancel()
         super().closeEvent(event)
 
     def show_wikipedia_status(self):
