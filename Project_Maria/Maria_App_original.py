@@ -33857,23 +33857,22 @@ class PHDisasterWatcher(QThread):
                 self.msleep(100)
 
     def _fetch_all(self) -> dict:
-        import datetime
         bulletin = {"source": "live", "fetched_at": datetime.datetime.now().isoformat()}
         try:
             resp = requests.get(self._PAGASA_URL, timeout=10)
             typhoon = self._parse_pagasa_html(resp.text)
             if typhoon:
                 bulletin.update(typhoon)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"   ⚠️ [PHDisasterWatcher] PAGASA fetch failed: {e}")
         if not bulletin.get("type"):
             try:
                 resp = requests.get(self._PHIVOLCS_EQ, timeout=10)
                 eq = self._parse_phivolcs_json(resp.json())
                 if eq:
                     bulletin.update(eq)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"   ⚠️ [PHDisasterWatcher] PHIVOLCS fetch failed: {e}")
         # NDRRMC (floods/landslides) has no stable JSON API in v1;
         # flood guidance is covered offline by OfflineDisasterKB.json.
         return bulletin
@@ -33909,14 +33908,21 @@ class PHDisasterWatcher(QThread):
         }
 
     def _save_cache(self, bulletin: dict):
-        with open(self._cache_path, 'w', encoding='utf-8') as f:
-            json.dump(bulletin, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self._cache_path, 'w', encoding='utf-8') as f:
+                json.dump(bulletin, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"   ⚠️ [PHDisasterWatcher] Cache write failed: {e}")
 
     def _load_cache(self) -> dict | None:
-        if not os.path.exists(self._cache_path):
+        try:
+            if not os.path.exists(self._cache_path):
+                return None
+            with open(self._cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"   ⚠️ [PHDisasterWatcher] Cache read failed: {e}")
             return None
-        with open(self._cache_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
 
     def _emit_cached_or_offline(self):
         cached = self._load_cache()
