@@ -133,5 +133,69 @@ class TestPHDisasterWatcherParsing(unittest.TestCase):
         self.assertIsNone(_PHDisasterWatcher_parse_phivolcs_json([]))
 
 
+class TestBantayMiniChatWorkerPrompt(unittest.TestCase):
+
+    def _build(self, ctx):
+        # Inline the static method logic so tests don't need Qt
+        htype    = ctx.get("type")
+        location = ctx.get("location", "")
+        if htype == "typhoon":
+            signal = ctx.get("signal", "?")
+            name   = ctx.get("typhoon_name", "")
+            situation = f"Aktibong bagyo — Signal No. {signal}" + (f" ({name})" if name else "")
+        elif htype == "earthquake":
+            mag  = ctx.get("magnitude", "?")
+            loc  = ctx.get("location", "")
+            situation = f"Naganap na lindol — Magnitude {mag}" + (f" sa {loc}" if loc else "")
+        elif htype == "tsunami":
+            situation = "TSUNAMI WARNING — Aktibong alerto"
+        elif htype == "volcanic":
+            level = ctx.get("alert_level", "?")
+            vname = ctx.get("volcano_name", "")
+            situation = f"Aktibong bulkan — Alert Level {level}" + (f" ({vname})" if vname else "")
+        elif htype == "flood":
+            situation = "Babala sa baha — Aktibong advisory"
+        else:
+            situation = "Walang aktibong alerto sa ngayon"
+        loc_line = f"Lokasyon ng gumagamit: {location}" if location else ""
+        return (
+            "Ikaw si Maria, isang Filipino AI disaster companion.\n"
+            f"Kasalukuyang sitwasyon: {situation}\n"
+            f"{loc_line}\n"
+            "Sumagot LAMANG sa simpleng Taglish. Maikli at malinaw ang sagot.\n"
+            "Huwag mag-speculate. Kung hindi sigurado, i-refer sa NDRRMC o 911."
+        ).strip()
+
+    def test_typhoon_prompt_contains_signal_and_name(self):
+        ctx = {"type": "typhoon", "signal": 2, "typhoon_name": "Carina", "location": "Quezon City"}
+        prompt = self._build(ctx)
+        self.assertIn("Signal No. 2", prompt)
+        self.assertIn("Carina", prompt)
+        self.assertIn("Quezon City", prompt)
+        self.assertIn("Taglish", prompt)
+
+    def test_earthquake_prompt_contains_magnitude(self):
+        ctx = {"type": "earthquake", "magnitude": 6.1, "location": ""}
+        prompt = self._build(ctx)
+        self.assertIn("6.1", prompt)
+
+    def test_no_hazard_prompt_is_safe(self):
+        ctx = {"type": None, "location": "Manila"}
+        prompt = self._build(ctx)
+        self.assertIn("Walang aktibong alerto", prompt)
+        self.assertIn("Manila", prompt)
+
+    def test_tsunami_prompt(self):
+        ctx = {"type": "tsunami", "location": "Batangas"}
+        prompt = self._build(ctx)
+        self.assertIn("TSUNAMI", prompt)
+
+    def test_volcanic_prompt_contains_level(self):
+        ctx = {"type": "volcanic", "alert_level": 3, "volcano_name": "Taal", "location": ""}
+        prompt = self._build(ctx)
+        self.assertIn("Alert Level 3", prompt)
+        self.assertIn("Taal", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

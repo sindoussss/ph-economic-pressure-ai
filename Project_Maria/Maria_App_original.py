@@ -33933,6 +33933,92 @@ class PHDisasterWatcher(QThread):
             self.offline_mode.emit()
 
 
+class BantayMiniChatWorker(QThread):
+    """
+    Lightweight disaster-context-aware chat worker.
+    Mirrors ArtifactMiniChatWorker — same signals, same streaming pattern.
+    System prompt is pre-loaded with the current hazard type, severity, and location.
+    No web RAG — disaster context is injected directly; speculation is suppressed.
+    """
+    chunk_ready    = pyqtSignal(str)
+    reply_done     = pyqtSignal(str)
+    reply_revised  = pyqtSignal(str)
+    error_signal   = pyqtSignal(str)
+    status_changed = pyqtSignal(str, str)
+
+    def __init__(self, messages: list, disaster_context: dict, parent=None):
+        super().__init__(parent)
+        self.messages         = list(messages)
+        self.disaster_context = dict(disaster_context)
+        self._cancelled       = False
+
+    def cancel(self):
+        self._cancelled = True
+        self.wait(800)
+
+    @staticmethod
+    def _build_system_prompt(ctx: dict) -> str:
+        htype    = ctx.get("type")
+        location = ctx.get("location", "")
+        if htype == "typhoon":
+            signal = ctx.get("signal", "?")
+            name   = ctx.get("typhoon_name", "")
+            situation = f"Aktibong bagyo — Signal No. {signal}" + (f" ({name})" if name else "")
+        elif htype == "earthquake":
+            mag = ctx.get("magnitude", "?")
+            loc = ctx.get("location", "")
+            situation = f"Naganap na lindol — Magnitude {mag}" + (f" sa {loc}" if loc else "")
+        elif htype == "tsunami":
+            situation = "TSUNAMI WARNING — Aktibong alerto"
+        elif htype == "volcanic":
+            level = ctx.get("alert_level", "?")
+            vname = ctx.get("volcano_name", "")
+            situation = f"Aktibong bulkan — Alert Level {level}" + (f" ({vname})" if vname else "")
+        elif htype == "flood":
+            situation = "Babala sa baha — Aktibong advisory"
+        else:
+            situation = "Walang aktibong alerto sa ngayon"
+        loc_line = f"Lokasyon ng gumagamit: {location}" if location else ""
+        return (
+            "Ikaw si Maria, isang Filipino AI disaster companion.\n"
+            f"Kasalukuyang sitwasyon: {situation}\n"
+            f"{loc_line}\n"
+            "Sumagot LAMANG sa simpleng Taglish. Maikli at malinaw ang sagot.\n"
+            "Huwag mag-speculate. Kung hindi sigurado, i-refer sa NDRRMC o 911."
+        ).strip()
+
+    def run(self):
+        try:
+            system_prompt = self._build_system_prompt(self.disaster_context)
+            full_messages = [{"role": "system", "content": system_prompt}] + self.messages
+            full_reply = ""
+            with _OLLAMA_SEMAPHORE:
+                stream = ollama.chat(
+                    model=MODEL,
+                    messages=full_messages,
+                    stream=True,
+                    options={"temperature": 0.3, "num_predict": 200,
+                             "num_ctx": 2048, "num_gpu": _NUM_GPU_LAYERS},
+                )
+                for chunk in stream:
+                    if self._cancelled:
+                        return
+                    if isinstance(chunk, dict):
+                        token = chunk.get("message", {}).get("content", "")
+                    else:
+                        token = getattr(getattr(chunk, "message", None), "content", "") or ""
+                    if token:
+                        full_reply += token
+                        self.chunk_ready.emit(token)
+            self.reply_done.emit(full_reply)
+            detector = HallucinationDetector()
+            revised = detector.detect_and_flag(full_reply)
+            if revised != full_reply:
+                self.reply_revised.emit(revised)
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
+
 class MariaPyQt(QMainWindow):
     tabChanged = pyqtSignal(str)
 
