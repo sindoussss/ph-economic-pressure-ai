@@ -33992,24 +33992,24 @@ class BantayMiniChatWorker(QThread):
             system_prompt = self._build_system_prompt(self.disaster_context)
             full_messages = [{"role": "system", "content": system_prompt}] + self.messages
             full_reply = ""
-            with _OLLAMA_SEMAPHORE:
-                stream = ollama.chat(
-                    model=MODEL,
-                    messages=full_messages,
-                    stream=True,
-                    options={"temperature": 0.3, "num_predict": 200,
-                             "num_ctx": 2048, "num_gpu": _NUM_GPU_LAYERS},
-                )
-                for chunk in stream:
-                    if self._cancelled:
-                        return
-                    if isinstance(chunk, dict):
-                        token = chunk.get("message", {}).get("content", "")
-                    else:
-                        token = getattr(getattr(chunk, "message", None), "content", "") or ""
-                    if token:
-                        full_reply += token
-                        self.chunk_ready.emit(token)
+            stream = _ollama_call(
+                model=MODEL,
+                messages=full_messages,
+                stream=True,
+                options={"temperature": 0.3, "num_predict": 200, "num_ctx": 2048},
+            )
+            for chunk in stream:
+                if self._cancelled:
+                    break
+                if isinstance(chunk, dict):
+                    token = chunk.get("message", {}).get("content", "")
+                else:
+                    token = getattr(getattr(chunk, "message", None), "content", "") or ""
+                if token:
+                    full_reply += token
+                    self.chunk_ready.emit(token)
+            if self._cancelled:
+                return
             self.reply_done.emit(full_reply)
             detector = HallucinationDetector()
             revised = detector.detect_and_flag(full_reply)
