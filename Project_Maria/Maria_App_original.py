@@ -16089,16 +16089,6 @@ class UltraIntelligentWorker(QThread):
                     print(f"   ⚠️ Study mode error: {_se}")
                     # fall through to normal LLM
 
-            # ── Code Debugger Mode v2 ─────────────────────────────────────────
-            # Triggered by intent router score OR by detecting real error patterns
-            _has_real_error = (
-                any(err in self.user_text for err in [
-                    'Traceback (most recent', 'SyntaxError', 'NameError', 'TypeError',
-                    'AttributeError', 'ImportError', 'IndexError', 'KeyError', 'ValueError',
-                    'FileNotFoundError', 'ZeroDivisionError', 'RecursionError', 'JSONDecodeError',
-                ])
-                and len(self.user_text) > 50
-            )
             # ── Local File Assistant ───────────────────────────────────────────
             if _ENABLE_LOCAL_FILE_SHORTCUT and _intent == 'file':
                 self.search_status_changed.emit(
