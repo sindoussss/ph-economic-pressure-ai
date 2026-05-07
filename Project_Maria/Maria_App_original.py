@@ -25987,9 +25987,10 @@ class ArtifactsButton(_IconButtonBase):
 
 
 class CodeButton(_IconButtonBase):
-    """</> chevrons icon for Code panel."""
+    """Shield icon for Bantay (disaster companion) panel."""
 
     def _draw(self, p, w, h):
+        from PyQt6.QtGui import QPainterPath
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         self._paint_bg(p, w, h)
@@ -25999,17 +26000,21 @@ class CodeButton(_IconButtonBase):
         p.setPen(pen)
         p.setBrush(Qt.BrushStyle.NoBrush)
 
-        cx, cy = w / 2, h / 2
-        arm    = h * 0.18   # chevron arm length
-        gap    = w * 0.12   # distance from centre to tip
+        cx  = w / 2
+        pad = w * 0.18
+        top = h * 0.12
+        mid = h * 0.55
+        bot = h * 0.92
 
-        # Left chevron <
-        p.drawLine(QPointF(cx - gap, cy - arm), QPointF(cx - gap - arm, cy))
-        p.drawLine(QPointF(cx - gap - arm, cy), QPointF(cx - gap, cy + arm))
-
-        # Right chevron >
-        p.drawLine(QPointF(cx + gap, cy - arm), QPointF(cx + gap + arm, cy))
-        p.drawLine(QPointF(cx + gap + arm, cy), QPointF(cx + gap, cy + arm))
+        path = QPainterPath()
+        path.moveTo(cx, top)
+        path.lineTo(w - pad, top + h * 0.12)
+        path.lineTo(w - pad, mid)
+        path.lineTo(cx, bot)
+        path.lineTo(pad, mid)
+        path.lineTo(pad, top + h * 0.12)
+        path.closeSubpath()
+        p.drawPath(path)
 
 
 
@@ -35491,16 +35496,21 @@ class MariaPyQt(QMainWindow):
             p.drawEllipse(int(cx - rc), int(cy - rc), rc * 2, rc * 2)
 
         def _icon_code(p, s):
-            # </> chevrons
-            m = s // 2
-            o = int(s * 0.22)
-            g = int(s * 0.15)  # gap between chevrons
-            # Left chevron <
-            p.drawLine(m - g, m - o, m - g - o, m)
-            p.drawLine(m - g - o, m, m - g, m + o)
-            # Right chevron >
-            p.drawLine(m + g, m - o, m + g + o, m)
-            p.drawLine(m + g + o, m, m + g, m + o)
+            from PyQt6.QtGui import QPainterPath
+            cx  = s / 2
+            pad = s * 0.18
+            top = s * 0.12
+            mid = s * 0.58
+            bot = s * 0.92
+            path = QPainterPath()
+            path.moveTo(cx, top)
+            path.lineTo(s - pad, top + s * 0.12)
+            path.lineTo(s - pad, mid)
+            path.lineTo(cx, bot)
+            path.lineTo(pad, mid)
+            path.lineTo(pad, top + s * 0.12)
+            path.closeSubpath()
+            p.drawPath(path)
 
         def _nav_btn(icon_fn, label, slot=None):
             btn = QPushButton(f"   {label}")
@@ -35519,7 +35529,7 @@ class MariaPyQt(QMainWindow):
         chats_nav     = _nav_btn(_icon_chats,      "Chats",     self.toggle_chat_list_panel)
         projects_nav  = _nav_btn(_icon_projects,   "Projects",  self.open_projects_panel)
         artifacts_nav = _nav_btn(_icon_artifacts,  "Artifacts", self.open_artifacts_panel)
-        code_nav      = _nav_btn(_icon_code,       "Code",      self.open_code_panel)
+        code_nav      = _nav_btn(_icon_code,       "Bantay",    self.open_bantay_panel)
 
         def _icon_dpo(p, s):
             # Neural network / training icon: three circles connected by lines
@@ -35769,8 +35779,8 @@ class MariaPyQt(QMainWindow):
         artifacts_btn.clicked.connect(self.open_artifacts_panel)
         layout.addWidget(_btn_row(artifacts_btn))
 
-        code_btn = CodeButton(size=26, tooltip='Code')
-        code_btn.clicked.connect(self.open_code_panel)
+        code_btn = CodeButton(size=26, tooltip='Bantay — Disaster Companion')
+        code_btn.clicked.connect(self.open_bantay_panel)
         layout.addWidget(_btn_row(code_btn))
 
         layout.addStretch()
@@ -37221,9 +37231,9 @@ RULES:
         self.artifacts_page = self._create_artifacts_page()
         self.main_stack.addWidget(self.artifacts_page)  # index 3
 
-        # Page 4: Code scratchpad
-        self.code_page = self._create_code_page()
-        self.main_stack.addWidget(self.code_page)       # index 4
+        # Page 4: Bantay disaster companion
+        self.bantay_page = self._create_bantay_page()
+        self.main_stack.addWidget(self.bantay_page)     # index 4
 
         # Page 5: Project Detail
         self.project_detail_page = self._create_project_detail_page()
@@ -42099,218 +42109,30 @@ RULES:
         if hasattr(self, 'right_menu_btn'):
             self.right_menu_btn.hide()
 
-    def _open_in_code(self, code, lang='python'):
-        self._code_editor.setPlainText(code)
-        self._code_lang_label.setText(lang.upper() or 'TEXT')
-        self.open_code_panel()
-
     # ══════════════════════════════════════════════════════════════════════════
-    # CODE SCRATCHPAD PAGE
+    # BANTAY DISASTER COMPANION PAGE
     # ══════════════════════════════════════════════════════════════════════════
-    def _create_code_page(self):
-        """A syntax-aware code scratchpad with run output."""
-        page = QWidget()
-        page.setStyleSheet(f"background-color: {THEME['bg_primary']};")
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    def _create_bantay_page(self) -> QWidget:
+        kb_path    = os.path.join(os.path.dirname(__file__), "OfflineDisasterKB.json")
+        cache_path = os.path.join(os.path.dirname(__file__), "bantay_cache.json")
+        self.bantay_widget = BantayModeWidget(kb_path=kb_path, cache_path=cache_path, parent=self)
 
-        # Header with language badge + action buttons
-        header = QFrame()
-        header.setFixedHeight(64)
-        header.setStyleSheet(f"""
-            QFrame {{
-                background-color: {THEME['bg_primary']};
-                border-bottom: 1px solid {THEME['border_light']};
-            }}
-        """)
-        hl = QHBoxLayout(header)
-        hl.setContentsMargins(24, 0, 24, 0)
-        hl.setSpacing(10)
+        self._disaster_watcher = PHDisasterWatcher(cache_path=cache_path, parent=self)
+        self._disaster_watcher.disaster_update.connect(self.bantay_widget.apply_bulletin)
+        self._disaster_watcher.offline_mode.connect(self.bantay_widget.set_offline)
+        self._disaster_watcher.start()
 
-        back_btn = QPushButton("←")
-        _debounce_btn(back_btn)
-        back_btn.setFixedSize(32, 32)
-        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        back_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; border: none; border-radius: 6px;
-                font-size: 16px; color: {THEME['text_secondary']};
-            }}
-            QPushButton:hover {{ background: {THEME['hover_light']}; color: {THEME['text_primary']}; }}
-        """)
-        back_btn.clicked.connect(self._return_to_chat)
-        hl.addWidget(back_btn)
+        return self.bantay_widget
 
-        title_lbl = QLabel("Code")
-        title_lbl.setStyleSheet(f"font-size: 17px; font-weight: 600; color: {THEME['text_primary']}; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;")
-        hl.addWidget(title_lbl)
-
-        self._code_lang_label = QLabel("PYTHON")
-        self._code_lang_label.setStyleSheet(f"""
-            background: {THEME['bg_tertiary']}; color: {THEME['text_secondary']};
-            border-radius: 5px; padding: 3px 10px;
-            font-size: 10px; font-weight: 700; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;
-        """)
-        hl.addWidget(self._code_lang_label)
-
-        hl.addStretch()
-
-        clear_btn = QPushButton("Clear")
-        _debounce_btn(clear_btn)
-        clear_btn.setFixedHeight(30)
-        clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {THEME['bg_secondary']}; border: 1px solid {THEME['border_medium']};
-                border-radius: 7px; font-size: 12px; color: {THEME['text_secondary']};
-                padding: 0 14px; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            }}
-            QPushButton:hover {{ background: {THEME['hover_light']}; }}
-        """)
-        clear_btn.clicked.connect(self._code_clear)
-        hl.addWidget(clear_btn)
-
-        copy_btn = QPushButton("Copy")
-        _debounce_btn(copy_btn)
-        copy_btn.setFixedHeight(30)
-        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        copy_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {THEME['bg_secondary']}; border: 1px solid {THEME['border_medium']};
-                border-radius: 7px; font-size: 12px; color: {THEME['text_secondary']};
-                padding: 0 14px; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            }}
-            QPushButton:hover {{ background: {THEME['hover_light']}; }}
-        """)
-        copy_btn.clicked.connect(lambda: (
-            QGuiApplication.clipboard().setText(self._code_editor.toPlainText()),
-            self.show_toast("Copied!")
-        ))
-        hl.addWidget(copy_btn)
-
-        run_btn = QPushButton("▶  Run")
-        _debounce_btn(run_btn)
-        run_btn.setFixedHeight(30)
-        run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        run_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {THEME['accent_primary']}; border: none;
-                border-radius: 7px; font-size: 12px; color: white; font-weight: 600;
-                padding: 0 18px; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            }}
-            QPushButton:hover {{ background: {THEME['accent_primary_hover']}; }}
-        """)
-        run_btn.clicked.connect(self._code_run)
-        hl.addWidget(run_btn)
-
-        layout.addWidget(header)
-
-        # Splitter: editor top, output bottom
-        splitter = QFrame()
-        splitter.setStyleSheet(f"background: {THEME['bg_primary']};")
-        sl = QVBoxLayout(splitter)
-        sl.setContentsMargins(24, 16, 24, 16)
-        sl.setSpacing(12)
-
-        # Editor
-        editor_label = QLabel("Editor")
-        editor_label.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {THEME['text_tertiary']}; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;")
-        sl.addWidget(editor_label)
-
-        self._code_editor = QTextEdit()
-        self._code_editor.setPlaceholderText("# Write or paste code here, then hit ▶ Run to execute Python...")
-        self._code_editor.setFont(QFont("Consolas", 12))
-        self._code_editor.setStyleSheet(f"""
-            QTextEdit {{
-                background: {THEME['code_bg']};
-                border: 1px solid {THEME['code_border']};
-                border-radius: 8px;
-                padding: 12px;
-                color: {THEME['text_primary']};
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 12px;
-                line-height: 1.5;
-            }}
-            QTextEdit:focus {{
-                border-color: {THEME['border_dark']};
-            }}
-        """)
-        self._code_editor.textChanged.connect(self._code_detect_lang)
-        sl.addWidget(self._code_editor, 3)
-
-        # Output
-        out_label = QLabel("Output")
-        out_label.setStyleSheet(f"font-size: 11px; font-weight: 600; color: {THEME['text_tertiary']}; font-family: 'Segoe UI Variable', 'Segoe UI Variable', 'Segoe UI', sans-serif;")
-        sl.addWidget(out_label)
-
-        self._code_output = QTextEdit()
-        self._code_output.setReadOnly(True)
-        self._code_output.setPlaceholderText("Output will appear here after running...")
-        self._code_output.setFont(QFont("Consolas", 11))
-        self._code_output.setStyleSheet(f"""
-            QTextEdit {{
-                background: #1e1e1e;
-                border: 1px solid {THEME['border_medium']};
-                border-radius: 8px;
-                padding: 12px;
-                color: #d4d4d4;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 11px;
-            }}
-        """)
-        sl.addWidget(self._code_output, 2)
-
-        layout.addWidget(splitter, 1)
-        return page
-
-    def _code_detect_lang(self):
-        """Auto-detect language from code content."""
-        code = self._code_editor.toPlainText()
-        if not code.strip():
-            self._code_lang_label.setText("TEXT")
-            return
-        if any(k in code for k in ['def ', 'import ', 'print(', 'class ', '#!/usr/bin/env python']):
-            self._code_lang_label.setText("PYTHON")
-        elif any(k in code for k in ['function ', 'const ', 'let ', 'var ', '=>', 'console.log']):
-            self._code_lang_label.setText("JAVASCRIPT")
-        elif any(k in code for k in ['SELECT ', 'FROM ', 'WHERE ', 'INSERT ', 'CREATE TABLE']):
-            self._code_lang_label.setText("SQL")
-        elif any(k in code for k in ['<html', '<div', '<p>', '<!DOCTYPE']):
-            self._code_lang_label.setText("HTML")
-        elif any(k in code for k in ['#include', 'int main', 'std::', 'printf(']):
-            self._code_lang_label.setText("C/C++")
-        else:
-            self._code_lang_label.setText("TEXT")
-
-    def _code_clear(self):
-        self._code_editor.clear()
-        self._code_output.clear()
-        self._code_lang_label.setText("TEXT")
-
-    def _code_run(self):
-        """Run Python code through the sandbox and show output."""
-        code = self._code_editor.toPlainText().strip()
-        if not code:
-            return
-
-        lang = self._code_lang_label.text()
-        if lang not in ('PYTHON', 'TEXT'):
-            self._code_output.setStyleSheet(self._code_output.styleSheet())
-            self._code_output.setPlainText(f"⚠  Only Python execution is supported. Detected: {lang}")
-            return
-
-        # Route through the sandbox — never exec() directly in-process
-        ok, out, err = _safe_execute_python(code)
-        result = out
-        if err:
-            result += ('\n[stderr]\n' + err) if result else err
-        if not result:
-            result = "✓  Ran successfully (no output)" if ok else "✗  Failed (no output)"
-        self._code_output.setPlainText(result)
-
-    def open_code_panel(self):
+    def open_bantay_panel(self):
         self.main_stack.setCurrentIndex(4)
+        self.bantay_widget.apply_bulletin(self.bantay_widget._bulletin)
+        gps = GPSLocationWorker(parent=self)
+        gps.location_ready.connect(
+            lambda city, region, country, lat, lon, readable:
+                self.bantay_widget.refresh_location(readable)
+        )
+        gps.start()
 
     def _create_chat_list_page(self):
         """Full-panel chat list shown when chat icon is pressed in mini sidebar."""
