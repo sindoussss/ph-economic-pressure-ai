@@ -34019,6 +34019,405 @@ class BantayMiniChatWorker(QThread):
             self.error_signal.emit(str(e))
 
 
+class BantayModeWidget(QWidget):
+    """
+    Self-contained disaster companion panel.
+    Loads all tab content from OfflineDisasterKB.json instantly — no LLM required.
+    Optional BantayMiniChatWorker is started per user message at the bottom.
+    Connected to PHDisasterWatcher via apply_bulletin() and to
+    GPSLocationWorker via refresh_location().
+    """
+
+    def __init__(self, kb_path: str, cache_path: str, parent=None):
+        super().__init__(parent)
+        self._kb_path    = kb_path
+        self._cache_path = cache_path
+        self._kb         = self._load_kb()
+        self._bulletin: dict = {}
+        self._disaster_context: dict = {"type": None, "location": ""}
+        self._chat_history: list = []
+        self._worker: BantayMiniChatWorker | None = None
+        self._streaming_bubble = None
+        self._streaming_text   = ""
+        self._setup_ui()
+        self._load_cached_bulletin()
+
+    # ── KB / cache ────────────────────────────────────────────────────────────
+
+    def _load_kb(self) -> dict:
+        if os.path.exists(self._kb_path):
+            with open(self._kb_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+
+    def _load_cached_bulletin(self):
+        if os.path.exists(self._cache_path):
+            with open(self._cache_path, 'r', encoding='utf-8') as f:
+                bulletin = json.load(f)
+            self.apply_bulletin(bulletin)
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def refresh_location(self, location: str):
+        self._loc_label.setText(f"📍 {location}")
+        self._disaster_context["location"] = location
+
+    def apply_bulletin(self, bulletin: dict):
+        self._bulletin = bulletin
+        source = bulletin.get("source", "offline")
+        htype  = bulletin.get("type")
+
+        if source == "live":
+            self._live_badge.setText("⬤ Live")
+            self._live_badge.setStyleSheet(
+                "color: #22c55e; font-size: 11px; "
+                "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+            )
+        else:
+            self._live_badge.setText("⬤ Cached/Offline")
+            self._live_badge.setStyleSheet(
+                f"color: {THEME['text_secondary']}; font-size: 11px; "
+                "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+            )
+
+        if htype == "typhoon":
+            sig  = bulletin.get("signal", "?")
+            name = bulletin.get("typhoon_name", "")
+            self._hazard_label.setText(
+                f"SIGNAL NO. {sig}" + (f"  —  {name}" if name else "")
+            )
+        elif htype == "earthquake":
+            mag = bulletin.get("magnitude", "?")
+            loc = bulletin.get("location", "")
+            self._hazard_label.setText(f"LINDOL  •  Magnitude {mag}" + (f"\n{loc}" if loc else ""))
+        elif htype == "tsunami":
+            self._hazard_label.setText("⚠ TSUNAMI WARNING\nLumayo sa baybayin NGAYON")
+        elif htype == "volcanic":
+            level = bulletin.get("alert_level", "?")
+            vname = bulletin.get("volcano_name", "")
+            self._hazard_label.setText(
+                f"ALERT LEVEL {level}" + (f"  —  {vname}" if vname else "")
+            )
+        elif htype == "flood":
+            self._hazard_label.setText("BABALA SA BAHA\nMaging handa at sundan ang mga balita")
+        else:
+            self._hazard_label.setText("Walang aktibong alerto")
+
+        self._disaster_context.update({
+            k: v for k, v in bulletin.items()
+            if k not in ("source", "fetched_at")
+        })
+        self._refresh_tabs()
+
+    def set_offline(self):
+        self._live_badge.setText("⬤ Offline")
+        self._live_badge.setStyleSheet(
+            f"color: {THEME['text_secondary']}; font-size: 11px; "
+            "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+        )
+
+    # ── UI setup ──────────────────────────────────────────────────────────────
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_header())
+        layout.addWidget(self._hazard_display())
+        layout.addWidget(self._build_tabs(), stretch=1)
+        layout.addWidget(self._build_minichat())
+
+    def _build_header(self) -> QFrame:
+        header = QFrame()
+        header.setFixedHeight(64)
+        header.setStyleSheet(f"""
+            QFrame {{
+                background-color: {THEME['bg_primary']};
+                border-bottom: 1px solid {THEME['border_light']};
+            }}
+        """)
+        hl = QHBoxLayout(header)
+        hl.setContentsMargins(24, 0, 24, 0)
+        hl.setSpacing(10)
+
+        back_btn = QPushButton("←")
+        _debounce_btn(back_btn)
+        back_btn.setFixedSize(32, 32)
+        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; border: none; border-radius: 6px;
+                font-size: 16px; color: {THEME['text_secondary']};
+            }}
+            QPushButton:hover {{ background: {THEME['hover_light']}; color: {THEME['text_primary']}; }}
+        """)
+        back_btn.clicked.connect(self._go_back)
+        hl.addWidget(back_btn)
+
+        title = QLabel("🛡 BANTAY MODE")
+        title.setStyleSheet(f"""
+            font-size: 17px; font-weight: 700; color: {THEME['text_primary']};
+            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+        """)
+        hl.addWidget(title)
+        hl.addStretch()
+
+        self._loc_label = QLabel("📍 —")
+        self._loc_label.setStyleSheet(f"""
+            background: {THEME['bg_secondary']}; color: {THEME['text_secondary']};
+            border-radius: 12px; padding: 4px 12px; font-size: 12px;
+            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+        """)
+        hl.addWidget(self._loc_label)
+
+        self._live_badge = QLabel("⬤ Offline")
+        self._live_badge.setStyleSheet(
+            f"color: {THEME['text_secondary']}; font-size: 11px; "
+            "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+        )
+        hl.addWidget(self._live_badge)
+        return header
+
+    def _hazard_display(self) -> QLabel:
+        self._hazard_label = QLabel("Walang aktibong alerto")
+        self._hazard_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hazard_label.setWordWrap(True)
+        self._hazard_label.setFixedHeight(72)
+        self._hazard_label.setStyleSheet(f"""
+            font-size: 20px; font-weight: 700; color: {THEME['text_primary']};
+            padding: 12px 24px; background: {THEME['bg_secondary']};
+            border-bottom: 1px solid {THEME['border_light']};
+            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+        """)
+        return self._hazard_label
+
+    def _build_tabs(self) -> QTabWidget:
+        tabs = QTabWidget()
+        tabs.setStyleSheet(f"""
+            QTabWidget::pane {{ border: none; background: {THEME['bg_primary']}; }}
+            QTabBar::tab {{
+                background: {THEME['bg_secondary']}; color: {THEME['text_secondary']};
+                padding: 8px 16px; border: none; font-size: 12px;
+                font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+            }}
+            QTabBar::tab:selected {{
+                color: {THEME['text_primary']}; font-weight: 600;
+                border-bottom: 2px solid {THEME['accent_primary']};
+                background: {THEME['bg_primary']};
+            }}
+        """)
+
+        def _tab(label):
+            tb = QTextBrowser()
+            tb.setReadOnly(True)
+            tb.setOpenExternalLinks(False)
+            tb.setStyleSheet(f"""
+                QTextBrowser {{
+                    background: {THEME['bg_primary']}; border: none;
+                    padding: 16px; font-size: 13px; color: {THEME['text_primary']};
+                    font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+                    line-height: 1.6;
+                }}
+            """)
+            tabs.addTab(tb, label)
+            return tb
+
+        self._tab_ano     = _tab("Ano Gagawin")
+        self._tab_gabay   = _tab("Gabay")
+        self._tab_gobag   = _tab("Go-Bag")
+        self._tab_hotline = _tab("Hotlines")
+        self._refresh_tabs()
+        return tabs
+
+    def _refresh_tabs(self):
+        kb    = self._kb
+        b     = self._bulletin
+        htype = b.get("type")
+
+        if htype == "typhoon":
+            sig  = b.get("signal", 1)
+            data = kb.get("typhoon", {}).get(f"signal_{sig}", {})
+            self._tab_ano.setPlainText(data.get("what_to_do", ""))
+            self._tab_gabay.setPlainText(data.get("meaning", ""))
+        elif htype == "earthquake":
+            eq = kb.get("earthquake", {})
+            during = eq.get("during", "")
+            after  = eq.get("after", "")
+            ts     = eq.get("tsunami_watch", "")
+            self._tab_ano.setPlainText(during + "\n\n" + after)
+            self._tab_gabay.setPlainText(ts)
+        elif htype == "tsunami":
+            ts = kb.get("tsunami", {})
+            self._tab_ano.setPlainText(ts.get("warning", ""))
+            self._tab_gabay.setPlainText(ts.get("after", ""))
+        elif htype == "volcanic":
+            level = b.get("alert_level", 1)
+            data  = kb.get("volcanic", {}).get(f"alert_{level}", {})
+            self._tab_ano.setPlainText(data.get("what_to_do", ""))
+            self._tab_gabay.setPlainText(data.get("meaning", ""))
+        elif htype == "flood":
+            fl = kb.get("flood", {})
+            self._tab_ano.setPlainText(fl.get("what_to_do", ""))
+            self._tab_gabay.setPlainText(fl.get("evacuation_tips", ""))
+        else:
+            self._tab_ano.setPlainText(
+                "Walang aktibong alerto sa ngayon.\n\n"
+                "Maging handa at sundan ang mga balita mula sa PAGASA at NDRRMC."
+            )
+            self._tab_gabay.setPlainText(
+                "Mag-ihanda ng go-bag. Malaman kung saan ang evacuation center. "
+                "Sundan ang mga opisyal na anunsyo."
+            )
+
+        go_bag_items = kb.get("go_bag", [])
+        self._tab_gobag.setPlainText("\n".join(f"• {item}" for item in go_bag_items))
+
+        hotlines = kb.get("hotlines", [])
+        self._tab_hotline.setPlainText(
+            "\n".join(f"{h['name']}\n  {h['number']}" for h in hotlines)
+        )
+
+    def _build_minichat(self) -> QFrame:
+        container = QFrame()
+        container.setStyleSheet(f"""
+            QFrame {{
+                background: {THEME['bg_secondary']};
+                border-top: 1px solid {THEME['border_light']};
+            }}
+        """)
+        vl = QVBoxLayout(container)
+        vl.setContentsMargins(16, 12, 16, 12)
+        vl.setSpacing(8)
+
+        label = QLabel("Magtanong kay Maria")
+        label.setStyleSheet(
+            f"font-size: 11px; font-weight: 600; color: {THEME['text_secondary']}; "
+            "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
+        )
+        vl.addWidget(label)
+
+        self._chat_scroll = QScrollArea()
+        self._chat_scroll.setWidgetResizable(True)
+        self._chat_scroll.setFixedHeight(160)
+        self._chat_scroll.setStyleSheet("border: none; background: transparent;")
+        self._chat_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._chat_container = QWidget()
+        self._chat_layout    = QVBoxLayout(self._chat_container)
+        self._chat_layout.setContentsMargins(0, 0, 0, 0)
+        self._chat_layout.setSpacing(6)
+        self._chat_layout.addStretch()
+        self._chat_scroll.setWidget(self._chat_container)
+        vl.addWidget(self._chat_scroll)
+
+        self._add_bubble("Handa ako. Anong tanong mo tungkol sa sitwasyon ngayon?", is_user=False)
+
+        input_row = QHBoxLayout()
+        input_row.setSpacing(8)
+        self._bantay_input = QLineEdit()
+        self._bantay_input.setPlaceholderText("I-type ang tanong mo...")
+        self._bantay_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: {THEME['bg_primary']}; border: 1px solid {THEME['border_medium']};
+                border-radius: 8px; padding: 8px 12px; font-size: 13px;
+                color: {THEME['text_primary']};
+                font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+            }}
+        """)
+        self._bantay_input.returnPressed.connect(self._send_bantay_message)
+        input_row.addWidget(self._bantay_input)
+
+        send_btn = QPushButton("Send")
+        _debounce_btn(send_btn)
+        send_btn.setFixedSize(64, 36)
+        send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        send_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {THEME['accent_primary']}; color: white; border: none;
+                border-radius: 8px; font-size: 12px; font-weight: 600;
+                font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+            }}
+            QPushButton:hover {{ background: {THEME['accent_primary_hover']}; }}
+        """)
+        send_btn.clicked.connect(self._send_bantay_message)
+        input_row.addWidget(send_btn)
+        vl.addLayout(input_row)
+        return container
+
+    def _add_bubble(self, text: str, is_user: bool) -> QLabel:
+        bubble = QLabel(text)
+        bubble.setWordWrap(True)
+        bubble.setMaximumWidth(360)
+        bubble.setStyleSheet(f"""
+            background: {THEME['bg_tertiary'] if is_user else THEME['bg_primary']};
+            color: {THEME['text_primary']}; border-radius: 10px;
+            padding: 8px 12px; font-size: 12px;
+            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
+        """)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        if is_user:
+            row.addStretch()
+        row.addWidget(bubble)
+        if not is_user:
+            row.addStretch()
+        self._chat_layout.insertLayout(self._chat_layout.count() - 1, row)
+        QTimer.singleShot(50, lambda: self._chat_scroll.verticalScrollBar().setValue(
+            self._chat_scroll.verticalScrollBar().maximum()
+        ))
+        return bubble
+
+    def _send_bantay_message(self):
+        text = self._bantay_input.text().strip()
+        if not text:
+            return
+        self._bantay_input.clear()
+        self._add_bubble(text, is_user=True)
+        self._chat_history.append({"role": "user", "content": text})
+
+        if self._worker and self._worker.isRunning():
+            self._worker.cancel()
+
+        self._worker = BantayMiniChatWorker(
+            messages=list(self._chat_history),
+            disaster_context=dict(self._disaster_context),
+            parent=self,
+        )
+        self._streaming_bubble = None
+        self._streaming_text   = ""
+
+        def _on_chunk(token: str):
+            if self._streaming_bubble is None:
+                self._streaming_bubble = self._add_bubble("", is_user=False)
+            self._streaming_text += token
+            self._streaming_bubble.setText(self._streaming_text)
+            self._chat_scroll.verticalScrollBar().setValue(
+                self._chat_scroll.verticalScrollBar().maximum()
+            )
+
+        def _on_done(full_reply: str):
+            self._chat_history.append({"role": "assistant", "content": full_reply})
+            self._streaming_bubble = None
+            self._streaming_text   = ""
+
+        def _on_revised(revised: str):
+            if self._streaming_bubble:
+                self._streaming_bubble.setText(revised)
+            if self._chat_history and self._chat_history[-1]["role"] == "assistant":
+                self._chat_history[-1]["content"] = revised
+
+        self._worker.chunk_ready.connect(_on_chunk)
+        self._worker.reply_done.connect(_on_done)
+        self._worker.reply_revised.connect(_on_revised)
+        self._worker.start()
+
+    def _go_back(self):
+        p = self.parent()
+        while p and not hasattr(p, 'main_stack'):
+            p = p.parent()
+        if p:
+            p.main_stack.setCurrentIndex(0)
+
+
 class MariaPyQt(QMainWindow):
     tabChanged = pyqtSignal(str)
 
