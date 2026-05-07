@@ -33658,7 +33658,7 @@ class PHDisasterWatcher(QThread):
                 self.msleep(100)
 
     def _fetch_all(self) -> dict:
-        bulletin = {"source": "live", "fetched_at": datetime.datetime.now().isoformat()}
+        bulletin = {"source": "live", "fetched_at": datetime.now().isoformat()}
         try:
             resp = requests.get(self._PAGASA_URL, timeout=10)
             typhoon = self._parse_pagasa_html(resp.text)
