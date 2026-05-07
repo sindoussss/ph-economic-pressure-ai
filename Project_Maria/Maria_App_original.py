@@ -121,7 +121,7 @@ _POST_ANSWER_REVIEW_ENABLED = False  # disabled: extra re-check passes caused dr
 # Shortcut feature flags. Keep the implementations on disk, but route most
 # keyword-triggered early exits through the main pipeline by default.
 _ENABLE_STUDY_SHORTCUT = True
-_ENABLE_DEBUG_SHORTCUT = True
+_ENABLE_DEBUG_SHORTCUT = False
 _ENABLE_LOCAL_FILE_SHORTCUT = True
 
 LORA_FILE = os.path.join(BASE_DIR, "maria_training_data.json")
@@ -14065,125 +14065,6 @@ class StudyModeEngine:
 
 
 # ============================================================================
-# CODE DEBUGGER MODE v2
-# Detects error type, extracts full context, proposes fix WITH unified diff
-# ============================================================================
-class CodeDebuggerMode:
-    """
-    Intelligent code debugger.
-    - Classifies the error type before prompting (guides the model)
-    - Extracts BOTH the traceback AND the surrounding code context
-    - Produces structured output: cause → fix → diff → verify
-    """
-
-    ERROR_PATTERNS = {
-        'SyntaxError':      'syntax',
-        'NameError':        'undefined_name',
-        'TypeError':        'type_mismatch',
-        'AttributeError':   'missing_attribute',
-        'ImportError':      'import_failure',
-        'ModuleNotFoundError': 'import_failure',
-        'IndexError':       'index_out_of_range',
-        'KeyError':         'missing_key',
-        'ValueError':       'bad_value',
-        'FileNotFoundError': 'file_missing',
-        'PermissionError':  'permission',
-        'RuntimeError':     'runtime',
-        'RecursionError':   'infinite_recursion',
-        'ZeroDivisionError': 'division_by_zero',
-        'MemoryError':      'memory',
-        'TimeoutError':     'timeout',
-        'ConnectionError':  'network',
-        'JSONDecodeError':  'json_parse',
-        'UnicodeDecodeError': 'encoding',
-    }
-
-    @staticmethod
-    def classify_error(text: str) -> str:
-        """Return error category string or 'unknown'."""
-        for err_name, category in CodeDebuggerMode.ERROR_PATTERNS.items():
-            if err_name in text:
-                return category
-        return 'unknown'
-
-    @staticmethod
-    def extract_context(text: str) -> Tuple[str, str]:
-        """
-        Returns (traceback_block, code_block).
-        Extracts the traceback AND any code fence (```) the user pasted.
-        """
-        # Extract traceback
-        tb_lines, in_tb = [], False
-        for line in text.split('\n'):
-            stripped = line.strip()
-            if stripped.startswith('Traceback') or (re.search(r'\b(Error|Exception):', line) and not in_tb):
-                in_tb = True
-            if in_tb:
-                tb_lines.append(line)
-                if len(tb_lines) > 50:
-                    break
-        tb = '\n'.join(tb_lines).strip()
-
-        # Extract code fences
-        code_matches = re.findall(r'```(?:\w+)?\n(.*?)```', text, re.DOTALL)
-        code = '\n---\n'.join(code_matches).strip() if code_matches else ''
-
-        # Fallback: if no code fence but user pasted indented code
-        if not code:
-            indented = [ln for ln in text.split('\n') if ln.startswith((' ', '\t'))]
-            if len(indented) >= 3:
-                code = '\n'.join(indented[:40])
-
-        return tb or text[:600], code
-
-    @staticmethod
-    def build_debug_prompt(user_text: str, traceback: str, code: str, error_type: str) -> str:
-        error_label = {
-            'syntax':            '⚠️ Syntax Error — Python could not parse the code',
-            'undefined_name':    '⚠️ NameError — variable/function used before it was defined',
-            'type_mismatch':     '⚠️ TypeError — wrong data type passed to function/operation',
-            'missing_attribute': '⚠️ AttributeError — called a method/attr that does not exist',
-            'import_failure':    '⚠️ ImportError — module not installed or wrong name',
-            'index_out_of_range':'⚠️ IndexError — accessing a list/array at an index that does not exist',
-            'missing_key':       '⚠️ KeyError — accessing a dict key that does not exist',
-            'bad_value':         '⚠️ ValueError — correct type but illegal value',
-            'file_missing':      '⚠️ FileNotFoundError — path does not exist or is wrong',
-            'division_by_zero':  '⚠️ ZeroDivisionError — dividing by zero',
-            'infinite_recursion':'⚠️ RecursionError — function calling itself without a base case',
-            'json_parse':        '⚠️ JSONDecodeError — malformed JSON string',
-            'encoding':          '⚠️ UnicodeDecodeError — file encoding mismatch',
-        }.get(error_type, '⚠️ Runtime Error')
-
-        code_section = (
-            f"\n\n**User's code:**\n```\n{code[:2000]}\n```"
-            if code else ""
-        )
-
-        return (
-            f"**Error type:** {error_label}\n\n"
-            f"**User's message:** {user_text}\n"
-            f"{code_section}\n\n"
-            f"**Traceback:**\n```\n{traceback}\n```\n\n"
-            "Debug this with this EXACT structure — do not deviate:\n\n"
-            "## 🔍 Root Cause\n"
-            "[2-3 sentences: WHY this error occurred. Be precise — name the exact line/variable/function responsible.]\n\n"
-            "## 🛠️ Fixed Code\n"
-            "```python\n"
-            "[Complete corrected code. Add # ← FIXED comments on changed lines. "
-            "If the error is in a small snippet, show the full corrected snippet. "
-            "If the full file is too long, show the corrected function/class.]\n"
-            "```\n\n"
-            "## 📋 What Changed\n"
-            "[Bullet list — each bullet = one change. Format: `old code` → `new code` + why]\n\n"
-            "## ✅ How to Verify the Fix\n"
-            "[Exact command or test to confirm the error is gone]\n\n"
-            "## 🛡️ Prevention\n"
-            "[1-2 sentences: how to avoid this class of error in the future]\n\n"
-            "Be surgical. No filler. Every word earns its place."
-        )
-
-
-# ============================================================================
 # LOCAL FILE ASSISTANT v2
 # Multi-term fuzzy search across filenames and content
 # Supports: txt, md, py, js, json, csv, html, pdf, docx
@@ -16218,80 +16099,6 @@ class UltraIntelligentWorker(QThread):
                 ])
                 and len(self.user_text) > 50
             )
-            if _ENABLE_DEBUG_SHORTCUT and (_intent == 'debug' or _has_real_error):
-                self.search_status_changed.emit(
-                    build_reasoning_tool_text(
-                        self.user_text, _query_mode, "debug",
-                        active_ctx=_active_ctx, history=self.history, tool_state=_preview_tool_state
-                    ),
-                    "🔧", self.session_id
-                )
-                _tb, _code_ctx = CodeDebuggerMode.extract_context(self.user_text)
-                _err_type = CodeDebuggerMode.classify_error(self.user_text)
-                print(f"   🔧 Debug mode: error type = {_err_type}")
-                self.search_status_changed.emit(
-                    build_reasoning_tool_text(
-                        self.user_text, _query_mode, "debug",
-                        active_ctx=_active_ctx, history=self.history, tool_state=_preview_tool_state
-                    ),
-                    "🔧", self.session_id
-                )
-                _debug_prompt = CodeDebuggerMode.build_debug_prompt(
-                    self.user_text, _tb, _code_ctx, _err_type
-                )
-                try:
-                    _debug_history = _history_context_window(
-                        self.history,
-                        model=MODEL_CODE,
-                        keep_recent=12,
-                        active_ctx=_active_ctx,
-                    )
-                    with _OLLAMA_SEMAPHORE:
-                        _debug_stream = ollama.chat(
-                            model=MODEL_CODE,
-                            messages=[
-                                {"role": "system", "content":
-                                    "You are Maria, a Filipina AI and expert software debugger. "
-                                    "Follow the exact output format requested. "
-                                    "Be surgical and precise — no vague advice, no padding."},
-                                *_debug_history,
-                                {"role": "user", "content": _debug_prompt}
-                            ],
-                            stream=True,
-                            options={"temperature": 0.05, "num_predict": 2048, "num_ctx": 8192, "num_batch": 1024, "num_gpu": _NUM_GPU_LAYERS},
-                        )
-                        _debug_response = ""
-                        _d_think_buf = ""; _d_stripping = False
-                        _debug_stream_start = time.monotonic()
-                        for _chunk in _debug_stream:
-                            if self._cancelled:
-                                break
-                            if (time.monotonic() - _debug_stream_start) > 120:  # ⚡ 2-min timeout
-                                print("   ⏱️ Debug stream timeout (120s) — stopping")
-                                break
-                            _tok = ""
-                            if isinstance(_chunk, dict):
-                                _tok = _chunk.get('message', {}).get('content', '')
-                            elif hasattr(_chunk, 'message'):
-                                _tok = getattr(_chunk.message, 'content', '')
-                            if _tok:
-                                if '<think>' in _tok or _d_stripping:
-                                    _d_think_buf += _tok
-                                    if '</think>' in _d_think_buf:
-                                        _tok = _d_think_buf[_d_think_buf.index('</think>') + 8:]
-                                        _d_think_buf = ""; _d_stripping = False
-                                    else:
-                                        _d_stripping = True; continue
-                                _debug_response += _tok
-                                self._emit_chunk(_tok)
-                    self._flush_chunk()
-                    self.response_ready.emit(_debug_response, self.message_id, self.session_id)
-                    self.finished_processing.emit(self.message_id, self.session_id)
-                    return
-                except Exception as _de:
-                    print(f"   ⚠️ Debug mode error: {_de}")
-                    # fall through to main LLM
-
             # ── Local File Assistant ───────────────────────────────────────────
             if _ENABLE_LOCAL_FILE_SHORTCUT and _intent == 'file':
                 self.search_status_changed.emit(
