@@ -114,8 +114,8 @@ ATTACHMENTS_DIR = os.path.join(BASE_DIR, "maria_attachments")
 os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 
 # ── Model constants ────────────────────────────────────────────────────────────
-CONTEXT_LIMIT = 8192
-MAX_MEMORY = 50
+CONTEXT_LIMIT = 32768   # raised from 16384 — qwen2.5:7b has 128k native; 32k KV-cache ~1.75GB on RTX 5050 8GB
+MAX_MEMORY = 60         # was 50
 _POST_ANSWER_REVIEW_ENABLED = False  # disabled: extra re-check passes caused drift + latency
 
 # Shortcut feature flags. Keep the implementations on disk, but route most
@@ -1131,7 +1131,7 @@ def _sympy_precompute_inner(user_text: str, structured: bool = False) -> "str | 
 def _compress_history(
     history:    list,
     model:      str,
-    keep_recent: int = 6,
+    keep_recent: int = 12,   # was 6 — keep more verbatim turns before compressing
     active_ctx: 'ActiveTaskContext | None' = None,
 ) -> list:
     """
@@ -1194,40 +1194,86 @@ def _compress_history(
             messages=[{
                 "role": "user",
                 "content": (
-                    "Summarize this conversation as 4-8 bullet points.\n"
+                    "Summarize this conversation as a JSON object with exactly these keys:\n"
+                    '{"topics": [], "decisions": [], "corrections": [], '
+                    '"code_artifacts": [], "open_questions": []}\n\n'
                     "Rules:\n"
-                    "- Copy EXACT values verbatim: names, numbers, dates, file paths, "
-                    "error messages, code identifiers.\n"
-                    "- Do NOT paraphrase specific facts — quote them.\n"
-                    "- Include: what the user is trying to do, what was tried, what "
-                    "failed or succeeded, any decisions made, and any open questions.\n"
-                    "- Each bullet must be specific enough that the assistant can "
-                    "continue the conversation correctly without re-reading the "
-                    "original turns.\n"
+                    "- topics: what the user is trying to accomplish (1-3 items)\n"
+                    "- decisions: conclusions or choices made during the conversation\n"
+                    "- corrections: errors found, misunderstandings fixed, or facts corrected\n"
+                    "- code_artifacts: file paths, error messages, code identifiers, commands — "
+                    "copy VERBATIM, do NOT paraphrase\n"
+                    "- open_questions: unresolved items the assistant still needs to address\n"
                     "- Omit greetings, filler, and meta-commentary.\n"
+                    "- Output ONLY the JSON object. No prose before or after.\n"
                     + _preserve_block
                     + f"\nCONVERSATION:\n{transcript}"
                 )
             }],
             options={
-                "temperature": 0.1, "num_predict": 600,
-                "num_ctx": 4096, "num_gpu": _NUM_GPU_LAYERS,
+                "temperature": 0.1, "num_predict": 800,
+                "num_ctx": 8192, "num_gpu": _NUM_GPU_LAYERS,
             }
         )
         if isinstance(_resp, dict):
-            _summary = _resp.get("message", {}).get("content", "").strip()
+            _raw = _resp.get("message", {}).get("content", "").strip()
         elif hasattr(_resp, "message"):
-            _summary = getattr(_resp.message, "content", "").strip()
+            _raw = getattr(_resp.message, "content", "").strip()
         else:
-            _summary = str(_resp).strip() if _resp else ""
+            _raw = str(_resp).strip() if _resp else ""
+
+        # ── Try to parse as structured JSON; fall back to raw text ───────────
+        _summary = ""
+        if len(_raw) > 20:
+            import json as _json
+            try:
+                # Strip markdown code fences if the model wrapped the JSON
+                _json_text = _raw
+                if _json_text.startswith("```"):
+                    _json_text = "\n".join(
+                        l for l in _json_text.splitlines()
+                        if not l.strip().startswith("```")
+                    ).strip()
+                _data = _json.loads(_json_text)
+                _parts = []
+                for _key, _label in (
+                    ("topics",         "Topics"),
+                    ("decisions",      "Decisions"),
+                    ("corrections",    "Corrections"),
+                    ("code_artifacts", "Code/Artifacts"),
+                    ("open_questions", "Open questions"),
+                ):
+                    _items = _data.get(_key) or []
+                    if _items:
+                        _parts.append(f"{_label}: " + " | ".join(str(x) for x in _items))
+                _summary = "\n".join(_parts)
+                print(f"   📝 Context compressed (JSON): {_turn_count} earlier turns → {len(_summary)} chars")
+            except (_json.JSONDecodeError, AttributeError, TypeError):
+                # Model produced free-text instead of JSON — use it as-is
+                _summary = _raw
+                print(f"   📝 Context compressed (text fallback): {_turn_count} earlier turns → {len(_summary)} chars")
 
         if len(_summary) > 20:
             compressed = [{
                 "role": "system",
                 "content": f"[Conversation history — {_turn_count} earlier turns summarized]\n{_summary}"
             }]
+            # Recall anchor: preserve last assistant turn verbatim so
+            # 'what did you say earlier?' always has a real answer.
+            _last_asst = next(
+                (m for m in reversed(older) if m.get("role") == "assistant"),
+                None
+            )
+            if _last_asst:
+                _asst_preview = _last_asst.get("content", "").strip()[:600]
+                compressed.append({
+                    "role": "system",
+                    "content": (
+                        "[RECALL ANCHOR — verbatim last assistant reply before compression]\n"
+                        + _asst_preview
+                    ),
+                })
             compressed.extend(recent)
-            print(f"   📝 Context compressed: {_turn_count} earlier turns → summary ({len(_summary)} chars)")
             return compressed
         else:
             print(f"   ⚠️ Compression returned empty summary — keeping raw recent turns")
@@ -1241,7 +1287,7 @@ def _history_context_window(
     history: list,
     *,
     model: str | None = None,
-    keep_recent: int = 20,
+    keep_recent: int = 30,   # was 20 — wider window before compression triggers
     active_ctx: 'ActiveTaskContext | None' = None,
 ) -> list:
     """Return a stable session-scoped history window for generation."""
@@ -1258,6 +1304,100 @@ def _history_context_window(
         keep_recent=keep_recent,
         active_ctx=active_ctx,
     )
+
+
+# ── Recall-query detection & verbatim transcript builder ──────────────────────
+# These two helpers fix context-drift on "what did you say earlier?" type queries.
+#
+# ROOT CAUSE of the drift: recall_memory() uses keyword matching on the topic
+# extracted from the query. For generic recall ("what did you say earlier?") the
+# extracted topic is "earlier" / "anyway" — words that don't appear in content.
+# recall_memory returns "No relevant memory found", the LLM sees the negative
+# result and confabulates a plausible-sounding but entirely wrong answer.
+#
+# THE FIX: detect recall queries EARLY, build a verbatim numbered transcript of
+# recent turns, and inject it as a grounded MEMORY ANCHOR system block before
+# the LLM generation call. The grounding instruction tells the model to use ONLY
+# the log — no invention allowed.
+
+_RECALL_QUERY_RE = re.compile(
+    r'(?:'
+    # ── "what did [I/you/we] [optional junk] say/mention/talk/discuss" ──────
+    # Handles: "what did I just say", "what did I even say earlier",
+    #          "what did we just discuss", "what did you say anyway"
+    r'what\s+did\s+(?:i|you|we)(?:\s+\w+){0,2}\s+(?:say|said|mention|mentioned|talk|discuss)'
+    # ── "what [was/were] [I/you/we] saying/talking about" ───────────────────
+    r'|what\s+(?:was|were)\s+(?:i|you|we)(?:\s+\w+){0,1}\s+(?:saying|talking|discussing)'
+    # ── Bare "what did I/you/we say" (no extra words) ────────────────────────
+    r'|what\s+(?:i|you|we)\s+said(?:\s+earlier|\s+before|\s+just\s+now)?'
+    # ── "you said/mentioned earlier / before / just now" ────────────────────
+    r'|you\s+(?:said|mentioned|told\s+me)\s+(?:earlier|before|just\s+now|that)'
+    r'|earlier\s+you\s+said'
+    r'|you\s+said\s+earlier'
+    # ── Remind/recall phrasing ────────────────────────────────────────────────
+    r'|remind\s+me\s+(?:what|about|of)'
+    r'|recall\s+(?:our|the|what)'
+    r'|going\s+back\s+to\s+what\s+(?:you|i|we)\s+said'
+    # ── "from earlier / before" ──────────────────────────────────────────────
+    r'|from\s+(?:earlier|before|our\s+conversation|last\s+time)'
+    r'|do\s+you\s+remember\s+when'
+    # ── Filipino / Taglish recall ────────────────────────────────────────────
+    r'|ano\s+ang\s+sinabi\s+mo'
+    r'|anong\s+sinabi\s+mo'
+    r'|naaalala\s+mo\s+ba'
+    r'|nung\s+sinabi\s+(?:mo|ko)'
+    r'|kanina\s+(?:ka\s+nagsabi|mo\s+sinabi|sinabi\s+mo)'
+    r')',
+    re.IGNORECASE,
+)
+
+
+def _is_recall_query(text: str) -> bool:
+    """Return True when the user is asking what was said earlier in this session.
+
+    Broader than the ReActAgent._MEMORY_PATTERNS — catches generic phrasing like
+    'what did you say earlier anyway?' where no specific topic can be extracted.
+    """
+    return bool(_RECALL_QUERY_RE.search(text))
+
+
+def _build_conversation_transcript(history: list, n: int = 12) -> str:
+    """Return a clean, verbatim, numbered transcript of the last *n* turns.
+
+    Each entry is formatted as:
+        [T-k] User: <content>
+        [T-k] Maria: <content>
+
+    The transcript is used as a MEMORY ANCHOR injected into the system prompt
+    so the model can answer "what did you say earlier?" from ground truth rather
+    than confabulation.
+
+    Rules:
+    - Skips internal system messages (compression summaries, LORA context, etc.)
+      except for turns labelled '[Conversation history' which are kept as-is.
+    - Caps each message at 600 chars to stay within token budget.
+    - Oldest turn is [T-n], newest is [T-1].
+    """
+    user_assistant = [
+        m for m in history
+        if m.get("role") in ("user", "assistant")
+    ]
+    recent = user_assistant[-n:]
+    if not recent:
+        return "(No conversation history yet.)"
+
+    lines = []
+    total = len(recent)
+    for i, msg in enumerate(recent):
+        turn_label = f"T-{total - i}"
+        role = "User" if msg.get("role") == "user" else "Maria"
+        content = msg.get("content", "").strip()
+        # Truncate very long messages but keep them informative
+        if len(content) > 600:
+            content = content[:597] + "…"
+        lines.append(f"[{turn_label}] {role}: {content}")
+
+    return "\n".join(lines)
 
 
 def save_attachment(src_path: str) -> str:
@@ -5892,9 +6032,12 @@ def needs_web_search(query: str) -> bool:
     # ── 2. News & events ──────────────────────────────────────────────────────
     news_signals = [
         'news', 'breaking', 'headline', 'update', 'updates', 'announcement',
-        'press release', 'statement', 'confirmed', 'reported', 'according to',
+        'press release', 'statement', 'reported',
         'what happened', 'did happen', 'happened to', 'whats happening',
         "what's happening", 'happening now', 'trending now',
+        # ⚡ Removed 'confirmed', 'according to' — bare words triggered on ordinary
+        # sentences ("you confirmed X", "according to my notes") and caused false
+        # web searches.
     ]
 
     # ── 3. Prices, rates & financial data ─────────────────────────────────────
@@ -5910,10 +6053,13 @@ def needs_web_search(query: str) -> bool:
 
     # ── 4. Sports scores, standings, results ─────────────────────────────────
     sports_signals = [
-        'score', 'scores', 'result', 'results', 'who won', 'who lost',
+        'who won', 'who lost',
         'final score', 'match result', 'game result', 'standings', 'ranking',
         'leaderboard', 'pba score', 'nba score', 'nfl score', 'ufc result',
-        'boxing result', 'highlight', 'highlights',
+        'boxing result',
+        # ⚡ Removed bare 'score','scores','result','results','highlight','highlights'
+        # — single-word matches fired constantly on non-sports messages
+        # ("what result do you expect?", "highlight the key points").
     ]
 
     # ── 5. Weather ────────────────────────────────────────────────────────────
@@ -9282,8 +9428,7 @@ MODEL_FAST = MODEL   # fast model for greetings/small-talk
 MODEL_THOUGHT = MODEL
 _refresh_specialist_models()
 
-CONTEXT_LIMIT = 8192    # ⚡ Optimized for RTX 5050 VRAM — 32k caused KV-cache pressure & slowdowns
-MAX_MEMORY = 50
+MAX_MEMORY = 60         # was 50
 
 LORA_FILE = os.path.join(BASE_DIR, "maria_training_data.json")
 SESSION_FILE = os.path.join(BASE_DIR, "maria_sessions.json")
@@ -11450,22 +11595,77 @@ class ReActToolRegistry:
         """
         Search the current session's conversation history for relevant context.
         Returns matching messages as text.
+
+        FIX — verbatim transcript for generic recall:
+        When the topic is empty or consists only of generic/stop words
+        (e.g. "earlier", "anyway", "before", "that"), keyword matching always
+        fails and previously returned "No relevant memory found", causing the
+        LLM to confabulate.  Now we detect that case and return a verbatim
+        numbered transcript of the last 12 turns so the LLM has real ground
+        truth to work from.
         """
-        # Access the global session history via the module-level reference
-        # (set by MariaPyQt when the agent is invoked)
         history = ReActAgent._get_current_history() or []
         if not history:
             return "No conversation history available."
+
         topic_lower = topic.lower().strip()
-        matches = []
-        for msg in history[-30:]:  # search last 30 messages
-            content = msg.get("content", "")
-            if any(word in content.lower() for word in topic_lower.split()[:5]):
-                role = "User" if msg.get("role") == "user" else "Maria"
-                matches.append(f"{role}: {content[:200]}")
-        if matches:
-            return "Found in memory:\n" + "\n---\n".join(matches[-3:])
-        return f"No relevant memory found for '{topic}'."
+
+        # ── Generic-recall guard ─────────────────────────────────────────────
+        # These are words that carry no topic signal — they appear in "what did
+        # you say earlier anyway?" but tell us nothing about what to search for.
+        _STOP_WORDS = frozenset({
+            "earlier", "before", "anyway", "that", "it", "this", "there",
+            "here", "something", "anything", "everything", "what", "which",
+            "said", "say", "tell", "told", "mentioned", "talked", "discussed",
+            "just", "again", "now", "then", "so", "right", "okay", "ok",
+            "really", "actually", "yung", "mo", "ka", "ba", "nga", "naman",
+            "kasi", "sabi", "sinabi", "kanina", "dati", "noon",
+        })
+        meaningful_words = [
+            w for w in topic_lower.split()[:8]
+            if w not in _STOP_WORDS and len(w) > 2
+        ]
+
+        # If no meaningful topic words, return full verbatim transcript
+        if not meaningful_words:
+            transcript = _build_conversation_transcript(history, n=12)
+            return (
+                "CONVERSATION TRANSCRIPT (verbatim — use this as ground truth):\n"
+                + transcript
+            )
+
+        # ── Semantic search via TF-IDF cosine similarity ─────────────────────
+        # Handles paraphrased recall ("what did you say about the number thing?")
+        # where keyword matching would find nothing because the surface words differ.
+        candidates = history[-30:]
+        corpus = [msg.get("content", "") for msg in candidates]
+        _query = " ".join(meaningful_words)
+        try:
+            _vec = TfidfVectorizer(min_df=1).fit(corpus + [_query])
+            _matrix = _vec.transform(corpus)
+            _q_vec = _vec.transform([_query])
+            _scores = cosine_similarity(_q_vec, _matrix)[0]
+            _ranked = sorted(
+                [(i, s) for i, s in enumerate(_scores) if s >= 0.08],
+                key=lambda x: x[1], reverse=True
+            )[:5]
+            if _ranked:
+                matches = []
+                for idx, _ in _ranked:
+                    msg = candidates[idx]
+                    role = "User" if msg.get("role") == "user" else "Maria"
+                    matches.append(f"{role}: {msg.get('content', '')[:300]}")
+                return "Found in memory:\n" + "\n---\n".join(matches)
+        except Exception:
+            pass  # fall through to transcript fallback
+
+        # ── Fallback: no semantic match — return verbatim transcript ──────────
+        transcript = _build_conversation_transcript(history, n=10)
+        return (
+            f"No direct match for '{topic}'. "
+            f"Here is the recent conversation transcript:\n"
+            + transcript
+        )
 
     @staticmethod
     def fetch_url(url: str) -> str:
@@ -12263,11 +12463,18 @@ class ToolPlanner:
 
     _MEMORY_PATTERNS = re.compile(
         r'\b(what\s+did\s+(we|i|you)\s+(talk|say|discuss|mention)'
+        r'|what\s+did\s+you\s+say\s+(earlier|before|just\s+now|again)'
+        r'|what\s+were\s+(you|we)\s+(saying|talking|discussing)'
         r'|remind\s+me\s+(what|about|of)'
         r'|recall\s+(our|the|what)'
         r'|from\s+(earlier|before|our\s+conversation|last\s+time)'
         r'|do\s+you\s+remember\s+when'
-        r'|naaalala\s+mo\s+ba|nung\s+sinabi\s+ko)\b',   # Tagalog recall
+        r'|you\s+(said|mentioned|told\s+me)\s+(earlier|before|that)'
+        r'|going\s+back\s+to\s+what\s+you\s+said'
+        r'|earlier\s+you\s+said'
+        r'|naaalala\s+mo\s+ba|nung\s+sinabi\s+mo'
+        r'|ano\s+ang\s+sinabi\s+mo|anong\s+sinabi\s+mo'
+        r'|kanina\s+ka\s+nagsabi)\b',
         re.IGNORECASE
     )
 
@@ -17883,13 +18090,14 @@ DON'T — these kill the vibe instantly:
                 'where is ', 'where was ',
                 # Historical events / dates
                 'when did ', 'when was ',
-                # Causal (real-world causation, not math/code)
-                'why did ', 'why does ',
                 # Encyclopedic (explicit intent)
                 'history of ', 'biography of ', 'origin of ',
-                'difference between ', 'definition of ',
                 # Filipino equivalents
                 'sino si ', 'sino ang ',
+                # ⚡ Removed 'why did ','why does ','difference between ','definition of '
+                # — these fire on conversational and educational questions Maria can
+                # answer from training data ("why does water boil?", "definition of
+                # love"), adding latency with no accuracy gain.
             ]
             _about_maria = any(p in _q_lower for p in [
                 'what is your', 'what are you', 'who are you', 'how are you',
@@ -17939,7 +18147,11 @@ DON'T — these kill the vibe instantly:
                         _query_mode not in _NO_SEARCH_INTENTS
                         and (
                             needs_web_search(self.user_text) or _is_lyrics_query or _is_factual_online
-                            or _query_mode in (_INTENT_EXACT_FACT, _INTENT_LIVE_INFO, _INTENT_NAVIGATION)
+                            or _query_mode in (_INTENT_LIVE_INFO, _INTENT_NAVIGATION)
+                            # ⚡ Removed _INTENT_EXACT_FACT — it forced a web search on
+                            # EVERY factual question regardless of signal strength, causing
+                            # unnecessary latency. _is_factual_online already handles
+                            # exact-fact queries that genuinely need live data.
                         )
                     )
                 )
@@ -18296,6 +18508,41 @@ DON'T — these kill the vibe instantly:
                 messages.append({"role": "system", "content": LORA_CONTEXT})
             messages.append({"role": "system", "content": system_prompt})
 
+            # ── MEMORY ANCHOR injection (recall-query fix) ────────────────────
+            # When the user asks "what did you say earlier?" or similar, the LLM
+            # must answer from REAL conversation history — not from confabulation.
+            #
+            # Without this block the only grounding the model has is trimmed_history
+            # (appended later as chat turns), which small local models often ignore
+            # in favour of inventing a plausible-sounding reply.  Injecting the
+            # verbatim transcript as a prominent system message — right after the
+            # main system_prompt and before any RAG blob — forces the model to see
+            # the ground-truth log before it generates even one token.
+            _is_recall = _is_recall_query(self.user_text)
+            if _is_recall:
+                _anchor_transcript = _build_conversation_transcript(
+                    self.history[:-1],   # exclude the current user turn (added later)
+                    n=14,
+                )
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "╔══ MEMORY ANCHOR — VERBATIM CONVERSATION LOG ══╗\n"
+                        "The user is asking what was said earlier. The exact log is below.\n"
+                        "RULES:\n"
+                        "  1. Base your answer ONLY on what appears in this log.\n"
+                        "  2. Do NOT invent, paraphrase, or add anything not in the log.\n"
+                        "  3. If the user asks what YOU said, quote [T-1]/[T-2]/… Maria turns.\n"
+                        "  4. If the log is empty or the topic truly wasn't discussed, say so honestly.\n"
+                        "  5. Do NOT apologise or explain the log format to the user.\n"
+                        "╚══════════════════════════════════════════════════════╝\n\n"
+                        + _anchor_transcript
+                    ),
+                })
+                print(f"   🔒 MEMORY ANCHOR injected ({len(_anchor_transcript)} chars, "
+                      f"{len([l for l in _anchor_transcript.splitlines() if l.strip()])} turns)")
+
+
             # 🔥 SMART CONTEXT INJECTION
             if knowledge_blob.strip():
                 # Check if query is casual/conversational vs factual
@@ -18639,7 +18886,16 @@ DON'T — these kill the vibe instantly:
                 # ── Adaptive context: match num_ctx to query complexity ────────
                 # Casual exchanges don't need 8192 — smaller ctx = faster TTFT
                 # and less KV-cache pressure on GPU. Complex queries keep full ctx.
-                if _query_mode in (_INTENT_CASUAL, _INTENT_EMOTIONAL, _INTENT_REACTION):
+                #
+                # RECALL OVERRIDE: recall queries ALWAYS get full CONTEXT_LIMIT.
+                # The MEMORY ANCHOR block injected earlier can be 500-1000 tokens;
+                # capping at 2048/4096 can cause that block to be silently truncated
+                # before it even reaches the model, which is exactly how confabulation
+                # happened in the screenshot (Jane Austen vs the actual conversation).
+                if _is_recall:
+                    _adaptive_ctx = CONTEXT_LIMIT
+                    print(f"   📐 Recall query — forcing ctx={_adaptive_ctx} (MEMORY ANCHOR must not be truncated)")
+                elif _query_mode in (_INTENT_CASUAL, _INTENT_EMOTIONAL, _INTENT_REACTION):
                     _adaptive_ctx = 2048
                 elif _query_mode in (_INTENT_GENERAL, _INTENT_EXPLAINER,
                                      _INTENT_EXACT_FACT, _INTENT_LIVE_INFO,
@@ -33550,6 +33806,126 @@ class _OhmsLawWidget(QWidget):
 
     def _animate_current_step(self):
         self._animate_step()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BANTAY MARIA — Philippine Disaster Watcher
+# ══════════════════════════════════════════════════════════════════════════════
+class PHDisasterWatcher(QThread):
+    """
+    Polls PAGASA and PHIVOLCS every 30 minutes when connected.
+    Emits disaster_update(dict) with the latest bulletin.
+    Emits offline_mode() when network is unavailable and no cache exists.
+    Falls back to bantay_cache.json on network failure.
+    """
+    disaster_update = pyqtSignal(dict)
+    offline_mode    = pyqtSignal()
+
+    _PAGASA_URL  = "https://bagong.pagasa.dost.gov.ph/"
+    _PHIVOLCS_EQ = "https://earthquake.phivolcs.dost.gov.ph/EQLatest-Monthly.json"
+    _POLL_MS     = 30 * 60 * 1000  # 30 minutes
+
+    _SIGNAL_RE = re.compile(
+        r'(?:Public\s+Storm\s+Warning\s+)?(?:Signal\s+(?:No\.?\s*)?#?\s*|PSWS\s+#\s*)([1-5])',
+        re.IGNORECASE
+    )
+    _TYPHOON_RE = re.compile(r'[Tt]yphoon\s+([A-Z][a-z]+)|[Bb]agyo\s+([A-Z][a-z]+)')
+    _EQ_MIN_MAG = 4.0
+
+    def __init__(self, cache_path: str, parent=None):
+        super().__init__(parent)
+        self._cache_path = cache_path
+        self._cancelled  = False
+
+    def cancel(self):
+        self._cancelled = True
+        self.wait(800)
+
+    def run(self):
+        while not self._cancelled:
+            if is_connected():
+                bulletin = self._fetch_all()
+                if bulletin.get("type"):
+                    self._save_cache(bulletin)
+                    self.disaster_update.emit(bulletin)
+                else:
+                    self._emit_cached_or_offline()
+            else:
+                self._emit_cached_or_offline()
+            for _ in range(self._POLL_MS // 100):
+                if self._cancelled:
+                    return
+                self.msleep(100)
+
+    def _fetch_all(self) -> dict:
+        import datetime
+        bulletin = {"source": "live", "fetched_at": datetime.datetime.now().isoformat()}
+        try:
+            resp = requests.get(self._PAGASA_URL, timeout=10)
+            typhoon = self._parse_pagasa_html(resp.text)
+            if typhoon:
+                bulletin.update(typhoon)
+        except Exception:
+            pass
+        if not bulletin.get("type"):
+            try:
+                resp = requests.get(self._PHIVOLCS_EQ, timeout=10)
+                eq = self._parse_phivolcs_json(resp.json())
+                if eq:
+                    bulletin.update(eq)
+            except Exception:
+                pass
+        # NDRRMC (floods/landslides) has no stable JSON API in v1;
+        # flood guidance is covered offline by OfflineDisasterKB.json.
+        return bulletin
+
+    @staticmethod
+    def _parse_pagasa_html(html: str) -> dict | None:
+        m = PHDisasterWatcher._SIGNAL_RE.search(html)
+        if not m:
+            return None
+        signal = int(m.group(1))
+        name_m = PHDisasterWatcher._TYPHOON_RE.search(html)
+        typhoon_name = (name_m.group(1) or name_m.group(2)) if name_m else ""
+        return {"type": "typhoon", "signal": signal, "typhoon_name": typhoon_name}
+
+    @staticmethod
+    def _parse_phivolcs_json(data: list) -> dict | None:
+        if not data:
+            return None
+        latest = data[0]
+        try:
+            mag = float(latest.get("Magnitude", 0))
+        except (ValueError, TypeError):
+            return None
+        if mag < PHDisasterWatcher._EQ_MIN_MAG:
+            return None
+        return {
+            "type": "earthquake",
+            "magnitude": mag,
+            "depth":     latest.get("Depth", ""),
+            "location":  latest.get("Location", ""),
+            "date":      latest.get("Date", ""),
+            "tsunami_watch": mag >= 7.0,
+        }
+
+    def _save_cache(self, bulletin: dict):
+        with open(self._cache_path, 'w', encoding='utf-8') as f:
+            json.dump(bulletin, f, ensure_ascii=False, indent=2)
+
+    def _load_cache(self) -> dict | None:
+        if not os.path.exists(self._cache_path):
+            return None
+        with open(self._cache_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+
+    def _emit_cached_or_offline(self):
+        cached = self._load_cache()
+        if cached:
+            cached["source"] = "cached"
+            self.disaster_update.emit(cached)
+        else:
+            self.offline_mode.emit()
+
 
 class MariaPyQt(QMainWindow):
     tabChanged = pyqtSignal(str)
