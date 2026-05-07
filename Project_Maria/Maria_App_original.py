@@ -34046,15 +34046,21 @@ class BantayModeWidget(QWidget):
 
     def _load_kb(self) -> dict:
         if os.path.exists(self._kb_path):
-            with open(self._kb_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            try:
+                with open(self._kb_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"[BantayMode] KB load failed: {e}")
         return {}
 
     def _load_cached_bulletin(self):
         if os.path.exists(self._cache_path):
-            with open(self._cache_path, 'r', encoding='utf-8') as f:
-                bulletin = json.load(f)
-            self.apply_bulletin(bulletin)
+            try:
+                with open(self._cache_path, 'r', encoding='utf-8') as f:
+                    bulletin = json.load(f)
+                self.apply_bulletin(bulletin)
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"[BantayMode] Cached bulletin load failed: {e}")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -34235,8 +34241,8 @@ class BantayModeWidget(QWidget):
         htype = b.get("type")
 
         if htype == "typhoon":
-            sig  = b.get("signal", 1)
-            data = kb.get("typhoon", {}).get(f"signal_{sig}", {})
+            sig  = b.get("signal")
+            data = kb.get("typhoon", {}).get(f"signal_{sig}", {}) if sig is not None else {}
             self._tab_ano.setPlainText(data.get("what_to_do", ""))
             self._tab_gabay.setPlainText(data.get("meaning", ""))
         elif htype == "earthquake":
@@ -34361,9 +34367,14 @@ class BantayModeWidget(QWidget):
         if not is_user:
             row.addStretch()
         self._chat_layout.insertLayout(self._chat_layout.count() - 1, row)
-        QTimer.singleShot(50, lambda: self._chat_scroll.verticalScrollBar().setValue(
-            self._chat_scroll.verticalScrollBar().maximum()
-        ))
+        def _scroll_to_bottom():
+            try:
+                self._chat_scroll.verticalScrollBar().setValue(
+                    self._chat_scroll.verticalScrollBar().maximum()
+                )
+            except RuntimeError:
+                pass
+        QTimer.singleShot(50, _scroll_to_bottom)
         return bubble
 
     def _send_bantay_message(self):
@@ -34375,6 +34386,12 @@ class BantayModeWidget(QWidget):
         self._chat_history.append({"role": "user", "content": text})
 
         if self._worker and self._worker.isRunning():
+            for sig in (self._worker.chunk_ready, self._worker.reply_done,
+                        self._worker.reply_revised):
+                try:
+                    sig.disconnect()
+                except (TypeError, RuntimeError):
+                    pass
             self._worker.cancel()
 
         self._worker = BantayMiniChatWorker(
@@ -34390,9 +34407,14 @@ class BantayModeWidget(QWidget):
                 self._streaming_bubble = self._add_bubble("", is_user=False)
             self._streaming_text += token
             self._streaming_bubble.setText(self._streaming_text)
-            self._chat_scroll.verticalScrollBar().setValue(
-                self._chat_scroll.verticalScrollBar().maximum()
-            )
+            def _scroll_to_bottom():
+                try:
+                    self._chat_scroll.verticalScrollBar().setValue(
+                        self._chat_scroll.verticalScrollBar().maximum()
+                    )
+                except RuntimeError:
+                    pass
+            QTimer.singleShot(50, _scroll_to_bottom)
 
         def _on_done(full_reply: str):
             self._chat_history.append({"role": "assistant", "content": full_reply})
@@ -34416,6 +34438,8 @@ class BantayModeWidget(QWidget):
             p = p.parent()
         if p:
             p.main_stack.setCurrentIndex(0)
+        else:
+            print("[BantayMode] _go_back: main_stack not found in parent hierarchy")
 
 
 class MariaPyQt(QMainWindow):
