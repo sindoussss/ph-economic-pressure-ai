@@ -1,0 +1,88 @@
+{
+  "typhoon": {
+    "signal_1": {
+      "meaning": "Magiging mahangin at maulan sa loob ng 36 oras. Ang mga puno ay maaaring umuga.",
+      "what_to_do": "Maging alisto. I-check ang go-bag ninyo. Huwag maglaro sa labas kung malakas na ang hangin. Sundan ang mga balita mula sa PAGASA."
+    },
+    "signal_2": {
+      "meaning": "Mapanganib na ang panahon. Malakas na hangin at ulan sa loob ng 24 oras. Posible ang pagbaha sa mababang lugar.",
+      "what_to_do": "Iwasan ang paglalakbay sa dagat. I-secure ang mga bintana at pinto. Ihanda ang go-bag. Malaman kung saan ang pinakamalapit na evacuation center. Mag-imbak ng tubig at pagkain."
+    },
+    "signal_3": {
+      "meaning": "Delikado na. Malakas na bagyo na maaaring makapinsala sa mga bahay. Posible ang malawak na pagbaha.",
+      "what_to_do": "Pumunta na sa evacuation center kung ikaw ay nasa mababang lugar, malapit sa ilog, o sa mahinang matibay na bahay. Dalhin ang go-bag. Huwag tumawid sa baha. Abisuhan ang mga kamag-anak."
+    },
+    "signal_4": {
+      "meaning": "Sobrang panganib. Malawak na pinsala sa mga gusali at pananim. Banta sa buhay.",
+      "what_to_do": "Lisanin NGAYON ang mga lugar na malapit sa dagat, ilog, at bundok. Pumunta sa pinakamalakas na gusali o evacuation center. Huwag lalabas habang nasa gitna ng bagyo."
+    },
+    "signal_5": {
+      "meaning": "Extreme na bagyo. Katastropikong pinsala. Banta sa lahat.",
+      "what_to_do": "Manatili sa loob ng pinaka-matibay na silid. Huwag lumabas kahit anong mangyari. Hintayin ang pagdaan ng bagyo. Tawagan ang 911 kung emergency."
+    }
+  },
+  "earthquake": {
+    "during": "HUWAG TUMAKBO. Mag-duck, cover, at hold on — lumuhod, takpan ang ulo gamit ang mga kamay, at kumapit sa matatag na kasangkapan. Lumayo sa bintana, salamin, at mabibigat na bagay. Manatili hanggang tigilin ang pagyanig.",
+    "after": "Lumabas ng maingat pagkatapos ng pagyanig. Mag-ingat sa mga aftershock — maaaring mangyari ang marami. Huwag gumamit ng elevator. I-check ang mga nakapaligid para sa mga nasugatan. Huwag pumasok sa mga sirang gusali.",
+    "tsunami_watch": "Kung naramdaman mo ang malakas na lindol malapit sa dagat: TUMAKBO NA AGAD patungo sa mataas na lugar bago pa man dumating ang alon. Huwag hinintayin ang opisyal na babala. Ang tsunami ay mabilis at mapanganib."
+  },
+  "tsunami": {
+    "warning": "UMALIS NA SA BAYBAYIN NGAYON. Pumunta sa lugar na hindi bababa sa 30 metro ang taas mula sa dagat. Huwag magdala ng maraming gamit — ang buhay ang pinaka-mahalaga. Huwag bumalik hanggang hindi sinabi ng mga awtoridad na ligtas na.",
+    "after": "Huwag bumalik sa baybayin. Maaaring may mga susunod pang alon. Tulungan ang mga nasugatan. Abisuhan ang NDRRMC o 911 ng inyong kalagayan."
+  },
+  "volcanic": {
+    "alert_1": {
+      "meaning": "Mababang aktibidad ng bulkan. Normal na sitwasyon.",
+      "what_to_do": "Huwag pumasok sa permanenteng danger zone. Sundan ang mga anunsyo mula sa PHIVOLCS."
+    },
+    "alert_2": {
+      "meaning": "Tumataas ang aktibidad — mas maraming lindol at usok. Maaaring magsabog.",
+      "what_to_do": "Maging handang umalis anumang oras. Ihanda ang go-bag. Mag-imbak ng tubig. Magsuot ng mask laban sa abo. Sundan ang mga balita."
+    },
+    "alert_3": {
+      "meaning": "Malapit na ang pagsabog. Mataas na antas ng aktibidad.",
+      "what_to_do": "Lisanin ang 7-km radius ng bulkan NGAYON. Magsuot ng mask at salamin. Takpan ang mga butas sa bahay para hindi pumasok ang abo. Pumunta sa evacuation center."
+    },
+    "alert_4": {
+      "meaning": "Magsisabog sa loob ng ilang oras o araw.",
+      "what_to_do": "Lisanin ang 8-km radius. HUWAG bumalik. Sundan ang mga instruksyon ng LGU at NDRRMC."
+    },
+    "alert_5": {
+      "meaning": "Nagsasabog na.",
+      "what_to_do": "Lumayo agad sa 10-km radius o higit pa. Protektahan ang ulo laban sa mga bato. Huwag lumabas hanggang hindi ligtas. Tawagan ang 911."
+    }
+  },
+  "flood": {
+    "what_to_do": "Kung tumataas na ang tubig: pumunta agad sa matataas na lugar o evacuation center. Huwag tumawid sa mabilis na agos ng tubig — kahit mababaw ito. Huwag humawak sa mga electrical wire. Dalhin ang go-bag. Abisuhan ang pamilya ng inyong lokasyon.",
+    "evacuation_tips": "Magtanong sa barangay hall ng pinakamalapit na evacuation center. Magdala ng go-bag, gamot, at mahahalagang dokumento. Patayin ang kuryente bago umalis kung posible. Itaas ang mga mahahalagang gamit sa mas mataas na lugar sa loob ng bahay."
+  },
+  "first_aid": {
+    "choking": "Kung may nakasara sa lalamunan: Tanungin kung makahinga pa. Kung hindi: Gawin ang Heimlich maneuver — tumayo sa likod ng biktima, ituon ang kamao sa gitna ng tiyan (sa itaas ng pusod), at itulak pataas nang mabilis nang 5 beses. Ulitin hanggang lumabas ang hadlang. Para sa sanggol: i-face down sa braso at tampalin ang likod nang 5 beses.",
+    "drowning": "Ilabas ang biktima sa tubig nang maingat. Tawagan ang 911. Kung hindi humihinga, simulan ang CPR. Huwag iahon ang tubig mula sa baga — magsimula na agad ng CPR.",
+    "cpr": "30 chest compressions: ilagay ang mga palad sa gitna ng dibdib at itulak pababa nang 5-6 cm nang mabilis (100-120 beses sa isang minuto). Pagkatapos ng 30, ibigay ang 2 rescue breaths: itaas ang baba, takpan ang ilong, at huminga sa bibig ng biktima. Ituloy hanggang huminga na o dumating ang tulong.",
+    "wound": "Pindutin ang sugat nang mahigpit gamit ang malinis na tela o bandage. Huwag alisin ang tela kahit nabasa na sa dugo — dagdagan nalang. Itaas ang sugat na bahagi ng katawan kung maaari. Tawagan ang 911 kung malalim o malawak ang sugat."
+  },
+  "go_bag": [
+    "Tubig — 1 litro bawat tao bawat araw para sa 3 araw",
+    "Canned food at biscuit para 3 araw",
+    "Gamot at first aid kit (lagyan ng paracetamol, plaster, gaas)",
+    "Flashlight at extra batteries",
+    "Battery-powered o hand-crank radio",
+    "Kopya ng mahahalagang dokumento (birth certificate, PhilHealth, ID)",
+    "Cash — small bills",
+    "Extra damit at sapatos",
+    "Disposable mask at alcohol",
+    "Whistle para tumawag ng tulong",
+    "Cellphone at extra charger o power bank",
+    "Kumot o sleeping bag"
+  ],
+  "hotlines": [
+    { "name": "911 Emergency", "number": "911" },
+    { "name": "NDRRMC Operations Center", "number": "8911-5061" },
+    { "name": "Philippine Red Cross", "number": "143" },
+    { "name": "Philippine Coast Guard", "number": "8527-3877" },
+    { "name": "PHIVOLCS (Volcanoes/Earthquakes)", "number": "8426-1468" },
+    { "name": "PAGASA (Weather)", "number": "8284-0800" },
+    { "name": "DSWD Social Services", "number": "8951-2803" }
+  ]
+}
