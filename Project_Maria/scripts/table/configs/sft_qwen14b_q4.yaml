@@ -1,0 +1,70 @@
+# ============================================================
+#  configs/sft_qwen14b_q4.yaml
+#  Maria — Supervised Fine-Tuning (SFT) Config
+#  Step 1 of 4 in the thesis pipeline:
+#    Base model → [SFT] → DPO → Merge → GGUF → Ollama
+# ============================================================
+
+# ── Model ────────────────────────────────────────────────────
+model:
+  name: "Qwen/Qwen2.5-14B-Instruct"   # HuggingFace model ID
+  quantization: "q4_k_m"               # 4-bit quantization (fits in 12–16 GB VRAM)
+  use_unsloth: true                     # Unsloth makes training ~2x faster
+  load_in_4bit: true                    # QLoRA: train in 4-bit, saves memory
+
+# ── LoRA (Low-Rank Adaptation) ───────────────────────────────
+# LoRA adds small trainable layers on top of the frozen base model.
+# We only train those small layers — much cheaper than full fine-tuning.
+lora:
+  r: 16                  # Rank — higher = more capacity but more memory
+  alpha: 32              # Scaling factor (usually 2 × r)
+  dropout: 0.05          # Regularization — prevents overfitting
+  target_modules:        # Which layers to adapt (standard for Qwen)
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+# ── Dataset ──────────────────────────────────────────────────
+data:
+  train_file: "train.jsonl"    # Created by make_splits.py
+  valid_file: "valid.jsonl"    # Used for early stopping
+  format: "chatml"             # Qwen uses ChatML format: <|im_start|>...<|im_end|>
+  max_seq_length: 2048         # Max tokens per example
+  packing: true                # Pack multiple short examples into one sequence
+                               # (boosts GPU utilisation — recommended)
+
+# ── Training hyperparameters ─────────────────────────────────
+training:
+  output_dir: "./sft_checkpoints"
+  num_epochs: 3                # 3 passes through the data — usually enough
+  per_device_batch_size: 2     # Examples per GPU per step
+  gradient_accumulation: 8     # Effectively batch_size = 2 × 8 = 16
+  learning_rate: 2.0e-4        # Starting LR — cosine scheduler will decay it
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03           # Warm up LR for first 3% of steps
+  weight_decay: 0.01           # L2 regularization
+  fp16: false                  # Use bf16 instead (better for Qwen)
+  bf16: true
+  gradient_checkpointing: true # Trades compute for memory — allows bigger batches
+  logging_steps: 10
+  eval_steps: 100              # Evaluate on valid.jsonl every 100 steps
+  save_steps: 200
+  load_best_model_at_end: true # Keep the checkpoint with lowest valid loss
+  early_stopping_patience: 5  # Stop if valid loss doesn't improve for 5 evals
+
+# ── Merge & Export ───────────────────────────────────────────
+export:
+  merge_to_bf16: true                              # Merge LoRA into full weights
+  merged_output: "./sft_checkpoints/merged_bf16"
+  # After merge, pass to DPO or convert to GGUF:
+  #   python llama.cpp/convert-hf-to-gguf.py ./sft_checkpoints/merged_bf16 --outtype q5_k_m
+  #   ollama create maria-sft -f Modelfile
+
+# ── Reproducibility ──────────────────────────────────────────
+seed: 42
+run_name: "maria_sft_qwen14b_q4"
+report_to: "none"    # Change to "wandb" if you want experiment tracking

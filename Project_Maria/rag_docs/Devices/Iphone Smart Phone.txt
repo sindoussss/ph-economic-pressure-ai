@@ -1,0 +1,171 @@
+TITLE: Apple iPhone Models – Complete Reference
+TAGS: iphone, apple, smartphone, models, product lineup
+YEAR: 2026
+SOURCE: Public Apple product releases and naming conventions
+DISCLAIMER: This document includes confirmed historical models and naming patterns.
+Future models are discussed only in general terms, without speculation.
+
+==================================================
+1. Overview of iPhone Product Line
+==================================================
+
+Apple releases new iPhone models in generations, typically on an annual cycle.
+Each generation may include multiple variants targeting different users and price points.
+
+iPhone models are commonly distinguished by:
+- Screen size
+- Feature set
+- Performance tier
+- Camera capabilities
+- Pricing tier
+
+==================================================
+2. Confirmed iPhone Models by Generation
+==================================================
+
+--------------------------------------------------
+2.1 Early iPhone Generations
+--------------------------------------------------
+
+- iPhone (original)
+- iPhone 3G
+- iPhone 3GS
+- iPhone 4
+- iPhone 4S
+- iPhone 5
+- iPhone 5C
+- iPhone 5S
+- iPhone 6
+- iPhone 6 Plus
+- iPhone 6S
+- iPhone 6S Plus
+
+--------------------------------------------------
+2.2 Transition to Larger Displays and New Designs
+--------------------------------------------------
+
+- iPhone SE (1st generation)
+- iPhone 7
+- iPhone 7 Plus
+- iPhone 8
+- iPhone 8 Plus
+- iPhone X
+
+--------------------------------------------------
+2.3 Face ID Era and Expanded Lineups
+--------------------------------------------------
+
+- iPhone XR
+- iPhone XS
+- iPhone XS Max
+- iPhone 11
+- iPhone 11 Pro
+- iPhone 11 Pro Max
+
+--------------------------------------------------
+2.4 5G and Modern Lineups
+--------------------------------------------------
+
+- iPhone SE (2nd generation)
+- iPhone 12 mini
+- iPhone 12
+- iPhone 12 Pro
+- iPhone 12 Pro Max
+
+- iPhone 13 mini
+- iPhone 13
+- iPhone 13 Pro
+- iPhone 13 Pro Max
+
+- iPhone SE (3rd generation)
+
+- iPhone 14
+- iPhone 14 Plus
+- iPhone 14 Pro
+- iPhone 14 Pro Max
+
+- iPhone 15
+- iPhone 15 Plus
+- iPhone 15 Pro
+- iPhone 15 Pro Max
+
+==================================================
+3. iPhone Model Naming Conventions
+==================================================
+
+Apple uses specific naming patterns to indicate features and position.
+
+- "mini": smaller form factor
+- "Plus": larger screen than standard model
+- "Pro": advanced features and materials
+- "Pro Max": largest size with highest-end features
+- "SE": budget-focused model using older design elements
+
+The presence of "Pro" or "Pro Max" typically indicates:
+- Higher-performance hardware
+- More advanced camera systems
+- Premium materials
+
+==================================================
+4. Understanding References to Future iPhone Models
+==================================================
+
+References to models such as:
+- "iPhone 16"
+- "iPhone 17"
+- "iPhone 17 Pro"
+- "iPhone 17 Pro Max"
+
+are commonly used by the public to describe *expected future generations* based on
+Apple’s historical naming pattern.
+
+However:
+- Apple does not officially confirm future model names or features in advance.
+- Specifications, names, and variants may change before release.
+
+Therefore, future models should be discussed only in general terms unless officially announced.
+
+==================================================
+5. Safe Statements About Future iPhones
+==================================================
+
+It is accurate to say:
+- Apple typically releases new iPhone generations annually.
+- Future models are expected to follow established naming conventions.
+- Exact features and specifications are unknown until official announcements.
+
+It is NOT accurate to state:
+- Exact specifications of unreleased models
+- Confirmed features of unannounced devices
+
+==================================================
+6. Common Questions and Grounded Answers
+==================================================
+
+Q: Is there an iPhone 17 Pro Max?
+A: As of the latest confirmed information, Apple has not officially announced an iPhone 17 Pro Max.
+
+Q: How does Apple name its iPhones?
+A: Apple uses generation numbers and descriptors such as Pro, Pro Max, Plus, and SE to distinguish models.
+
+Q: Will there be future iPhone models?
+A: Apple historically releases new iPhone generations regularly, but details are only confirmed at launch.
+
+==================================================
+7. Key Takeaways
+==================================================
+
+- Apple has released many iPhone models across multiple generations.
+- Model names indicate size and feature tier.
+- Pro Max models represent the highest-end variant in a generation.
+- Future models should not be described with unverified details.
+
+==================================================
+8. Guidance for AI Use (Maria)
+==================================================
+
+- Use this document to list confirmed iPhone models.
+- Avoid inventing specifications for future devices.
+- If asked about unreleased models, state that details are not officially confirmed.
+- If information is not present here, respond with:
+  “I don’t know based on the provided sources.”

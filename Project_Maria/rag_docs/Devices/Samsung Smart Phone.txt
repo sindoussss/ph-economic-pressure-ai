@@ -1,0 +1,261 @@
+TITLE: Samsung Galaxy Smartphones – Complete Reference
+TAGS: samsung, galaxy, smartphone, android, models
+YEAR: 2026
+SOURCE: Public Samsung product releases and naming conventions
+DISCLAIMER: This document lists confirmed Samsung Galaxy models and naming patterns.
+Future models are discussed only in general terms without speculation.
+
+==================================================
+1. Overview of Samsung Galaxy Smartphones
+==================================================
+
+Samsung Electronics is a major global manufacturer of smartphones.
+Its mobile devices are primarily sold under the "Galaxy" brand.
+
+Samsung Galaxy smartphones are known for:
+- Android operating system
+- Wide range of price tiers
+- Frequent model releases
+- Hardware variety
+- Innovation in display and camera technology
+
+==================================================
+2. Samsung Galaxy Product Families
+==================================================
+
+Samsung organizes its smartphones into several main product families.
+
+--------------------------------------------------
+2.1 Galaxy S Series (Flagship)
+--------------------------------------------------
+
+The Galaxy S series represents Samsung’s flagship smartphones.
+These models focus on premium features, performance, and display quality.
+
+Confirmed models include:
+- Galaxy S
+- Galaxy S II
+- Galaxy S III
+- Galaxy S4
+- Galaxy S5
+- Galaxy S6
+- Galaxy S6 edge
+- Galaxy S7
+- Galaxy S7 edge
+- Galaxy S8
+- Galaxy S8+
+- Galaxy S9
+- Galaxy S9+
+- Galaxy S10
+- Galaxy S10+
+- Galaxy S10e
+- Galaxy S20
+- Galaxy S20+
+- Galaxy S20 Ultra
+- Galaxy S21
+- Galaxy S21+
+- Galaxy S21 Ultra
+- Galaxy S22
+- Galaxy S22+
+- Galaxy S22 Ultra
+- Galaxy S23
+- Galaxy S23+
+- Galaxy S23 Ultra
+- Galaxy S24
+- Galaxy S24+
+- Galaxy S24 Ultra
+
+--------------------------------------------------
+2.2 Galaxy Note Series (Productivity-focused)
+--------------------------------------------------
+
+The Galaxy Note series emphasized productivity and stylus input using the S Pen.
+This series is known for large screens and business-oriented features.
+
+Confirmed models include:
+- Galaxy Note
+- Galaxy Note II
+- Galaxy Note 3
+- Galaxy Note 4
+- Galaxy Note 5
+- Galaxy Note 7 (discontinued)
+- Galaxy Note 8
+- Galaxy Note 9
+- Galaxy Note 10
+- Galaxy Note 10+
+- Galaxy Note 20
+- Galaxy Note 20 Ultra
+
+Later Galaxy S Ultra models incorporated Note-style features such as S Pen support.
+
+--------------------------------------------------
+2.3 Galaxy Z Series (Foldable Phones)
+--------------------------------------------------
+
+The Galaxy Z series focuses on foldable smartphone designs.
+
+Confirmed models include:
+- Galaxy Fold
+- Galaxy Z Fold2
+- Galaxy Z Fold3
+- Galaxy Z Fold4
+- Galaxy Z Fold5
+
+- Galaxy Z Flip
+- Galaxy Z Flip 3
+- Galaxy Z Flip 4
+- Galaxy Z Flip 5
+
+Foldable devices are positioned as premium experimental designs.
+
+--------------------------------------------------
+2.4 Galaxy A Series (Mid-range and Budget)
+--------------------------------------------------
+
+The Galaxy A series targets mid-range and budget consumers.
+It is one of Samsung’s largest and most diverse product lines.
+
+Examples of Galaxy A models include:
+- Galaxy A10 / A10s
+- Galaxy A20 / A20s
+- Galaxy A30 / A30s
+- Galaxy A50 / A50s
+- Galaxy A70
+- Galaxy A71
+- Galaxy A72
+- Galaxy A73
+- Galaxy A14
+- Galaxy A15
+- Galaxy A24
+- Galaxy A34
+- Galaxy A54
+
+Model availability varies by region.
+
+--------------------------------------------------
+2.5 Galaxy M Series (Online-focused / Budget)
+--------------------------------------------------
+
+The Galaxy M series is often sold online and focuses on:
+- Large batteries
+- Affordable pricing
+
+Examples include:
+- Galaxy M10
+- Galaxy M20
+- Galaxy M30
+- Galaxy M51
+- Galaxy M54
+
+--------------------------------------------------
+2.6 Galaxy F Series (Select Markets)
+--------------------------------------------------
+
+The Galaxy F series is released in select markets and overlaps with A and M series designs.
+
+==================================================
+3. Samsung Galaxy Naming Conventions
+==================================================
+
+Samsung model names indicate position and features.
+
+- "S": Premium flagship series
+- "Ultra": Highest-end variant in a generation
+- "+": Larger size than base model
+- "Note": Productivity-focused with stylus
+- "Z": Foldable design
+- "A": Mid-range / budget
+- "M": Battery-focused budget models
+
+Higher numbers generally indicate newer generations.
+
+==================================================
+4. Operating System and Software
+==================================================
+
+Samsung Galaxy smartphones run on the Android operating system,
+with Samsung’s own user interface layered on top.
+
+Samsung provides:
+- Software updates
+- Security patches
+- Samsung-specific features and apps
+
+Update duration varies by model and region.
+
+==================================================
+5. Hardware Characteristics
+==================================================
+
+Samsung devices commonly feature:
+- AMOLED displays
+- Multiple camera systems
+- Different processor variants depending on region
+- Expandable storage on some models
+
+Hardware capabilities vary widely across series.
+
+==================================================
+6. Understanding References to Future Samsung Models
+==================================================
+
+References such as:
+- Galaxy S25
+- Galaxy S26 Ultra
+- Galaxy Z Fold 6
+- Galaxy A55
+
+are commonly used to describe expected future releases based on naming patterns.
+
+However:
+- Samsung does not confirm specifications or final names in advance.
+- Features may change before official release.
+
+==================================================
+7. Safe Statements About Future Samsung Devices
+==================================================
+
+It is accurate to state:
+- Samsung releases new Galaxy S models regularly.
+- Foldable devices continue to evolve.
+- Budget and mid-range lines are updated frequently.
+
+It is NOT accurate to state:
+- Exact specifications of unreleased models
+- Confirmed features without official announcements
+
+==================================================
+8. Common Questions and Grounded Answers
+==================================================
+
+Q: What is Samsung’s flagship phone series?
+A: The Galaxy S series is Samsung’s flagship smartphone line.
+
+Q: What replaced the Galaxy Note series?
+A: Note-style features were integrated into Galaxy S Ultra models.
+
+Q: Are foldable Samsung phones available?
+A: Yes, Samsung produces foldable devices under the Galaxy Z series.
+
+Q: Is Galaxy S25 officially announced?
+A: As of the latest confirmed information, Galaxy S25 has not been officially announced.
+
+==================================================
+9. Key Takeaways
+==================================================
+
+- Samsung offers a wide range of smartphone models.
+- Galaxy S and Z represent premium devices.
+- Galaxy A and M focus on affordability.
+- Model naming follows identifiable patterns.
+- Future models should not be described with unverified details.
+
+==================================================
+10. Guidance for AI Use (Maria)
+==================================================
+
+- Use this document to list confirmed Samsung Galaxy models.
+- Avoid inventing specifications for unreleased devices.
+- Handle future model questions cautiously.
+- If information is not present, respond with:
+  “I don’t know based on the provided sources.”

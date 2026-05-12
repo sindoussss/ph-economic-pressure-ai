@@ -1,0 +1,195 @@
+TITLE: Modern AI Assistants – Reference Notes
+TAGS: ai assistant, chatgpt, gemini, claude, copilots, llm
+YEAR: 2026
+SOURCE: Publicly available information from companies and general reporting
+DISCLAIMER: This document describes widely known AI assistants and avoids speculation.
+
+==================================================
+1. What an AI Assistant Is
+==================================================
+
+An AI assistant is a software system designed to interact with users using natural
+language. Modern AI assistants are typically powered by large language models (LLMs).
+
+AI assistants are commonly used for:
+- Answering questions
+- Writing and summarizing text
+- Coding assistance
+- Research support
+- Conversational interaction
+
+They do not possess consciousness or independent intent.
+
+==================================================
+2. ChatGPT
+==================================================
+
+ChatGPT is an AI assistant developed by OpenAI.
+
+General characteristics:
+- Uses large language models
+- Supports conversational interaction
+- Can assist with writing, coding, analysis, and learning
+- Often integrated with tools such as file analysis or web access (depending on version)
+
+Key points:
+- Knowledge is based on training data with a cutoff date
+- Accuracy depends on prompt quality and available context
+- May use retrieval systems to access updated information
+
+==================================================
+3. Google Gemini
+==================================================
+
+Gemini is an AI assistant developed by Google.
+
+General characteristics:
+- Designed to integrate with Google’s ecosystem
+- Supports text-based interaction
+- Often used for search-related tasks and productivity
+
+Key points:
+- Benefits from Google’s infrastructure
+- Used across multiple Google services
+- Knowledge limitations depend on deployment and configuration
+
+==================================================
+4. Claude
+==================================================
+
+Claude is an AI assistant developed by Anthropic.
+
+General characteristics:
+- Focuses on conversational safety and helpfulness
+- Designed with emphasis on alignment and reliability
+- Often used for writing, summarization, and reasoning tasks
+
+Key points:
+- Emphasizes careful and cautious responses
+- Often used in professional or research settings
+
+==================================================
+5. Microsoft Copilot
+==================================================
+
+Microsoft Copilot is an AI assistant integrated into Microsoft products.
+
+General characteristics:
+- Embedded in tools such as Windows, Office, and development environments
+- Focused on productivity and task assistance
+
+Key points:
+- Strong integration with Microsoft software
+- Often used for coding, document creation, and workflow assistance
+
+==================================================
+6. Other AI Assistants and Systems
+==================================================
+
+Other AI-powered assistants and tools exist across platforms, including:
+- Voice assistants with conversational AI components
+- Customer support chatbots
+- Industry-specific AI assistants
+
+These systems may vary widely in capability, accuracy, and scope.
+
+==================================================
+7. How AI Assistants Work (Simplified)
+==================================================
+
+Most modern AI assistants:
+- Use large language models trained on large text datasets
+- Generate responses by predicting likely sequences of words
+- Do not store personal memory unless explicitly designed to do so
+- May rely on external tools or retrieval systems for updated data
+
+==================================================
+8. Knowledge Cutoffs and Updates
+==================================================
+
+AI assistants are trained on data available up to a certain time period.
+This creates a knowledge cutoff.
+
+To address this:
+- Some assistants use live retrieval tools
+- Some rely on external documents provided by users
+- RAG systems are commonly used to extend knowledge
+
+==================================================
+9. Accuracy and Limitations
+==================================================
+
+AI assistants may:
+- Produce incorrect answers
+- Hallucinate information
+- Reflect biases from training data
+
+They are not authoritative sources by default.
+Verification is often necessary.
+
+==================================================
+10. Privacy and Data Considerations
+==================================================
+
+Different AI assistants handle data differently depending on provider policies.
+
+Common considerations include:
+- Data retention
+- User privacy
+- Model improvement practices
+
+Users are encouraged to review provider-specific policies.
+
+==================================================
+11. Use Cases for AI Assistants
+==================================================
+
+Common use cases include:
+- Learning and education
+- Programming assistance
+- Content drafting
+- Research summaries
+- Brainstorming ideas
+
+AI assistants are tools, not replacements for human judgment.
+
+==================================================
+12. Comparison at a High Level
+==================================================
+
+At a high level:
+- ChatGPT is known for conversational flexibility
+- Gemini is closely tied to Google’s services
+- Claude emphasizes careful and aligned responses
+- Copilot focuses on productivity within Microsoft tools
+
+Actual performance varies by task and version.
+
+==================================================
+13. Misconceptions About AI Assistants
+==================================================
+
+- AI assistants do not understand like humans
+- They do not verify truth automatically
+- They do not have awareness or intent
+- They can sound confident while being incorrect
+
+==================================================
+14. Key Takeaways (Grounded Facts)
+==================================================
+
+- Modern AI assistants are powered by large language models.
+- They differ in integration, focus, and design goals.
+- All have knowledge limitations.
+- Retrieval systems are used to extend usefulness.
+- Human oversight remains essential.
+
+==================================================
+15. Guidance for AI Use (Maria)
+==================================================
+
+- Use this document for factual descriptions of AI assistants.
+- Avoid claims about superiority unless sourced.
+- Avoid speculation about internal architectures.
+- If a question cannot be answered using this document, respond with:
+  “I don’t know based on the provided sources.”

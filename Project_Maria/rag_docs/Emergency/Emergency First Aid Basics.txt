@@ -1,0 +1,27 @@
+TITLE: Emergency First Aid Basics
+TAGS: emergency, first aid, cpr, safety
+YEAR: 2025
+SOURCE: Public safety and first aid guidelines
+
+# First Aid Definition
+First aid refers to the immediate assistance given to a person suffering from injury
+or sudden illness before professional medical help arrives.
+
+# CPR (Cardiopulmonary Resuscitation)
+CPR is a life-saving technique used when a person's breathing or heartbeat has stopped.
+It involves chest compressions and, in some cases, rescue breaths.
+
+# Emergency Situations
+Common situations that may require first aid include:
+- Cardiac arrest
+- Severe bleeding
+- Burns
+- Fractures
+- Choking
+
+# Common Questions
+Q: What is first aid?
+A: First aid is immediate care provided to an injured or ill person before medical help arrives.
+
+Q: When should CPR be performed?
+A: CPR should be performed when a person is unresponsive and not breathing normally.

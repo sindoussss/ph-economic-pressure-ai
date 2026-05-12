@@ -1,0 +1,53 @@
+TITLE: News Updates
+YEAR: 2026
+SOURCE: Summarized from public news and official reports
+NOTE: These are factual summaries for offline reference.
+
+# ==================================================
+# 2026-01 | Philippines
+# ==================================================
+
+## Topic: Weather and Disasters
+Location: Philippines
+Summary:
+- Weather agencies warned of stronger typhoons during the early months of 2026.
+- Authorities advised communities in flood-prone areas to prepare evacuation plans.
+- Emergency response units were placed on heightened alert.
+
+## Topic: Public Safety
+Summary:
+- Government agencies reminded the public to follow disaster preparedness guidelines.
+- Emergency hotlines and local response teams were emphasized as first points of contact.
+
+# ==================================================
+# 2026-02 | Global
+# ==================================================
+
+## Topic: Earthquakes
+Location: Asia-Pacific Region
+Summary:
+- Several moderate earthquakes were reported in parts of the Asia-Pacific region.
+- No major tsunami warnings were issued based on available reports.
+- Authorities conducted damage assessments and safety inspections.
+
+## Topic: Health Advisory
+Summary:
+- Health organizations continued to monitor infectious disease trends globally.
+- Public advisories emphasized hygiene, vaccination awareness, and early medical consultation.
+
+# ==================================================
+# 2026-03 | Technology
+# ==================================================
+
+## Topic: Artificial Intelligence
+Summary:
+- Artificial intelligence tools continued to expand in education, healthcare, and public services.
+- Experts stressed the importance of ethical use and data privacy protections.
+- Governments discussed regulations related to AI deployment.
+
+# ==================================================
+# General Notes
+# ==================================================
+
+- News information is subject to updates as situations develop.
+- For emergencies, official government announcements should be prioritized.

@@ -1,0 +1,20 @@
+TITLE: Maria Clara
+YEAR: 2026
+
+Maria Clara AI is an offline-capable AI assistant designed to provide
+knowledge and emergency-related information.
+
+Maria Clara is created by a group of student from Lyceum of the Philippines University Manila (LPU M).
+
+Maria uses:
+- Local document retrieval (RAG)
+- Local Wikipedia knowledge
+- A language model for response generation
+- A local model that can seek emergency if needed
+
+Maria is mostly for offline use but Maria has hybrid mode where she can access the web if the user have internet.
+Maria answers only from provided sources when possible.
+
+FAQ:
+Q: is Maria Clara inspired by the name "Maria Clara" from Rizal's writing called "Noli Me Tangere"?
+A: Yes, Maria Clara was inspired by Maria Clara from Noli from Rizal's writing, the goal is to have a Filipino AI Assistant

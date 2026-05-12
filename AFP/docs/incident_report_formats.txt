@@ -1,0 +1,251 @@
+AFP STANDARD REPORT FORMATS
+============================
+Reference: AFP G3 (Operations) Standing Operating Procedures
+Purpose: Ensure accurate, timely, standardized reporting across all AFP units.
+
+GENERAL RULES FOR ALL REPORTS:
+  - Use Date-Time Group (DTG) format: DDMMMYYYY / HHMM (24-hour). Example: 15MAY2025 / 1430H
+  - State facts only. No speculation, assumptions, or personal interpretation unless in ASSESSMENT section.
+  - Use grid coordinates (MGRS or UTM) for all locations. Landmark as backup only.
+  - All reports must identify: WHO is reporting, WHAT happened, WHERE, WHEN, and WHAT WAS DONE.
+  - Classify appropriately: UNCLASSIFIED / RESTRICTED / CONFIDENTIAL per content sensitivity.
+
+---
+
+1. SPOT REPORT (SPOTREP)
+   Used for: Immediate reporting of significant events (enemy contact, vessel sighting,
+   casualty, suspicious activity). Transmitted within minutes of incident.
+
+   FORMAT:
+   -----------------------------------------------------------------------
+   SUBJECT: SPOT REPORT — [INCIDENT TYPE IN CAPS]
+   CLASSIFICATION: [UNCLASSIFIED / RESTRICTED / CONFIDENTIAL]
+   DTG: [DDMMMYYYY / HHMM]
+   REPORTING UNIT: [Unit Name and Designation]
+   REPORT NUMBER: [Sequential number for the reporting period]
+
+   1. SITUATION:
+      [Factual description of what occurred. Include: who/what was observed,
+      exact location (grid), time of observation, number of personnel/vessels/vehicles,
+      description of equipment or weapons, direction of movement, any actions taken by the subject.]
+
+   2. ACTION TAKEN:
+      [What your unit did in immediate response. Be specific.]
+
+   3. ASSESSMENT:
+      [Your evaluation of the threat level and nature of the incident.]
+
+   4. RECOMMENDATION:
+      [What you are requesting from higher command: reinforcement, MEDEVAC, guidance, etc.]
+
+   5. ATTACHMENTS:
+      [List photos, video, sketches, captured documents — even if not yet transmitted.]
+
+   REPORTED BY: [Rank, Name, Position]
+   CONTACT: [Radio frequency / call sign / phone number]
+   -----------------------------------------------------------------------
+
+   EXAMPLE:
+   SUBJECT: SPOT REPORT — FOREIGN VESSEL SIGHTING
+   DTG: 12MAY2025 / 0845H
+   REPORTING UNIT: 3rd Naval Infantry Battalion, Detachment BRAVO
+
+   1. SITUATION: At 0832H, one (1) gray-hulled vessel, approximately 45 meters in length,
+   bearing markings consistent with China Coast Guard (hull number obscured), was observed
+   at grid 14N PB 123-456, bearing 270 degrees, speed approximately 5 knots, heading west.
+   Three (3) crew members visible on deck. No weapons displayed.
+
+   2. ACTION TAKEN: Unit assumed observation posture. Vessel was photographed and video-recorded.
+   PCG hotline notified at 0838H. No approach made.
+
+   3. ASSESSMENT: Likely patrol vessel operating within Philippine EEZ. No hostile act observed.
+   Presence constitutes a sovereignty concern requiring documentation and diplomatic notification.
+
+   4. RECOMMENDATION: Request guidance from AFP WESCOM. Request PCG coordination for monitoring.
+
+   5. ATTACHMENTS: 47 photographs, 12-minute video footage (transmitted separately).
+   REPORTED BY: 1LT Juan dela Cruz, Detachment Commander
+
+---
+
+2. SITUATION REPORT (SITREP)
+   Used for: Regular scheduled reporting of unit status to higher command.
+   Frequency: As ordered (typically every 6, 12, or 24 hours).
+
+   FORMAT:
+   -----------------------------------------------------------------------
+   TO: [Commander / HQ]
+   FROM: [Rank, Name, Unit]
+   DTG: [DDMMMYYYY / HHMM]
+   SITREP NUMBER: [Sequential]
+   PERIOD COVERED: [From DTG to DTG]
+   CLASSIFICATION: [UNCLASSIFIED / RESTRICTED / CONFIDENTIAL]
+
+   1. OWN SITUATION:
+      a. Location: [Current grid or AO description]
+      b. Strength: [Officers: X / Enlisted: X / Total: X / Effective for duty: X]
+      c. Disposition: [How unit is deployed — patrol, static, reserve, etc.]
+
+   2. ENEMY/THREAT SITUATION:
+      [Description of enemy or threat forces observed or reported in your AO.
+      Include: estimated strength, location, activity, and assessment of intent.
+      State "NO CONTACT" or "NO ENEMY ACTIVITY OBSERVED" if none.]
+
+   3. SIGNIFICANT ACTIVITIES (SIGACTS):
+      [List all notable events since last SITREP with individual DTGs.
+      Include: patrols conducted, contacts made, checkpoints operated, civilian interactions,
+      incidents, and any SPOTREPs already transmitted.]
+
+   4. LOGISTICS STATUS:
+      a. Ammunition: [State % of basic load remaining]
+      b. Rations: [Days of food supply remaining]
+      c. Water: [State potable water supply status]
+      d. Medical: [Casualties this period — KIA/WIA/Missing. Medical supply status.]
+      e. Fuel: [Vehicles/generators — hours or liters remaining]
+      f. Equipment: [Any non-mission-capable (NMC) equipment. State what and reason.]
+
+   5. COMMUNICATIONS STATUS:
+      [Primary radio: operational / degraded / non-operational]
+      [Secondary comms: state status]
+      [Any issues affecting comms security or reliability]
+
+   6. ACTIONS TAKEN:
+      [Summary of unit actions taken during the reporting period in response to
+      threats, incidents, or orders received.]
+
+   7. PLANNED ACTIONS:
+      [What the unit intends to do in the next reporting period.]
+
+   8. REQUESTS / REQUIREMENTS:
+      [Resupply, reinforcement, medical evacuation, equipment, guidance, or support needed.]
+
+   SUBMITTED BY: [Rank, Name]
+   AUTHENTICATION: [Unit authentication code per CEOI]
+   -----------------------------------------------------------------------
+
+---
+
+3. CONTACT REPORT (IMMEDIATE)
+   Used for: Immediate transmission upon making contact with hostile or unknown armed forces.
+   Time: Transmitted WHILE IN CONTACT or within 1 minute of breaking contact.
+   Format: Verbal radio transmission — short and clear.
+
+   RADIO FORMAT (SALUTE):
+   -----------------------------------------------------------------------
+   S — SIZE:         How many personnel / vehicles / vessels?
+   A — ACTIVITY:     What are they doing? (firing, moving, observing)
+   L — LOCATION:     Grid coordinates or landmark reference
+   U — UNIT:         What unit/group are they? (if identifiable)
+   T — TIME:         Exact time of first contact
+   E — EQUIPMENT:    Weapons, vehicles, uniforms observed
+   -----------------------------------------------------------------------
+
+   EXAMPLE TRANSMISSION:
+   "ALPHA-6, this is ALPHA-2, CONTACT REPORT, over.
+   SALUTE follows:
+   SIZE — approximately 15 dismounted personnel.
+   ACTIVITY — moving north on foot, armed, appear hostile.
+   LOCATION — Grid 14N QB 789-123, treeline east of Route LIMA.
+   UNIT — Unknown, wearing civilian clothing.
+   TIME — 1312H.
+   EQUIPMENT — AK-type rifles, one RPG sighted.
+   We are taking fire. Request immediate QRF. Over."
+
+---
+
+4. CASUALTY REPORT (CASREP)
+   Used for: Reporting friendly casualties (KIA, WIA, Missing) to higher command.
+   Transmit as soon as tactically feasible — do not delay medical response to file report.
+
+   FORMAT:
+   -----------------------------------------------------------------------
+   DTG: [DDMMMYYYY / HHMM]
+   REPORTING UNIT: [Unit]
+   INCIDENT DTG: [When casualty occurred]
+   INCIDENT LOCATION: [Grid]
+
+   FOR EACH CASUALTY:
+   1. NAME: [Last name, First name, Middle initial]
+   2. RANK / SERVICE NUMBER: [Rank / SN]
+   3. STATUS: [KIA / WIA-Urgent / WIA-Priority / WIA-Routine / MISSING]
+   4. NATURE OF INJURY/CAUSE OF DEATH: [Brief description — GSW, blast injury, illness, etc.]
+   5. TREATMENT GIVEN: [First aid administered — tourniquet, wound packing, CPR, etc.]
+   6. MEDEVAC REQUESTED: [YES / NO — If yes, state 9-line transmitted or pending]
+   7. LOCATION OF CASUALTY NOW: [Still at incident site / en route / at aid station]
+
+   TOTAL CASUALTIES THIS INCIDENT: KIA: [X] / WIA: [X] / MISSING: [X]
+   REPORTED BY: [Rank, Name]
+   -----------------------------------------------------------------------
+
+---
+
+5. INTELLIGENCE REPORT (INTREP)
+   Used for: Reporting intelligence information — enemy movements, informant reports,
+   captured documents, suspicious activities of intelligence value.
+
+   FORMAT:
+   -----------------------------------------------------------------------
+   CLASSIFICATION: [CONFIDENTIAL / RESTRICTED]
+   DTG: [DDMMMYYYY / HHMM]
+   REPORTING UNIT: [Unit]
+   SOURCE: [Observation / Informant / Captured Document / Interrogation / Other]
+   SOURCE RELIABILITY: [Reliable / Usually reliable / Unknown / Unreliable]
+   INFORMATION ACCURACY: [Confirmed / Probably true / Doubtful / Cannot be assessed]
+
+   1. INFORMATION:
+      [State exactly what was observed or reported. Do not evaluate here — just facts.]
+
+   2. LOCATION: [Grid or description where information pertains to]
+
+   3. DTG OF INFORMATION: [When did this occur or when was it reported?]
+
+   4. ANALYSIS:
+      [Your assessment of the information's significance and reliability.]
+
+   5. RECOMMENDED ACTION:
+      [What intelligence follow-up or operational response is suggested?]
+
+   REPORTED BY: [Rank, Name, Position]
+   -----------------------------------------------------------------------
+
+---
+
+6. PATROL REPORT (PATROLREP)
+   Used for: Debriefing after patrol completion. Filed within 2 hours of returning to base.
+
+   FORMAT:
+   -----------------------------------------------------------------------
+   UNIT: [Patrol element designation]
+   PATROL LEADER: [Rank, Name]
+   DTG DEPARTED: [DDMMMYYYY / HHMM]
+   DTG RETURNED: [DDMMMYYYY / HHMM]
+   PATROL TYPE: [Reconnaissance / Combat / Ambush / Security / Civic Action]
+   AREA OF OPERATIONS: [AO name or coordinates of route]
+
+   1. MISSION: [Assigned task]
+   2. ROUTE: [Waypoints traversed, in order]
+   3. ENEMY ACTIVITY OBSERVED:
+      [Describe all signs of enemy or hostile activity: tracks, camps, equipment,
+      personnel, firing positions. State grid for each. "NEGATIVE CONTACT" if none.]
+   4. CIVILIAN SITUATION:
+      [Population mood, key leaders met, concerns raised, suspicious activity.]
+   5. KEY TERRAIN OBSERVATIONS:
+      [Obstacles, bridges, fords, chokepoints, landing zones, cover and concealment.]
+   6. FRIENDLY CASUALTIES: [KIA / WIA / none]
+   7. EQUIPMENT STATUS: [Weapons, radios, vehicles — any unserviceable items?]
+   8. RECOMMENDATIONS:
+      [Follow-up actions, additional patrols needed, intelligence leads to pursue.]
+
+   PATROL LEADER SIGNATURE: ___________________
+   -----------------------------------------------------------------------
+
+---
+
+REPORT SUBMISSION REMINDERS
+
+  - Negative reports still required: If nothing happened, submit SITREP stating "NO SIGNIFICANT ACTIVITY."
+  - Timely over perfect: A quick, incomplete report transmitted early is more valuable than a
+    perfect report transmitted late.
+  - Authentication: All radio-transmitted reports require authentication per your unit CEOI.
+  - Hard copy: Maintain paper copies of all submitted reports in the unit journal.
+  - Photos and video: Label all media with DTG, location, and brief description before transmitting.

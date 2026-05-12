@@ -1,0 +1,241 @@
+PHILIPPINE LAWS RELEVANT TO AFP FIELD OPERATIONS
+==================================================
+Reference: Republic Acts, Presidential Decrees, 1987 Philippine Constitution, AFP Judge Advocate General
+Purpose: Field-level legal awareness for AFP personnel. Not a substitute for JAG counsel.
+
+---
+
+THE CONSTITUTION OF THE PHILIPPINES (1987)
+
+ARTICLE II, SECTION 3 — Civilian Supremacy:
+The civilian authority is, at all times, supreme over the military. The AFP is the protector of
+the people and the State. Its goal is to secure the sovereignty of the State and the integrity
+of the national territory.
+
+AFP personnel serve the Constitution — not any administration, political party, or individual.
+An order that violates the Constitution is NOT a lawful order and need not be followed.
+
+ARTICLE III — BILL OF RIGHTS:
+Applies to ALL persons in the Philippines, including suspects, detainees, and enemy combatants.
+Key provisions relevant to field operations:
+  - Section 2: No unreasonable searches and seizures. Arrests require warrant except in flagrante
+    delicto (caught in the act), hot pursuit, or escaped detainee situations.
+  - Section 12: Rights of persons under investigation (right to remain silent, to counsel).
+  - Section 14: Presumption of innocence. Suspects are not convicted criminals.
+  - Section 19: Prohibition against cruel, degrading, or inhuman punishment.
+
+---
+
+RA 9745 — ANTI-TORTURE ACT OF 2009
+
+This is one of the most critical laws for AFP field personnel.
+
+PROHIBITED ACTS (applies to ALL AFP personnel, in ALL circumstances):
+  Physical torture:
+    - Systematic beating, hitting, punching, kicking.
+    - Food and water deprivation; sleep deprivation.
+    - Electric shock; burning; freezing; suffocation or near-drowning.
+    - Exposure to extreme temperatures.
+
+  Psychological torture:
+    - Threats to harm detainee or their family.
+    - Mock executions.
+    - Sensory deprivation (blindfolding + isolation for extended periods).
+    - Humiliation, degradation, forced nudity.
+    - Being kept in a "safe house" without notification to family or counsel.
+
+PENALTIES:
+    - Reclusion temporal (12-20 years imprisonment) for acts of torture.
+    - Perpetual disqualification from public office.
+    - Commanding officers who knew and failed to act face the same penalties.
+
+KEY PRINCIPLE: Torture NEVER produces reliable intelligence. It produces confessions.
+Under RA 9745, any confession obtained through torture is inadmissible in court.
+Torturing a suspect destroys the case against them.
+
+---
+
+RA 7438 — RIGHTS OF PERSONS ARRESTED, DETAINED, OR UNDER CUSTODIAL INVESTIGATION (1992)
+
+Applies the moment any person is taken into custody by AFP personnel.
+
+MANDATORY RIGHTS TO BE INFORMED (in a language they understand):
+  - The right to remain silent.
+  - The right to have competent and independent counsel, preferably of their own choice.
+    If they cannot afford counsel, one must be provided at NO COST.
+  - That any statement they make may be used against them in court.
+
+ADDITIONAL RIGHTS:
+  - Right to communicate with their family or counsel immediately.
+  - Right to be visited by or consult with a social worker and their priest/minister.
+  - Right to medical examination before and after interrogation.
+  - Right not to be subjected to any physical, psychological, or mental torture.
+
+WAIVER OF RIGHTS:
+  A detainee may waive their right to remain silent or to counsel, BUT:
+    - The waiver must be voluntary, knowing, and intelligent.
+    - The waiver must be in WRITING.
+    - The waiver must be made IN THE PRESENCE OF COUNSEL.
+  A waiver made without counsel present is legally invalid.
+
+PENALTY FOR VIOLATION: AFP personnel who violate RA 7438 face criminal charges.
+Any statement or confession obtained in violation of RA 7438 is INADMISSIBLE IN COURT.
+
+---
+
+RA 11479 — ANTI-TERRORISM ACT OF 2020
+
+Relevant when operating against designated terrorist organizations (e.g., ASG, BIFF, NPA when
+classified as terrorist organization by the ATC).
+
+WARRANTLESS ARREST under ATA:
+  - Authorized in flagrante delicto (caught committing a terrorist act).
+  - In hot pursuit of a fleeing terrorism suspect.
+  - ATC-authorized warrantless arrest may be extended (check current implementing rules).
+
+DETENTION WITHOUT WARRANT:
+  - Suspects may be detained for up to 14 days under ATA (extendable by 10 days).
+  - HOWEVER: Detention must be reported to the Commission on Human Rights (CHR) within 48 hours.
+  - Detainee retains all rights under RA 7438 even under ATA.
+
+IMPORTANT: ATA designation requires ATC (Anti-Terrorism Council) authority. Individual AFP
+commanders cannot unilaterally designate groups as terrorist. Follow orders from higher command.
+
+---
+
+RA 9165 — COMPREHENSIVE DANGEROUS DRUGS ACT OF 2002
+
+Critical for any operation where illegal drugs are seized.
+
+CHAIN OF CUSTODY RULE (Section 21):
+  When drugs are seized, the following must happen IMMEDIATELY AT THE SCENE OF SEIZURE:
+    1. Physically inventory all seized drugs in the presence of:
+         a. The accused or their representative/counsel
+         b. An elected public official (barangay captain, councilor, or higher)
+         c. A representative from the National Prosecution Service (DOJ) OR media representative
+    2. Photograph the drugs, paraphernalia, and documents at the seizure site.
+    3. Mark each item immediately upon seizure.
+    4. Prepare an inventory receipt signed by all witnesses present.
+
+  FAILURE TO FOLLOW CHAIN OF CUSTODY = case dismissal. Courts have acquitted drug suspects
+  solely because AFP/PNP failed to follow Section 21 correctly.
+
+FIELD GUIDANCE:
+  - Always request a barangay official to witness drug seizures before moving the evidence.
+  - If witnesses are not immediately available, document WHY and what justifiable grounds exist.
+  - Turn over seized drugs to the nearest PNP Crime Laboratory within 24 hours.
+
+---
+
+RA 10121 — PHILIPPINE DISASTER RISK REDUCTION AND MANAGEMENT ACT (2010)
+
+AFP mandated role in disaster response:
+
+  - AFP units may act to save lives WITHOUT waiting for civilian orders when immediate action
+    is required to prevent loss of life.
+  - AFP operates under coordination with NDRRMC (National Disaster Risk Reduction and Management Council)
+    and local DRRM offices during declared calamity.
+  - AFP resources (aircraft, vessels, personnel) may be tasked by NDRRMC for disaster relief.
+
+AUTHORITY TO ACT: When there is a declared state of calamity, AFP field commanders may:
+  - Conduct search and rescue without individual mission orders.
+  - Commandeer transport, equipment, and supplies as necessary (with documentation and receipts).
+  - Establish temporary evacuation centers.
+  - Coordinate directly with LGUs, DSWD, and DOH without routing through HQ.
+
+DOCUMENTATION: Even in disaster response, document all actions, assets used, and resources
+distributed. This protects personnel from later accountability issues.
+
+---
+
+RA 10591 — COMPREHENSIVE FIREARMS AND AMMUNITION REGULATION ACT (2013)
+
+Relevant when AFP discovers illegal firearms during operations:
+
+  - AFP personnel carry weapons under military authority — this law governs CIVILIAN firearms.
+  - Unlicensed civilian firearms found during operations: seize, document, and turn over to PNP.
+  - Do not allow seized civilian firearms to be added to AFP inventory or used operationally.
+  - Issue a receipt for any seized firearm. Maintain chain of custody documentation.
+
+LOOSE FIREARMS in conflict areas:
+  - Encountered illegal firearms must be inventoried and submitted through proper channels.
+  - Improper handling of seized weapons can result in criminal liability for AFP personnel.
+
+---
+
+PD 1829 — OBSTRUCTION OF JUSTICE
+
+Applies to civilians (and potentially others) who:
+  - Harbor, conceal, or assist any person AFP is pursuing.
+  - Destroy evidence of a crime.
+  - Warn suspects of an impending operation.
+  - Give false information to mislead AFP operations.
+
+FIELD APPLICATION:
+  - Documenting obstruction creates legal grounds for arrest.
+  - Individuals who harbor armed groups can be charged under PD 1829 and potentially as accessories
+    under the Revised Penal Code.
+  - Coordinate with PNP for arrest authority in civilian obstruction cases.
+
+---
+
+RA 7077 — CITIZEN ARMED FORCES OF THE PHILIPPINES RESERVIST ACT
+
+Defines the legal basis for CAFGU (Citizen Armed Force Geographical Unit) operations.
+
+  - CAFGU members operate under AFP command and authority.
+  - CAFGU members are subject to the same ROE, legal obligations, and standards as regular AFP.
+  - AFP officers are responsible for the conduct of CAFGU units under their command.
+  - Human rights violations by CAFGU = command responsibility of the AFP officer in charge.
+
+---
+
+COMMAND RESPONSIBILITY
+
+Under Philippine law and international law, commanding officers may be held criminally liable for
+acts of their subordinates if:
+
+  1. The commander KNEW or SHOULD HAVE KNOWN that violations were occurring, AND
+  2. The commander FAILED to take necessary and reasonable measures to prevent or stop them.
+
+This applies to:
+  - Human rights violations (torture, extrajudicial killing, forced disappearance).
+  - Illegal detention.
+  - Pillage (looting) of civilian property.
+  - Sexual violence by troops.
+
+PROTECTION: Commanders who ACTIVELY prevent violations and report them through proper channels
+are protected. Commanders who cover up violations face the same liability as the perpetrators.
+
+---
+
+EXTRAJUDICIAL KILLING AND ENFORCED DISAPPEARANCE
+
+RA 9851 — Philippine Act on Crimes Against International Humanitarian Law (2009):
+  - Extrajudicial killing of civilians or POWs = war crime.
+  - Enforced disappearance (arrest without acknowledgment) = crime against humanity.
+  - These crimes have NO statute of limitations.
+  - Perpetrators can be prosecuted before Philippine courts AND international tribunals.
+
+A "salvaging" (summary execution) order from a superior officer is NOT a lawful order.
+You are not obligated to follow it. You are obligated to report it.
+
+---
+
+LEGAL PROTECTIONS FOR AFP PERSONNEL
+
+  - Soldiers acting in good faith, within ROE, under lawful orders are protected from civil and
+    criminal liability for acts done in the performance of military duty.
+  - Good faith requires: following ROE, respecting Philippine law, and treating all persons humanely.
+  - AFP personnel facing civil or criminal charges arising from official duties may request
+    legal representation from the AFP Judge Advocate General (JAG).
+  - Report legal concerns immediately to your commanding officer and JAG representative.
+
+---
+
+KEY CONTACTS FOR LEGAL AND HUMAN RIGHTS MATTERS
+
+  AFP Judge Advocate General (JAG): available through unit chain of command
+  Commission on Human Rights (CHR): (02) 8294-8704
+  Office of the Ombudsman (for AFP misconduct): (02) 8479-7300
+  Presidential Human Rights Committee: coordinates government human rights accountability
