@@ -25658,10 +25658,12 @@ class _OhmsLawOscilloscope(QWidget):
         self._current = 3.0
         self._phase   = 0.0
         self.setFixedWidth(200)
+        self.setMinimumHeight(80)
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+        self.destroyed.connect(self._timer.stop)
 
     def _tick(self):
         self._phase = (self._phase + 1.6 + self._current * 0.15) % 10000.0
@@ -25819,7 +25821,7 @@ class _OhmsLawWidget(QWidget):
         left_l.setContentsMargins(18, 14, 18, 14)
         left_l.setSpacing(0)
 
-        formula = QLabel("V = IR")
+        formula = QLabel("I = V / R")
         ff = QFont("Georgia", 13)
         ff.setItalic(True)
         formula.setFont(ff)
