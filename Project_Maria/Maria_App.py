@@ -37938,7 +37938,7 @@ RULES:
                 border-radius: 16px;
             }
         """)
-        card.setMaximumWidth(self._chat_column_width())
+        card.setMaximumWidth(int(self._chat_column_width() * 0.9))
         shadow = QGraphicsDropShadowEffect(card)
         shadow.setBlurRadius(20)
         shadow.setOffset(0, 3)
