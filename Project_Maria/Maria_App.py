@@ -37951,48 +37951,26 @@ RULES:
         hdr = QWidget(card)
         hdr.setStyleSheet("background: transparent;")
         hdr_l = QHBoxLayout(hdr)
-        hdr_l.setContentsMargins(20, 16, 16, 12)
+        hdr_l.setContentsMargins(18, 12, 18, 10)
         hdr_l.setSpacing(10)
 
-        title_col = QVBoxLayout()
-        title_col.setSpacing(2)
-        title = QLabel("Ohm’s Law Explorer")
+        title = QLabel("Ohm’s Law")
         title.setStyleSheet("""
-            color: #0f172a;
-            font-size: 16px; font-weight: 700;
-            font-family: Georgia, 'Times New Roman', serif;
+            color: #1a1a1a;
+            font-size: 12px; font-weight: 700;
+            font-family: ‘Segoe UI Variable’, ‘Segoe UI’, sans-serif;
             background: transparent; letter-spacing: 0.3px;
         """)
-        sub = QLabel("I = V / R  —  interactive circuit")
+        sub = QLabel("I = V / R")
         sub.setStyleSheet("""
-            color: #9a9890;
-            font-size: 10.5px; font-style: italic;
+            color: #bbbbbb;
+            font-size: 10px; font-style: italic;
             font-family: Georgia, serif;
             background: transparent;
         """)
-        title_col.addWidget(title)
-        title_col.addWidget(sub)
-        hdr_l.addLayout(title_col, 1)
-
-        popout_btn = QPushButton("Open large")
-        popout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        popout_btn.setFixedHeight(28)
-        popout_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: 1px solid #dddad2;
-                border-radius: 14px;
-                color: #888880;
-                padding: 0 12px;
-                font-size: 10px; font-weight: 600;
-                font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            }
-            QPushButton:hover { background: #f5f3ee; color: #444440; border-color: #c8c5bc; }
-        """)
-        popout_btn.clicked.connect(
-            lambda: self.open_ohms_law_widget(
-                getattr(shell, '_pending_widget_data', widget_data)))
-        hdr_l.addWidget(popout_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        hdr_l.addWidget(title)
+        hdr_l.addWidget(sub)
+        hdr_l.addStretch()
         card_layout.addWidget(hdr)
 
         div = QFrame(card)
@@ -38021,30 +37999,6 @@ RULES:
 
         widget.state_changed.connect(_on_state_changed)
         card_layout.addWidget(widget)
-
-        div2 = QFrame(card)
-        div2.setFrameShape(QFrame.Shape.HLine)
-        div2.setFixedHeight(1)
-        div2.setStyleSheet("background: #eeece6; color: #eeece6;")
-        card_layout.addWidget(div2)
-
-        footer = QWidget(card)
-        footer.setStyleSheet("background: transparent;")
-        footer_l = QHBoxLayout(footer)
-        footer_l.setContentsMargins(20, 8, 20, 12)
-        footer_l.setSpacing(6)
-        live_dot = QLabel("●")
-        live_dot.setStyleSheet("color: #4ade80; font-size: 8px; background: transparent;")
-        footer_l.addWidget(live_dot, 0, Qt.AlignmentFlag.AlignVCenter)
-        caption = QLabel("Live simulation — values and particles update as you drag.")
-        caption.setStyleSheet("""
-            color: #b0ada4;
-            font-size: 10.5px;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
-        footer_l.addWidget(caption, 1)
-        card_layout.addWidget(footer)
 
         shell_layout.addSpacing(48)
         shell_layout.addWidget(card, 1)
