@@ -25649,185 +25649,85 @@ class _WritingEditorWidget(QWidget):
         card.setEnabled(False)
 
 
-class _OhmsLawVisualization(QWidget):
-    """Right-panel circuit diagram — compact premium light mode."""
+class _OhmsLawOscilloscope(QWidget):
+    """Scrolling sine-wave panel — right side of the Ohm's Law widget."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._voltage    = 9.0
-        self._resistance = 3.0
-        self._current    = 3.0
-        self._phase      = 0.0
-        self._pulse      = 0.0
-        self.setMinimumSize(220, 120)
+        self._voltage = 9.0
+        self._current = 3.0
+        self._phase   = 0.0
+        self.setFixedWidth(200)
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
     def _tick(self):
-        speed       = 0.004 + min(0.028, self._current * 0.003)
-        self._phase = (self._phase + speed) % 1.0
-        self._pulse = (self._pulse + 0.05) % 1.0
+        self._phase += 1.6 + self._current * 0.15
         self.update()
 
-    def set_values(self, voltage: float, resistance: float, current: float) -> None:
-        self._voltage    = max(0.0, float(voltage))
-        self._resistance = max(0.1, float(resistance))
-        self._current    = max(0.0, float(current))
-        self.update()
-
-    def _wire_color(self):
-        t = min(1.0, self._current / 18.0)
-        r = int(67  + (109 - 67)  * t)
-        g = int(56  + (40  - 56)  * t)
-        b = int(202 + (217 - 202) * t)
-        return QColor(r, g, b)
+    def set_values(self, voltage: float, current: float):
+        self._voltage = max(0.0, float(voltage))
+        self._current = max(0.0, float(current))
 
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
 
-        # Dot grid
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor(185, 198, 230, 80)))
-        gs = 18
-        for gx in range(0, w + gs, gs):
-            for gy in range(0, h + gs, gs):
-                p.drawEllipse(QPointF(gx, gy), 1.0, 1.0)
+        p.setBrush(QBrush(QColor(250, 250, 249)))
+        p.drawRect(QRectF(0, 0, w, h))
 
-        cx1 = int(w * 0.20);  cy1 = int(h * 0.26)
-        cx2 = int(w * 0.92);  cy2 = int(h * 0.80)
-        bat_cy = (cy1 + cy2) // 2
-        bat_h, bat_w = 34, 18
-        res_cx  = int((cx1 + cx2) * 0.56)
-        res_w, res_h = 62, 18
-        res_x1 = res_cx - res_w // 2
-        res_x2 = res_cx + res_w // 2
-        res_y  = cy1 - res_h // 2
-        wc = self._wire_color()
+        grid_pen = QPen(QColor(0, 0, 0, 10))
+        grid_pen.setWidthF(1.0)
+        p.setPen(grid_pen)
+        for i in range(1, 4):
+            p.drawLine(QPointF(0, h * i / 4), QPointF(w, h * i / 4))
+        for i in range(1, 5):
+            p.drawLine(QPointF(w * i / 5, 0), QPointF(w * i / 5, h))
 
-        # Wires
-        wp = QPen(wc, 2.2)
+        p.setPen(QPen(QColor(0, 0, 0, 15)))
+        p.drawLine(QPointF(0, h / 2), QPointF(w, h / 2))
+
+        amp  = h * 0.26 * min(1.0, self._voltage / 24.0)
+        freq = 0.032 + self._current * 0.002
+
+        wave = QPainterPath()
+        for x in range(w + 1):
+            y = h / 2 + amp * math.sin((x + self._phase) * freq)
+            if x == 0:
+                wave.moveTo(x, y)
+            else:
+                wave.lineTo(x, y)
+
+        wp = QPen(QColor(60, 140, 100, 190))
+        wp.setWidthF(1.6)
         wp.setCapStyle(Qt.PenCapStyle.RoundCap)
-        wp.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        p.setPen(wp);  p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawLine(QPointF(cx1, cy1), QPointF(res_x1, cy1))
-        p.drawLine(QPointF(res_x2, cy1), QPointF(cx2, cy1))
-        p.drawLine(QPointF(cx2, cy1), QPointF(cx2, cy2))
-        p.drawLine(QPointF(cx1, cy2), QPointF(cx2, cy2))
-        p.drawLine(QPointF(cx1, cy1), QPointF(cx1, bat_cy - bat_h // 2))
-        p.drawLine(QPointF(cx1, bat_cy + bat_h // 2), QPointF(cx1, cy2))
+        p.setPen(wp)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawPath(wave)
 
-        p.setPen(Qt.PenStyle.NoPen);  p.setBrush(QBrush(wc))
-        for px, py in [(cx1, cy1), (cx2, cy1), (cx2, cy2), (cx1, cy2)]:
-            p.drawEllipse(QPointF(px, py), 2.8, 2.8)
-
-        # Battery
-        bat_rect = QRectF(cx1 - bat_w / 2, bat_cy - bat_h / 2, bat_w, bat_h)
-        bg = QLinearGradient(QPointF(bat_rect.left(), 0), QPointF(bat_rect.right(), 0))
-        bg.setColorAt(0.0, QColor(255, 255, 255))
-        bg.setColorAt(1.0, QColor(238, 242, 255))
-        p.setBrush(QBrush(bg));  p.setPen(QPen(wc, 1.6))
-        p.drawRoundedRect(bat_rect, 4, 4)
-        nub = QRectF(cx1 - 4, bat_cy - bat_h / 2 - 4, 8, 5)
-        p.setBrush(QBrush(wc));  p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(nub, 2, 2)
-        bf = QFont("Segoe UI", 8, QFont.Weight.Bold)
-        p.setFont(bf)
-        p.setPen(QColor(30, 155, 75))
-        p.drawText(QRectF(cx1 - 7, bat_cy - bat_h / 2 + 3, 14, 12),
-                   Qt.AlignmentFlag.AlignCenter, "+")
-        p.setPen(QColor(195, 45, 45))
-        p.drawText(QRectF(cx1 - 7, bat_cy + bat_h / 2 - 15, 14, 12),
-                   Qt.AlignmentFlag.AlignCenter, "\u2212")
-
-        # Resistor glow when high current
-        res_rect = QRectF(res_x1, res_y, res_w, res_h)
-        if self._current > 6.0:
-            glow_t = min(1.0, (self._current - 6.0) / 12.0)
-            ga     = int(glow_t * (18 + 14 * abs(self._pulse * 2 - 1)))
-            gc     = QColor(wc.red(), wc.green(), wc.blue(), ga)
-            for off in [5, 3, 2]:
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.setPen(QPen(gc, off * 2))
-                p.drawRoundedRect(res_rect.adjusted(-off, -off, off, off), 6, 6)
-
-        rg = QLinearGradient(QPointF(0, res_y), QPointF(0, res_y + res_h))
-        rg.setColorAt(0.0, QColor(255, 255, 255))
-        rg.setColorAt(1.0, QColor(230, 236, 255))
-        p.setBrush(QBrush(rg));  p.setPen(QPen(wc, 1.7))
-        p.drawRoundedRect(res_rect, 5, 5)
-
-        # Electron dots (clipped)
-        cp = QPainterPath()
-        cp.addRoundedRect(res_rect.adjusted(2, 2, -2, -2), 3, 3)
-        p.setClipPath(cp)
-        N = 5
-        dot_r = 2.6 + min(1.5, self._current * 0.08)
-        for i in range(N):
-            t  = ((i / N) + self._phase) % 1.0
-            dx = res_x1 + 9 + t * (res_w - 18)
-            dy = res_y + res_h / 2
-            dg = QRadialGradient(QPointF(dx - 0.8, dy - 1.0), dot_r * 1.6)
-            dg.setColorAt(0.0, QColor(210, 228, 255))
-            dg.setColorAt(0.5, QColor(wc.red(), wc.green(), wc.blue(), 225))
-            dg.setColorAt(1.0, QColor(max(0, wc.red()-40),
-                                      max(0, wc.green()-30),
-                                      min(255, wc.blue()), 130))
-            p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QBrush(dg))
-            p.drawEllipse(QPointF(dx, dy), dot_r, dot_r)
-        p.setClipping(False)
-
-        # Current arrow
-        mid_x = (cx1 + cx2) / 2.0
-        arr_y = cy1 - 15
-        al = 26
-        ax1, ax2 = mid_x - al, mid_x + al
-        for tk in [8, 5]:
-            p.setPen(QPen(QColor(wc.red(), wc.green(), wc.blue(), 16), tk))
-            p.drawLine(QPointF(ax1, arr_y), QPointF(ax2, arr_y))
-        p.setPen(QPen(wc, 2.0));  p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawLine(QPointF(ax1, arr_y), QPointF(ax2, arr_y))
-        head = QPainterPath()
-        head.moveTo(ax2, arr_y)
-        head.lineTo(ax2 - 8, arr_y - 4.5)
-        head.lineTo(ax2 - 8, arr_y + 4.5)
-        head.closeSubpath()
-        p.setBrush(QBrush(wc));  p.setPen(Qt.PenStyle.NoPen)
-        p.drawPath(head)
-
-        # Labels
         lf = QFont("Segoe UI", 7)
-        lf.setWeight(QFont.Weight.Medium)
         p.setFont(lf)
-        p.setPen(wc)
-        p.drawText(QRectF(ax1, arr_y - 13, ax2 - ax1 + 10, 12),
-                   Qt.AlignmentFlag.AlignCenter,
-                   f"I = {self._current:.2f} A")
-        p.setPen(QColor(28, 35, 90))
-        p.drawText(QRectF(2, bat_cy - 8, cx1 - 5, 16),
+        p.setPen(QColor(200, 200, 200))
+        p.drawText(QRectF(0, h - 18, w - 6, 14),
                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                   f"Vs={self._voltage:.1f}V")
-        p.drawText(QRectF(res_x1, res_y + res_h + 3, res_w, 12),
-                   Qt.AlignmentFlag.AlignCenter,
-                   f"R = {self._resistance:.1f} \u03a9")
-
+                   f"P = {self._voltage * self._current:.1f} W")
         p.end()
 
 
 class _OhmsLawWidget(QWidget):
-    """Interactive Ohm's Law widget — compact full light mode."""
+    """Interactive Ohm's Law widget — three-column precision layout."""
 
-    state_changed = pyqtSignal(dict)
+    state_changed   = pyqtSignal(dict)
     _MIN_RESISTANCE = 0.1
     _PRESETS = (
-        ("Battery", 9, 3.0),
-        ("Phone",   5, 2.0),
-        ("Motor",  18, 6.0),
-        ("High Load", 12, 1.2),
+        ("Battery",   9, 3.0),
+        ("Phone",     5, 2.0),
+        ("Motor",    18, 6.0),
+        ("High Load",12, 1.2),
     )
 
     def __init__(self, parent=None):
@@ -25841,252 +25741,202 @@ class _OhmsLawWidget(QWidget):
         self._current_anim_timer = QTimer(self)
         self._current_anim_timer.setInterval(24)
         self._current_anim_timer.timeout.connect(self._animate_step)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self._build_ui()
         self.apply_widget_data({"voltage": 9, "resistance": 3.0})
 
-    # ── Card background: white + rainbow accent bar + right-panel tint ──────
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = self.width(), self.height()
-
-        clip = QPainterPath()
-        clip.addRoundedRect(QRectF(0, 0, w, h), 16, 16)
-        painter.setClipPath(clip)
-
-        # White body
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(252, 253, 255)))
-        painter.drawRect(QRectF(0, 0, w, h))
-
-        # Right-panel lavender tint
-        split = w * 0.51
-        rp = QLinearGradient(QPointF(split, 0), QPointF(w, 0))
-        rp.setColorAt(0.0, QColor(243, 245, 255))
-        rp.setColorAt(1.0, QColor(236, 241, 255))
-        painter.setBrush(QBrush(rp))
-        painter.drawRect(QRectF(split, 0, w - split, h))
-
-        # 4px rainbow accent bar
-        bar = QLinearGradient(QPointF(0, 0), QPointF(w, 0))
-        bar.setColorAt(0.00, QColor(79,  70, 229))
-        bar.setColorAt(0.38, QColor(124, 58, 237))
-        bar.setColorAt(0.70, QColor(8,  145, 178))
-        bar.setColorAt(1.00, QColor(6,  182, 212))
-        painter.setBrush(QBrush(bar))
-        painter.drawRect(QRectF(0, 0, w, 4))
-
-        # Subtle 1px border
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(210, 218, 245, 160), 1))
-        painter.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 16, 16)
-
-        painter.setClipping(False)
+        painter.setBrush(QBrush(QColor(252, 252, 250)))
+        painter.drawRect(QRectF(0, 0, self.width(), self.height()))
         painter.end()
+
+    def _make_col(self, title, unit, is_input, rng_min, rng_max):
+        col = QWidget()
+        col.setStyleSheet("background: transparent;")
+        cl  = QVBoxLayout(col)
+        cl.setContentsMargins(22, 18, 22, 14)
+        cl.setSpacing(0)
+
+        t_lbl = QLabel(title)
+        tf = QFont("Segoe UI", 7)
+        tf.setWeight(QFont.Weight.DemiBold)
+        tf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
+        t_lbl.setFont(tf)
+        t_lbl.setStyleSheet("color: #aaa89e; background: transparent;")
+        cl.addWidget(t_lbl)
+        cl.addSpacing(7)
+
+        num_row = QWidget()
+        num_row.setStyleSheet("background: transparent;")
+        nrl = QHBoxLayout(num_row)
+        nrl.setContentsMargins(0, 0, 0, 0)
+        nrl.setSpacing(4)
+
+        num_lbl = QLabel("0.0")
+        nf = QFont("Georgia", 28)
+        nf.setWeight(QFont.Weight.Bold)
+        num_lbl.setFont(nf)
+        num_lbl.setStyleSheet(
+            ("color: #0f172a;" if is_input else "color: #1a41c4;") +
+            " background: transparent;")
+        nrl.addWidget(num_lbl)
+
+        u_lbl = QLabel(unit)
+        uf = QFont("Segoe UI", 11)
+        u_lbl.setFont(uf)
+        u_lbl.setStyleSheet("color: #c8c5ba; background: transparent;")
+        u_lbl.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft)
+        nrl.addWidget(u_lbl)
+        nrl.addStretch()
+        cl.addWidget(num_row)
+        cl.addSpacing(10)
+
+        slider = None
+        if is_input:
+            slider = QSlider(Qt.Orientation.Horizontal)
+            slider.setRange(rng_min, rng_max)
+            slider.setSingleStep(1)
+            slider.setCursor(Qt.CursorShape.PointingHandCursor)
+            slider.setFixedHeight(20)
+            slider.setStyleSheet("""
+                QSlider::groove:horizontal {
+                    height: 3px; border-radius: 1.5px; background: #e8e5dd;
+                }
+                QSlider::sub-page:horizontal {
+                    background: #0f172a; border-radius: 1.5px;
+                }
+                QSlider::handle:horizontal {
+                    width: 16px; height: 16px; margin: -6.5px 0;
+                    border-radius: 8px; background: #ffffff;
+                    border: 2.5px solid #0f172a;
+                }
+                QSlider::handle:horizontal:hover  { background: #f0f4ff; border-color: #1a41c4; }
+                QSlider::handle:horizontal:pressed { background: #dbeafe; border-color: #1a41c4; }
+            """)
+            slider.valueChanged.connect(self._update_display)
+            cl.addWidget(slider)
+        else:
+            cl.addSpacing(20)
+
+        cl.addStretch()
+        return col, num_lbl, slider
 
     def _build_ui(self):
         self.setStyleSheet("background: transparent;")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 4, 0, 0)
+        root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        body = QHBoxLayout()
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(0)
-        root.addLayout(body)
+        def _hline():
+            ln = QFrame()
+            ln.setFrameShape(QFrame.Shape.HLine)
+            ln.setFixedHeight(1)
+            ln.setStyleSheet("background: #eeece6; color: #eeece6;")
+            return ln
 
-        # ── Left panel ──────────────────────────────────────────────────────
-        left = QWidget()
-        left.setStyleSheet("background: transparent;")
-        ll = QVBoxLayout(left)
-        ll.setContentsMargins(20, 12, 16, 14)
-        ll.setSpacing(0)
+        def _vline():
+            ln = QFrame()
+            ln.setFrameShape(QFrame.Shape.VLine)
+            ln.setFixedWidth(1)
+            ln.setStyleSheet("background: #eeece6; color: #eeece6;")
+            return ln
 
-        formula = QLabel("I = V / R")
-        ff = QFont("Georgia", 20)
-        ff.setItalic(True)
-        ff.setWeight(QFont.Weight.Bold)
-        formula.setFont(ff)
-        formula.setStyleSheet("color: #1e1b4b; background: transparent; letter-spacing: 1px;")
-        ll.addWidget(formula)
-        ll.addSpacing(4)
+        # ── Three value columns ───────────────────────────────────────────────
+        cols_w = QWidget()
+        cols_w.setStyleSheet("background: transparent;")
+        cols_l = QHBoxLayout(cols_w)
+        cols_l.setContentsMargins(0, 0, 0, 0)
+        cols_l.setSpacing(0)
 
-        self._intensity_badge = QLabel("\u25cf LOW CURRENT")
-        ibf = QFont("Segoe UI", 7)
-        ibf.setWeight(QFont.Weight.DemiBold)
-        self._intensity_badge.setFont(ibf)
-        self._intensity_badge.setStyleSheet(
-            "color: #16a34a; background: transparent; letter-spacing: 0.5px;")
-        ll.addWidget(self._intensity_badge)
-        ll.addSpacing(12)
+        col_i, self._current_value_label, self._current_slider = \
+            self._make_col("CURRENT", "A",  True,  1, 240)
+        col_v, self._voltage_value_label,  _                   = \
+            self._make_col("VOLTAGE", "V",  False, 1, 240)
+        col_r, self._resistance_value_label, self._resistance_slider = \
+            self._make_col("RESISTANCE", "Ω", True, 1, 200)
 
-        ll.addWidget(self._make_slider_row("I", 1, 240, is_resistance=False))
-        ll.addSpacing(8)
-        ll.addWidget(self._make_slider_row("R", 1, 200, is_resistance=True))
-        ll.addSpacing(12)
+        self._voltage_slider  = self._current_slider
+        self._result_label    = self._voltage_value_label
+        self._resistance_spin = None
+        self._voltage_spin    = None
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFixedHeight(1)
-        sep.setStyleSheet("background: #e0e6f8; color: #e0e6f8;")
-        ll.addWidget(sep)
-        ll.addSpacing(8)
+        cols_l.addWidget(col_i, 1)
+        cols_l.addWidget(_vline())
+        cols_l.addWidget(col_v, 1)
+        cols_l.addWidget(_vline())
+        cols_l.addWidget(col_r, 1)
+        root.addWidget(cols_w)
 
-        self._result_label = QLabel("")
-        rf = QFont("Georgia", 10)
-        rf.setItalic(True)
-        self._result_label.setFont(rf)
-        self._result_label.setStyleSheet("color: #4338ca; background: transparent;")
-        ll.addWidget(self._result_label)
-        ll.addSpacing(3)
+        # ── Power + badge row ─────────────────────────────────────────────────
+        root.addWidget(_hline())
+        pw_w = QWidget()
+        pw_w.setStyleSheet("background: transparent;")
+        pwl  = QHBoxLayout(pw_w)
+        pwl.setContentsMargins(22, 7, 22, 7)
+        pwl.setSpacing(0)
 
         self._power_label = QLabel("")
         pf = QFont("Segoe UI", 9)
+        pf.setWeight(QFont.Weight.DemiBold)
         self._power_label.setFont(pf)
         self._power_label.setStyleSheet("color: #7c3aed; background: transparent;")
-        ll.addWidget(self._power_label)
-        ll.addStretch()
+        pwl.addWidget(self._power_label)
+        pwl.addStretch()
 
-        # ── Vertical divider ────────────────────────────────────────────────
-        vdiv = QFrame()
-        vdiv.setFrameShape(QFrame.Shape.VLine)
-        vdiv.setFixedWidth(1)
-        vdiv.setStyleSheet("background: #dde4f5; color: #dde4f5;")
+        self._intensity_badge = QLabel("LOW CURRENT")
+        ibf = QFont("Segoe UI", 7)
+        ibf.setWeight(QFont.Weight.DemiBold)
+        ibf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.6)
+        self._intensity_badge.setFont(ibf)
+        self._intensity_badge.setStyleSheet(
+            "color: #15803d; background: #dcfce7; border-radius: 8px;"
+            "padding: 2px 9px;")
+        pwl.addWidget(self._intensity_badge, 0, Qt.AlignmentFlag.AlignVCenter)
+        root.addWidget(pw_w)
 
-        # ── Right panel ─────────────────────────────────────────────────────
-        right = QWidget()
-        right.setStyleSheet("background: transparent;")
-        rl = QVBoxLayout(right)
-        rl.setContentsMargins(0, 0, 0, 0)
+        # ── Circuit visualization ─────────────────────────────────────────────
+        root.addWidget(_hline())
         self._visualization = _OhmsLawVisualization()
         self._visualization.setStyleSheet("background: transparent;")
-        rl.addWidget(self._visualization, 1)
-
-        body.addWidget(left, 10)
-        body.addWidget(vdiv)
-        body.addWidget(right, 9)
-
-    def _make_slider_row(self, label: str, minimum: int, maximum: int,
-                         *, is_resistance: bool) -> QWidget:
-        row = QWidget()
-        row.setStyleSheet("background: transparent;")
-        hl = QHBoxLayout(row)
-        hl.setContentsMargins(0, 0, 0, 0)
-        hl.setSpacing(8)
-
-        lbl = QLabel(label)
-        lf = QFont("Georgia", 10)
-        lf.setItalic(True)
-        lbl.setFont(lf)
-        lbl.setFixedWidth(16)
-        lbl.setStyleSheet("color: #6366f1; background: transparent;")
-        hl.addWidget(lbl)
-
-        val_lbl = QLabel("")
-        val_lbl.setFixedWidth(36)
-        val_lbl.setStyleSheet(
-            "color: #1e1b4b; font-size: 10px; font-weight: 700;"
-            "font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;"
-            "background: transparent;")
-        hl.addWidget(val_lbl)
-
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setRange(minimum, maximum)
-        slider.setSingleStep(1)
-        slider.setCursor(Qt.CursorShape.PointingHandCursor)
-        slider.setFixedHeight(18)
-        slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                height: 3px; border-radius: 2px;
-                background: #dde4f8;
-            }
-            QSlider::sub-page:horizontal {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #6366f1, stop:1 #818cf8);
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                width: 14px; height: 14px; margin: -5px 0;
-                border-radius: 7px;
-                background: #4f46e5;
-                border: 2px solid white;
-            }
-            QSlider::handle:horizontal:hover { background: #4338ca; border: 2px solid #c7d2fe; }
-            QSlider::handle:horizontal:pressed { background: #3730a3; }
-        """)
-        slider.valueChanged.connect(self._update_display)
-        hl.addWidget(slider, 1)
-
-        unit = QLabel("A" if not is_resistance else "\u03a9")
-        unit.setFixedWidth(12)
-        unit.setStyleSheet(
-            "color: #94a3b8; font-size: 9px;"
-            "font-family: 'Segoe UI', sans-serif; background: transparent;")
-        hl.addWidget(unit)
-
-        if is_resistance:
-            self._resistance_slider      = slider
-            self._resistance_value_label = val_lbl
-            self._resistance_spin        = None
-        else:
-            self._current_slider      = slider
-            self._current_value_label = val_lbl
-            self._voltage_slider      = slider
-            self._voltage_value_label = val_lbl
-            self._voltage_spin        = None
-
-        return row
+        root.addWidget(self._visualization)
 
     def _animate_step(self):
         changed = False
-        delta_v = self._target_voltage - self._displayed_voltage
-        if abs(delta_v) > 0.01:
-            self._displayed_voltage += delta_v * 0.28
-            changed = True
+        dv = self._target_voltage - self._displayed_voltage
+        if abs(dv) > 0.01:
+            self._displayed_voltage += dv * 0.28;  changed = True
         else:
             self._displayed_voltage = self._target_voltage
-
-        delta_i = self._target_current - self._displayed_current
-        if abs(delta_i) > 0.01:
-            self._displayed_current += delta_i * 0.28
-            changed = True
+        di = self._target_current - self._displayed_current
+        if abs(di) > 0.01:
+            self._displayed_current += di * 0.28;  changed = True
         else:
             self._displayed_current = self._target_current
-
         if not changed:
             self._current_anim_timer.stop()
-
         v = self._displayed_voltage
         i = self._displayed_current
-        self._result_label.setText(f"V = IR = {v:.1f} V")
-        self._power_label.setText(f"\u26a1 P = {v * i:.1f} W")
+        self._voltage_value_label.setText(f"{v:.1f}")
+        self._power_label.setText(f"⚡  P = {v * i:.1f} W")
 
-    def _resistance_value(self) -> float:
+    def _resistance_value(self):
         return max(self._MIN_RESISTANCE, self._resistance_slider.value() / 10.0)
 
-    def _current_value(self) -> float:
+    def _current_value(self):
         return self._current_slider.value() / 10.0
 
-    def widget_data(self) -> dict:
+    def widget_data(self):
         i = self._current_value()
         r = self._resistance_value()
-        return {
-            "voltage":    round(i * r, 2),
-            "resistance": round(r, 1),
-            "current":    round(i, 2),
-        }
+        return {"voltage": round(i * r, 2), "resistance": round(r, 1), "current": round(i, 2)}
 
-    def apply_widget_data(self, data) -> None:
+    def apply_widget_data(self, data):
         data = data or {}
         resistance = max(self._MIN_RESISTANCE, float(data.get("resistance", 3.0)))
-        if "current" in data:
-            current = float(data["current"])
-        else:
-            voltage = float(data.get("voltage", 9))
-            current = voltage / resistance if resistance > 0 else 0.0
-
+        current = float(data["current"]) if "current" in data else (
+            float(data.get("voltage", 9)) / resistance if resistance > 0 else 0.0)
         self._building = True
         self._current_slider.setValue(
             max(self._current_slider.minimum(),
@@ -26101,32 +25951,27 @@ class _OhmsLawWidget(QWidget):
         i = self._current_value()
         r = self._resistance_value()
         v = i * r
-
         self._current_value_label.setText(f"{i:.1f}")
         self._resistance_value_label.setText(f"{r:.1f}")
-
         self._target_voltage = v
         self._target_current = i
         if not self._current_anim_timer.isActive():
             self._current_anim_timer.start()
-
         self._visualization.set_values(v, r, i)
-
         if i < 5.0:
-            badge_txt, badge_col = "\u25cf LOW CURRENT",  "#16a34a"
+            bt, bc, bb = "LOW CURRENT",  "#15803d", "#dcfce7"
         elif i < 15.0:
-            badge_txt, badge_col = "\u25cf MED CURRENT",  "#d97706"
+            bt, bc, bb = "MED CURRENT",  "#b45309", "#fef3c7"
         else:
-            badge_txt, badge_col = "\u25cf HIGH CURRENT", "#dc2626"
-        self._intensity_badge.setText(badge_txt)
+            bt, bc, bb = "HIGH CURRENT", "#b91c1c", "#fee2e2"
+        self._intensity_badge.setText(bt)
         self._intensity_badge.setStyleSheet(
-            f"color: {badge_col}; background: transparent; letter-spacing: 0.5px;")
-
+            f"color: {bc}; background: {bb}; border-radius: 8px; padding: 2px 9px;")
         if not self._building:
             self.state_changed.emit(self.widget_data())
 
-    def _describe_behavior(self, voltage, resistance, current): return ""
-    def _refresh_preset_styles(self, voltage, resistance): pass
+    def _describe_behavior(self, v, r, i): return ""
+    def _refresh_preset_styles(self, v, r): pass
     def _build_action_bar(self): return QWidget()
     def _build_slider_row(self, *a, **kw): return QWidget()
     def _slider_display_value(self, *a): return ""
@@ -26149,9 +25994,7 @@ class _OhmsLawWidget(QWidget):
     def _animate_current_step(self):
         self._animate_step()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# BANTAY MARIA — Philippine Disaster Watcher
-# ══════════════════════════════════════════════════════════════════════════════
+
 class PHDisasterWatcher(QThread):
     """
     Polls PAGASA and PHIVOLCS every 30 minutes when connected.
@@ -38168,91 +38011,90 @@ RULES:
                 save_json(SESSION_FILE, self.chat_sessions)
                 return
 
-    def _insert_ohms_law_chat_widget(self, widget_data: Optional[dict] = None, *,
-                                     after: QWidget = None, session_id: str = '',
-                                     message_text: str = '') -> QWidget:
+    def _insert_ohms_law_chat_widget(self, widget_data=None, *,
+                                     after=None, session_id='',
+                                     message_text=''):
         widget_data = widget_data or {'voltage': 9, 'resistance': 3.0}
 
         shell = QWidget(self.messages_widget)
         shell.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         shell_layout = QHBoxLayout(shell)
-        shell_layout.setContentsMargins(0, 2, 0, 8)
+        shell_layout.setContentsMargins(0, 2, 0, 10)
         shell_layout.setSpacing(0)
 
         card = QFrame(shell)
         card.setObjectName("OhmsLawChatArtifact")
         card.setStyleSheet("""
             QFrame#OhmsLawChatArtifact {
-                background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-                    stop:0 #1e1e20, stop:1 #18181a);
-                border: 1px solid #2e2e32;
-                border-radius: 18px;
+                background: #ffffff;
+                border: 1px solid #e8e6e0;
+                border-radius: 16px;
             }
         """)
         card.setMaximumWidth(self._chat_column_width())
         shadow = QGraphicsDropShadowEffect(card)
-        shadow.setBlurRadius(18)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 22))
+        shadow.setBlurRadius(20)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(0, 0, 0, 14))
         card.setGraphicsEffect(shadow)
 
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 18)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
 
-        top = QHBoxLayout()
-        top.setSpacing(10)
-        badge = QLabel("Interactive Widget")
-        badge.setStyleSheet("""
-            background: #252528;
-            color: #7ab4e8;
-            border-radius: 11px;
-            padding: 4px 10px;
-            font-size: 10px; font-weight: 700;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-        """)
-        title = QLabel("Ohm's Law Explorer")
-        title.setStyleSheet("""
-            color: #e8e8ea;
-            font-size: 15px; font-weight: 700;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
-        sub = QLabel("Live circuit model with animated charge flow")
-        sub.setStyleSheet("""
-            color: #48484e;
-            font-size: 11px;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
+        # Header
+        hdr = QWidget(card)
+        hdr.setStyleSheet("background: transparent;")
+        hdr_l = QHBoxLayout(hdr)
+        hdr_l.setContentsMargins(20, 16, 16, 12)
+        hdr_l.setSpacing(10)
+
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
+        title = QLabel("Ohm’s Law Explorer")
+        title.setStyleSheet("""
+            color: #0f172a;
+            font-size: 16px; font-weight: 700;
+            font-family: Georgia, 'Times New Roman', serif;
+            background: transparent; letter-spacing: 0.3px;
+        """)
+        sub = QLabel("I = V / R  —  interactive circuit")
+        sub.setStyleSheet("""
+            color: #9a9890;
+            font-size: 10.5px; font-style: italic;
+            font-family: Georgia, serif;
+            background: transparent;
+        """)
         title_col.addWidget(title)
         title_col.addWidget(sub)
-        top.addWidget(badge, 0, Qt.AlignmentFlag.AlignTop)
-        top.addLayout(title_col, 1)
+        hdr_l.addLayout(title_col, 1)
+
         popout_btn = QPushButton("Open large")
         popout_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        popout_btn.setFixedHeight(30)
+        popout_btn.setFixedHeight(28)
         popout_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                border: 1px solid #303036;
-                border-radius: 15px;
-                color: #72727c;
+                border: 1px solid #dddad2;
+                border-radius: 14px;
+                color: #888880;
                 padding: 0 12px;
-                font-size: 11px; font-weight: 700;
+                font-size: 10px; font-weight: 600;
                 font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
             }
-            QPushButton:hover {
-                background: #252528;
-                color: #c8c8d2;
-                border-color: #505058;
-            }
+            QPushButton:hover { background: #f5f3ee; color: #444440; border-color: #c8c5bc; }
         """)
-        popout_btn.clicked.connect(lambda: self.open_ohms_law_widget(getattr(shell, '_pending_widget_data', widget_data)))
-        top.addWidget(popout_btn, 0, Qt.AlignmentFlag.AlignTop)
-        card_layout.addLayout(top)
+        popout_btn.clicked.connect(
+            lambda: self.open_ohms_law_widget(
+                getattr(shell, '_pending_widget_data', widget_data)))
+        hdr_l.addWidget(popout_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        card_layout.addWidget(hdr)
+
+        div = QFrame(card)
+        div.setFrameShape(QFrame.Shape.HLine)
+        div.setFixedHeight(1)
+        div.setStyleSheet("background: #eeece6; color: #eeece6;")
+        card_layout.addWidget(div)
 
         widget = _OhmsLawWidget(card)
         widget.apply_widget_data(widget_data)
@@ -38263,12 +38105,8 @@ RULES:
         shell._persist_timer.timeout.connect(
             lambda sid=session_id, txt=message_text, host=shell:
                 self._persist_widget_message_state(
-                    sid,
-                    txt,
-                    'ohms_law',
-                    getattr(host, '_pending_widget_data', {}),
-                )
-        )
+                    sid, txt, 'ohms_law',
+                    getattr(host, '_pending_widget_data', {})))
 
         def _on_state_changed(data, host=shell):
             host._pending_widget_data = dict(data)
@@ -38279,51 +38117,29 @@ RULES:
         widget.state_changed.connect(_on_state_changed)
         card_layout.addWidget(widget)
 
-        live_bar = QFrame(card)
-        live_bar.setStyleSheet("""
-            background: #1a1a1c;
-            border: 1px solid #282828;
-            border-radius: 12px;
-        """)
-        live_bar_layout = QHBoxLayout(live_bar)
-        live_bar_layout.setContentsMargins(12, 8, 12, 8)
-        live_bar_layout.setSpacing(8)
-        pulse = QLabel("●")
-        pulse.setStyleSheet("color: #5ec98e; font-size: 10px; background: transparent;")
-        status = QLabel("Live simulation active")
-        status.setStyleSheet("""
-            color: #c8c8d0;
-            font-size: 11px; font-weight: 700;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
-        helper = QLabel("Current motion and field response update continuously as you drag.")
-        helper.setStyleSheet("""
-            color: #46464e;
+        div2 = QFrame(card)
+        div2.setFrameShape(QFrame.Shape.HLine)
+        div2.setFixedHeight(1)
+        div2.setStyleSheet("background: #eeece6; color: #eeece6;")
+        card_layout.addWidget(div2)
+
+        footer = QWidget(card)
+        footer.setStyleSheet("background: transparent;")
+        footer_l = QHBoxLayout(footer)
+        footer_l.setContentsMargins(20, 8, 20, 12)
+        footer_l.setSpacing(6)
+        live_dot = QLabel("●")
+        live_dot.setStyleSheet("color: #4ade80; font-size: 8px; background: transparent;")
+        footer_l.addWidget(live_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        caption = QLabel("Live simulation — values and particles update as you drag.")
+        caption.setStyleSheet("""
+            color: #b0ada4;
             font-size: 10.5px;
             font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
             background: transparent;
         """)
-        live_bar_layout.addWidget(pulse, 0, Qt.AlignmentFlag.AlignTop)
-        live_text_col = QVBoxLayout()
-        live_text_col.setSpacing(1)
-        live_text_col.addWidget(status)
-        live_text_col.addWidget(helper)
-        live_bar_layout.addLayout(live_text_col, 1)
-        card_layout.addWidget(live_bar)
-
-        caption = QLabel(
-            "Drag the controls to see voltage, resistance, and current respond instantly. "
-            "The animated particles speed up as current rises."
-        )
-        caption.setWordWrap(True)
-        caption.setStyleSheet("""
-            color: #50505a;
-            font-size: 11.5px; line-height: 1.5;
-            font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
-            background: transparent;
-        """)
-        card_layout.addWidget(caption)
+        footer_l.addWidget(caption, 1)
+        card_layout.addWidget(footer)
 
         shell_layout.addSpacing(48)
         shell_layout.addWidget(card, 1)
