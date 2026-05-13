@@ -37961,14 +37961,17 @@ RULES:
             font-family: ‘Segoe UI Variable’, ‘Segoe UI’, sans-serif;
             background: transparent; letter-spacing: 0.3px;
         """)
+        sep = QLabel("·")
+        sep.setStyleSheet("color: #dddddd; background: transparent; font-size: 11px;")
         sub = QLabel("I = V / R")
         sub.setStyleSheet("""
             color: #bbbbbb;
             font-size: 10px; font-style: italic;
-            font-family: Georgia, serif;
+            font-family: ‘Segoe UI Variable’, ‘Segoe UI’, sans-serif;
             background: transparent;
         """)
         hdr_l.addWidget(title)
+        hdr_l.addWidget(sep)
         hdr_l.addWidget(sub)
         hdr_l.addStretch()
         card_layout.addWidget(hdr)
