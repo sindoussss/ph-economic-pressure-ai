@@ -38078,6 +38078,28 @@ RULES:
             'current': round(current, 4),
         }
 
+    def _parse_ohms_tag(self, text: str):
+        """Strip <!--ohms:{"v":...,"r":...}--> from LLM response.
+
+        Returns (clean_text, widget_data) where widget_data is None if no
+        valid tag was found.
+        """
+        m = re.search(r'<!--ohms:(\{[^}]+\})-->', text)
+        if not m:
+            return text, None
+        try:
+            data = json.loads(m.group(1))
+            v = max(0.1, min(24.0, float(data.get('v', 9.0))))
+            r = max(0.1, min(20.0, float(data.get('r', 3.0))))
+            clean = (text[:m.start()].rstrip() + text[m.end():]).rstrip()
+            return clean, {
+                'voltage':    round(v, 2),
+                'resistance': round(r, 1),
+                'current':    round(v / r, 4),
+            }
+        except Exception:
+            return text, None
+
     def _build_ohms_law_widget_payload(self, user_text: str) -> dict:
         widget_data = self._extract_ohms_law_values(user_text)
         explicit_widget = self._is_ohms_law_widget_request(user_text)
