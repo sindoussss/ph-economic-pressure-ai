@@ -25719,28 +25719,14 @@ class _OhmsLawOscilloscope(QWidget):
 
 
 class _OhmsLawWidget(QWidget):
-    """Interactive Ohm's Law widget — three-column precision layout."""
+    """Compact two-panel Ohm's Law widget — left controls, right oscilloscope."""
 
     state_changed   = pyqtSignal(dict)
     _MIN_RESISTANCE = 0.1
-    _PRESETS = (
-        ("Battery",   9, 3.0),
-        ("Phone",     5, 2.0),
-        ("Motor",    18, 6.0),
-        ("High Load",12, 1.2),
-    )
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._building           = False
-        self._preset_buttons     = []
-        self._displayed_voltage  = 9.0
-        self._target_voltage     = 9.0
-        self._displayed_current  = 3.0
-        self._target_current     = 3.0
-        self._current_anim_timer = QTimer(self)
-        self._current_anim_timer.setInterval(24)
-        self._current_anim_timer.timeout.connect(self._animate_step)
+        self._building = False
         self._build_ui()
         self.apply_widget_data({"voltage": 9, "resistance": 3.0})
 
@@ -25751,76 +25737,66 @@ class _OhmsLawWidget(QWidget):
         painter.drawRect(QRectF(0, 0, self.width(), self.height()))
         painter.end()
 
-    def _make_col(self, title, unit, is_input, rng_min, rng_max):
-        col = QWidget()
-        col.setStyleSheet("background: transparent;")
-        cl  = QVBoxLayout(col)
-        cl.setContentsMargins(22, 18, 22, 14)
-        cl.setSpacing(0)
+    # ── UI construction ────────────────────────────────────────────────────
 
-        t_lbl = QLabel(title)
-        tf = QFont("Segoe UI", 7)
-        tf.setWeight(QFont.Weight.DemiBold)
-        tf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.2)
-        t_lbl.setFont(tf)
-        t_lbl.setStyleSheet("color: #aaa89e; background: transparent;")
-        cl.addWidget(t_lbl)
-        cl.addSpacing(7)
+    def _make_slider_row(self, label_text: str, unit: str, layout,
+                         *, range_max: int = 240):
+        """Build a label/value header + slim QSlider row, add to layout.
 
-        num_row = QWidget()
-        num_row.setStyleSheet("background: transparent;")
-        nrl = QHBoxLayout(num_row)
-        nrl.setContentsMargins(0, 0, 0, 0)
-        nrl.setSpacing(4)
+        Returns (slider, value_label).
+        """
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        rl = QVBoxLayout(row)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(3)
 
-        num_lbl = QLabel("0.0")
-        nf = QFont("Georgia", 28)
-        nf.setWeight(QFont.Weight.Bold)
-        num_lbl.setFont(nf)
-        num_lbl.setStyleSheet(
-            ("color: #0f172a;" if is_input else "color: #1a41c4;") +
-            " background: transparent;")
-        nrl.addWidget(num_lbl)
+        top = QWidget()
+        top.setStyleSheet("background: transparent;")
+        tl = QHBoxLayout(top)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(0)
 
-        u_lbl = QLabel(unit)
-        uf = QFont("Segoe UI", 11)
-        u_lbl.setFont(uf)
-        u_lbl.setStyleSheet("color: #c8c5ba; background: transparent;")
-        u_lbl.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft)
-        nrl.addWidget(u_lbl)
-        nrl.addStretch()
-        cl.addWidget(num_row)
-        cl.addSpacing(10)
+        lbl = QLabel(label_text)
+        lf  = QFont("Segoe UI", 8)
+        lbl.setFont(lf)
+        lbl.setStyleSheet("color: #bbbbbb; background: transparent;")
+        tl.addWidget(lbl)
+        tl.addStretch()
 
-        slider = None
-        if is_input:
-            slider = QSlider(Qt.Orientation.Horizontal)
-            slider.setRange(rng_min, rng_max)
-            slider.setSingleStep(1)
-            slider.setCursor(Qt.CursorShape.PointingHandCursor)
-            slider.setFixedHeight(20)
-            slider.setStyleSheet("""
-                QSlider::groove:horizontal {
-                    height: 3px; border-radius: 1.5px; background: #e8e5dd;
-                }
-                QSlider::sub-page:horizontal {
-                    background: #0f172a; border-radius: 1.5px;
-                }
-                QSlider::handle:horizontal {
-                    width: 16px; height: 16px; margin: -6.5px 0;
-                    border-radius: 8px; background: #ffffff;
-                    border: 2.5px solid #0f172a;
-                }
-                QSlider::handle:horizontal:hover  { background: #f0f4ff; border-color: #1a41c4; }
-                QSlider::handle:horizontal:pressed { background: #dbeafe; border-color: #1a41c4; }
-            """)
-            slider.valueChanged.connect(self._update_display)
-            cl.addWidget(slider)
-        else:
-            cl.addSpacing(20)
+        val_lbl = QLabel(f"— {unit}")
+        vf = QFont("Segoe UI", 8)
+        vf.setWeight(QFont.Weight.DemiBold)
+        val_lbl.setFont(vf)
+        val_lbl.setStyleSheet("color: #555555; background: transparent;")
+        tl.addWidget(val_lbl)
+        rl.addWidget(top)
 
-        cl.addStretch()
-        return col, num_lbl, slider
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(1, range_max)
+        slider.setSingleStep(1)
+        slider.setCursor(Qt.CursorShape.PointingHandCursor)
+        slider.setFixedHeight(16)
+        slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                height: 3px; border-radius: 1.5px; background: #eeece6;
+            }
+            QSlider::sub-page:horizontal {
+                background: #888888; border-radius: 1.5px;
+            }
+            QSlider::handle:horizontal {
+                width: 10px; height: 10px; margin: -3.5px 0;
+                border-radius: 5px; background: #ffffff;
+                border: 2px solid #666666;
+            }
+            QSlider::handle:horizontal:hover  { border-color: #444444; }
+            QSlider::handle:horizontal:pressed { background: #f0f0f0; }
+        """)
+        slider.valueChanged.connect(self._update_display)
+        rl.addWidget(slider)
+
+        layout.addWidget(row)
+        return slider, val_lbl
 
     def _build_ui(self):
         self.setStyleSheet("background: transparent;")
@@ -25829,170 +25805,98 @@ class _OhmsLawWidget(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        def _hline():
-            ln = QFrame()
-            ln.setFrameShape(QFrame.Shape.HLine)
-            ln.setFixedHeight(1)
-            ln.setStyleSheet("background: #eeece6; color: #eeece6;")
-            return ln
+        body = QWidget()
+        body.setStyleSheet("background: transparent;")
+        body_l = QHBoxLayout(body)
+        body_l.setContentsMargins(0, 0, 0, 0)
+        body_l.setSpacing(0)
 
-        def _vline():
-            ln = QFrame()
-            ln.setFrameShape(QFrame.Shape.VLine)
-            ln.setFixedWidth(1)
-            ln.setStyleSheet("background: #eeece6; color: #eeece6;")
-            return ln
+        # ── Left: controls ─────────────────────────────────────────────────
+        left = QWidget()
+        left.setStyleSheet("background: transparent;")
+        left_l = QVBoxLayout(left)
+        left_l.setContentsMargins(18, 14, 18, 14)
+        left_l.setSpacing(0)
 
-        # ── Three value columns ───────────────────────────────────────────────
-        cols_w = QWidget()
-        cols_w.setStyleSheet("background: transparent;")
-        cols_l = QHBoxLayout(cols_w)
-        cols_l.setContentsMargins(0, 0, 0, 0)
-        cols_l.setSpacing(0)
+        formula = QLabel("V = IR")
+        ff = QFont("Georgia", 13)
+        ff.setItalic(True)
+        formula.setFont(ff)
+        formula.setStyleSheet("color: #555555; background: transparent;")
+        left_l.addWidget(formula)
+        left_l.addSpacing(10)
 
-        col_i, self._current_value_label, self._current_slider = \
-            self._make_col("CURRENT", "A",  True,  1, 240)
-        col_v, self._voltage_value_label,  _                   = \
-            self._make_col("VOLTAGE", "V",  False, 1, 240)
-        col_r, self._resistance_value_label, self._resistance_slider = \
-            self._make_col("RESISTANCE", "Ω", True, 1, 200)
+        self._voltage_slider, self._voltage_val_lbl = \
+            self._make_slider_row("Vs", "V", left_l, range_max=240)
+        left_l.addSpacing(8)
 
-        self._voltage_slider  = self._current_slider
-        self._result_label    = self._voltage_value_label
-        self._resistance_spin = None
-        self._voltage_spin    = None
+        self._resistance_slider, self._resistance_val_lbl = \
+            self._make_slider_row("R", "Ω", left_l, range_max=200)
+        left_l.addSpacing(10)
 
-        cols_l.addWidget(col_i, 1)
-        cols_l.addWidget(_vline())
-        cols_l.addWidget(col_v, 1)
-        cols_l.addWidget(_vline())
-        cols_l.addWidget(col_r, 1)
-        root.addWidget(cols_w)
+        self._derived_label = QLabel()
+        self._derived_label.setTextFormat(Qt.TextFormat.RichText)
+        df = QFont("Segoe UI", 9)
+        self._derived_label.setFont(df)
+        self._derived_label.setStyleSheet("color: #aaaaaa; background: transparent;")
+        left_l.addWidget(self._derived_label)
+        left_l.addStretch()
 
-        # ── Power + badge row ─────────────────────────────────────────────────
-        root.addWidget(_hline())
-        pw_w = QWidget()
-        pw_w.setStyleSheet("background: transparent;")
-        pwl  = QHBoxLayout(pw_w)
-        pwl.setContentsMargins(22, 7, 22, 7)
-        pwl.setSpacing(0)
+        # ── Vertical divider ────────────────────────────────────────────────
+        vdiv = QFrame()
+        vdiv.setFrameShape(QFrame.Shape.VLine)
+        vdiv.setFixedWidth(1)
+        vdiv.setStyleSheet("background: #eeece6; color: #eeece6;")
 
-        self._power_label = QLabel("")
-        pf = QFont("Segoe UI", 9)
-        pf.setWeight(QFont.Weight.DemiBold)
-        self._power_label.setFont(pf)
-        self._power_label.setStyleSheet("color: #7c3aed; background: transparent;")
-        pwl.addWidget(self._power_label)
-        pwl.addStretch()
+        # ── Right: oscilloscope ─────────────────────────────────────────────
+        self._oscilloscope = _OhmsLawOscilloscope()
 
-        self._intensity_badge = QLabel("LOW CURRENT")
-        ibf = QFont("Segoe UI", 7)
-        ibf.setWeight(QFont.Weight.DemiBold)
-        ibf.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.6)
-        self._intensity_badge.setFont(ibf)
-        self._intensity_badge.setStyleSheet(
-            "color: #15803d; background: #dcfce7; border-radius: 8px;"
-            "padding: 2px 9px;")
-        pwl.addWidget(self._intensity_badge, 0, Qt.AlignmentFlag.AlignVCenter)
-        root.addWidget(pw_w)
+        body_l.addWidget(left, 1)
+        body_l.addWidget(vdiv)
+        body_l.addWidget(self._oscilloscope)
 
-        # ── Circuit visualization ─────────────────────────────────────────────
-        root.addWidget(_hline())
-        self._visualization = _OhmsLawVisualization()
-        self._visualization.setStyleSheet("background: transparent;")
-        root.addWidget(self._visualization)
+        root.addWidget(body)
 
-    def _animate_step(self):
-        changed = False
-        dv = self._target_voltage - self._displayed_voltage
-        if abs(dv) > 0.01:
-            self._displayed_voltage += dv * 0.28;  changed = True
-        else:
-            self._displayed_voltage = self._target_voltage
-        di = self._target_current - self._displayed_current
-        if abs(di) > 0.01:
-            self._displayed_current += di * 0.28;  changed = True
-        else:
-            self._displayed_current = self._target_current
-        if not changed:
-            self._current_anim_timer.stop()
-        v = self._displayed_voltage
-        i = self._displayed_current
-        self._voltage_value_label.setText(f"{v:.1f}")
-        self._power_label.setText(f"⚡  P = {v * i:.1f} W")
-
-    def _resistance_value(self):
-        return max(self._MIN_RESISTANCE, self._resistance_slider.value() / 10.0)
-
-    def _current_value(self):
-        return self._current_slider.value() / 10.0
-
-    def widget_data(self):
-        i = self._current_value()
-        r = self._resistance_value()
-        return {"voltage": round(i * r, 2), "resistance": round(r, 1), "current": round(i, 2)}
-
-    def apply_widget_data(self, data):
-        data = data or {}
-        resistance = max(self._MIN_RESISTANCE, float(data.get("resistance", 3.0)))
-        current = float(data["current"]) if "current" in data else (
-            float(data.get("voltage", 9)) / resistance if resistance > 0 else 0.0)
-        self._building = True
-        self._current_slider.setValue(
-            max(self._current_slider.minimum(),
-                min(self._current_slider.maximum(), int(round(current * 10)))))
-        self._resistance_slider.setValue(
-            max(self._resistance_slider.minimum(),
-                min(self._resistance_slider.maximum(), int(round(resistance * 10)))))
-        self._building = False
-        self._update_display()
+    # ── Display update ─────────────────────────────────────────────────────
 
     def _update_display(self):
-        i = self._current_value()
-        r = self._resistance_value()
-        v = i * r
-        self._current_value_label.setText(f"{i:.1f}")
-        self._resistance_value_label.setText(f"{r:.1f}")
-        self._target_voltage = v
-        self._target_current = i
-        if not self._current_anim_timer.isActive():
-            self._current_anim_timer.start()
-        self._visualization.set_values(v, r, i)
-        if i < 5.0:
-            bt, bc, bb = "LOW CURRENT",  "#15803d", "#dcfce7"
-        elif i < 15.0:
-            bt, bc, bb = "MED CURRENT",  "#b45309", "#fef3c7"
-        else:
-            bt, bc, bb = "HIGH CURRENT", "#b91c1c", "#fee2e2"
-        self._intensity_badge.setText(bt)
-        self._intensity_badge.setStyleSheet(
-            f"color: {bc}; background: {bb}; border-radius: 8px; padding: 2px 9px;")
+        v = self._voltage_slider.value() / 10.0
+        r = max(self._MIN_RESISTANCE, self._resistance_slider.value() / 10.0)
+        i = v / r
+
+        self._voltage_val_lbl.setText(f"{v:.1f} V")
+        self._resistance_val_lbl.setText(f"{r:.1f} Ω")
+        self._derived_label.setText(
+            f'I = V/R = '
+            f'<span style="color:#777777">{v:.1f}</span> / '
+            f'<span style="color:#777777">{r:.1f}</span> = '
+            f'<span style="color:#222222; font-weight:700">{i:.2f} A</span>')
+        self._oscilloscope.set_values(v, i)
+
         if not self._building:
             self.state_changed.emit(self.widget_data())
 
-    def _describe_behavior(self, v, r, i): return ""
-    def _refresh_preset_styles(self, v, r): pass
-    def _build_action_bar(self): return QWidget()
-    def _build_slider_row(self, *a, **kw): return QWidget()
-    def _slider_display_value(self, *a): return ""
-    def _sync_voltage_spin_to_slider(self, v): pass
-    def _sync_resistance_spin_to_slider(self, v): pass
-    def _apply_preset(self, v, r): self.apply_widget_data({"voltage": v, "resistance": r})
+    # ── Public API (unchanged signatures) ──────────────────────────────────
 
-    @property
-    def _status_label(self):
-        class _Stub:
-            def setText(self, *a): pass
-        return _Stub()
+    def widget_data(self) -> dict:
+        v = self._voltage_slider.value() / 10.0
+        r = max(self._MIN_RESISTANCE, self._resistance_slider.value() / 10.0)
+        i = v / r
+        return {"voltage": round(v, 2), "resistance": round(r, 1), "current": round(i, 2)}
 
-    @property
-    def _behavior_label(self):
-        class _Stub:
-            def setText(self, *a): pass
-        return _Stub()
-
-    def _animate_current_step(self):
-        self._animate_step()
+    def apply_widget_data(self, data: dict):
+        data = data or {}
+        voltage    = float(data.get("voltage", 9.0))
+        resistance = max(self._MIN_RESISTANCE, float(data.get("resistance", 3.0)))
+        if "current" in data and "voltage" not in data:
+            voltage = float(data["current"]) * resistance
+        self._building = True
+        self._voltage_slider.setValue(
+            max(1, min(240, int(round(voltage * 10)))))
+        self._resistance_slider.setValue(
+            max(1, min(200, int(round(resistance * 10)))))
+        self._building = False
+        self._update_display()
 
 
 class PHDisasterWatcher(QThread):
