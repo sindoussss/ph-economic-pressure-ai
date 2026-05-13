@@ -25664,12 +25664,13 @@ class _OhmsLawOscilloscope(QWidget):
         self._timer.start()
 
     def _tick(self):
-        self._phase += 1.6 + self._current * 0.15
+        self._phase = (self._phase + 1.6 + self._current * 0.15) % 10000.0
         self.update()
 
     def set_values(self, voltage: float, current: float):
         self._voltage = max(0.0, float(voltage))
         self._current = max(0.0, float(current))
+        self.update()
 
     def paintEvent(self, event):
         p = QPainter(self)
