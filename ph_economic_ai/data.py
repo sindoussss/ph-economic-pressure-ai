@@ -29,7 +29,7 @@ def generate_dataset(seed: int = 42) -> pd.DataFrame:
         62.0
         + (oil - 75.0) * 0.38
         + (usd - 54.0) * 0.75
-        + (demand - 55.0) * 0.04
+        + (demand - 55.0) * 0.10
         + rng.normal(0.0, 0.4, n)
     )
     gas = np.clip(gas, 62.0, 82.0)
