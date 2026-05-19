@@ -28,15 +28,20 @@ def fetch_dataset() -> tuple[pd.DataFrame, str]:
 
     try:
         fresh_df = _fetch_all()
-        _save_cache(fresh_df)
-        return fresh_df, 'Live Data'
-    except (requests.RequestException, OSError):
+    except (requests.RequestException, OSError, ValueError):
         if df is not None:
             return df, 'Cached · Stale'
         raise RuntimeError(
             'Could not load economic data.\n'
             'Please check your internet connection and try again.'
         ) from None
+
+    try:
+        _save_cache(fresh_df)
+    except OSError:
+        pass  # cache write failed; still serve fresh data
+
+    return fresh_df, 'Live Data'
 
 
 def _fetch_all() -> pd.DataFrame:
