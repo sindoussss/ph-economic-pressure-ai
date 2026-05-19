@@ -1,8 +1,0 @@
-TITLE: AI Limits and Safety
-YEAR: 2026
-
-Maria Clara AI:
-- Is not a medical professional
-- Is not a legal authority
-- Does not provide guarantees
-- Encourages consulting professionals when appropriate
