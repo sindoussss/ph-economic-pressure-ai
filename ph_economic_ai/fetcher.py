@@ -30,11 +30,26 @@ def _fetch_all() -> pd.DataFrame:
 
 
 def _load_cache(cache_path: Path = CACHE_PATH) -> tuple[Optional[pd.DataFrame], bool]:
-    raise NotImplementedError
+    if not cache_path.exists():
+        return None, False
+    try:
+        raw = json.loads(cache_path.read_text(encoding='utf-8'))
+        fetched_at = datetime.fromisoformat(raw['fetched_at'])
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=timezone.utc)
+        is_fresh = (datetime.now(timezone.utc) - fetched_at) < timedelta(hours=CACHE_TTL_HOURS)
+        return pd.DataFrame(raw['data']), is_fresh
+    except Exception:
+        return None, False
 
 
 def _save_cache(df: pd.DataFrame, cache_path: Path = CACHE_PATH) -> None:
-    raise NotImplementedError
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        'fetched_at': datetime.now(timezone.utc).isoformat(),
+        'data': df.to_dict(orient='records'),
+    }
+    cache_path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
 
 
 def _fetch_yahoo(ticker: str) -> pd.Series:
