@@ -46,4 +46,13 @@ def _fetch_doe_prices() -> pd.Series:
 
 
 def _compute_demand(dates: list[str]) -> list[float]:
-    raise NotImplementedError
+    result = []
+    for date_str in dates:
+        month = int(date_str[5:7])
+        value = (
+            65.0
+            + 17.0 * math.cos(2 * math.pi * (month - 3) / 12)
+            + 6.0 * math.cos(2 * math.pi * (month - 12) / 12)
+        )
+        result.append(round(max(55.0, min(90.0, value)), 1))
+    return result
