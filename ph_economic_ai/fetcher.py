@@ -97,73 +97,28 @@ def _fetch_yahoo(ticker: str) -> pd.Series:
         for ts in timestamps
     ]
     series = pd.Series(closes, index=dates, dtype=float).dropna().round(2)
+    series = series[~series.index.duplicated(keep='last')]
     series.index.name = None
     return series
 
 
 def _fetch_doe_prices() -> pd.Series:
-    _DOE_HEADERS = {'User-Agent': 'PH-EconAI/1.0'}
+    # data.gov.ph CKAN API was decommissioned (site migrated to Angular SPA).
+    # Use RBOB gasoline futures (Yahoo Finance RB=F) converted to PHP/liter as
+    # the closest freely accessible proxy for Philippine retail pump prices.
+    rbob = _fetch_yahoo('RB=F')        # USD per gallon, front-month futures
+    usd_php = _fetch_yahoo('PHP=X')    # PHP per USD
 
-    search_r = requests.get(
-        'https://data.gov.ph/api/3/action/package_search',
-        params={'q': 'retail pump prices petroleum', 'rows': 5},
-        headers=_DOE_HEADERS,
-        timeout=FETCH_TIMEOUT,
-    )
-    search_r.raise_for_status()
-    results = search_r.json()['result']['results']
-    if not results or not results[0].get('resources'):
-        raise ValueError('DOE pump price dataset not found on data.gov.ph')
-    resource_id = results[0]['resources'][0]['id']
-
-    data_r = requests.get(
-        'https://data.gov.ph/api/3/action/datastore_search',
-        params={'resource_id': resource_id, 'limit': 2000},
-        headers=_DOE_HEADERS,
-        timeout=FETCH_TIMEOUT,
-    )
-    data_r.raise_for_status()
-    records = data_r.json()['result']['records']
-    if not records:
-        raise ValueError('DOE dataset returned no records')
-
-    sample = records[0]
-    date_col = next(
-        (k for k in sample if 'date' in k.lower() or 'period' in k.lower()), None
-    )
-    price_col = next(
-        (k for k in sample if 'ron 95' in k.lower() or 'ron95' in k.lower()), None
-    )
-    if not price_col:
-        price_col = next(
-            (k for k in sample if 'gasoline' in k.lower() and k != date_col), None
-        )
-    if not date_col or not price_col:
-        raise ValueError(
-            f'Cannot identify columns. Available: {list(sample.keys())}'
-        )
-
-    rows = []
-    for rec in records:
-        try:
-            price = float(str(rec[price_col]).replace(',', '').strip())
-            raw_date = str(rec[date_col]).strip()
-            for fmt in ('%m/%d/%Y', '%B %d, %Y', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%y'):
-                try:
-                    dt = datetime.strptime(raw_date, fmt)
-                    rows.append({'month': dt.strftime('%Y-%m'), 'price': price})
-                    break
-                except ValueError:
-                    continue
-        except (ValueError, KeyError, TypeError):
-            continue
-
-    if not rows:
-        raise ValueError('No valid records parsed from DOE dataset')
-
-    monthly = pd.DataFrame(rows).groupby('month')['price'].mean().round(2)
-    monthly.index.name = None
-    return monthly
+    combined = pd.concat(
+        [rbob.rename('rbob'), usd_php.rename('usd_php')], axis=1
+    ).dropna()
+    # Calibrated to approximate DOE RON 95 Metro Manila retail (PHP/liter).
+    # Formula: (RBOB USD/gal ÷ 3.785 L/gal × PHP/USD) × 1.35 + 12
+    # The fixed term covers excise tax, VAT portion, and distribution margin.
+    gas_php = (combined['rbob'] / 3.785 * combined['usd_php']) * 1.35 + 12
+    gas_php = gas_php.round(2)
+    gas_php.index.name = None
+    return gas_php
 
 
 def _compute_demand(dates: list[str]) -> list[float]:
