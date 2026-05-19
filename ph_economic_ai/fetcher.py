@@ -30,19 +30,19 @@ def fetch_dataset() -> tuple[pd.DataFrame, str]:
         fresh_df = _fetch_all()
         _save_cache(fresh_df)
         return fresh_df, 'Live Data'
-    except Exception:
+    except (requests.RequestException, OSError):
         if df is not None:
             return df, 'Cached · Stale'
         raise RuntimeError(
             'Could not load economic data.\n'
             'Please check your internet connection and try again.'
-        )
+        ) from None
 
 
 def _fetch_all() -> pd.DataFrame:
     oil = _fetch_yahoo('BZ=F')
     usd = _fetch_yahoo('PHP=X')
-    gas = _fetch_doe_prices()
+    gas = _fetch_doe_prices(usd_php=usd)
 
     df = pd.DataFrame({
         'oil_price': oil,
@@ -89,7 +89,12 @@ def _fetch_yahoo(ticker: str) -> pd.Series:
         timeout=FETCH_TIMEOUT,
     )
     r.raise_for_status()
-    result = r.json()['chart']['result'][0]
+    payload = r.json()
+    results = (payload.get('chart') or {}).get('result') or []
+    if not results:
+        error = (payload.get('chart') or {}).get('error') or {}
+        raise ValueError(f'Yahoo Finance returned no data for {ticker!r}: {error}')
+    result = results[0]
     timestamps = result['timestamp']
     closes = result['indicators']['quote'][0]['close']
     dates = [
@@ -102,12 +107,13 @@ def _fetch_yahoo(ticker: str) -> pd.Series:
     return series
 
 
-def _fetch_doe_prices() -> pd.Series:
+def _fetch_doe_prices(usd_php: Optional[pd.Series] = None) -> pd.Series:
     # data.gov.ph CKAN API was decommissioned (site migrated to Angular SPA).
     # Use RBOB gasoline futures (Yahoo Finance RB=F) converted to PHP/liter as
     # the closest freely accessible proxy for Philippine retail pump prices.
-    rbob = _fetch_yahoo('RB=F')        # USD per gallon, front-month futures
-    usd_php = _fetch_yahoo('PHP=X')    # PHP per USD
+    rbob = _fetch_yahoo('RB=F')                                    # USD per gallon, front-month futures
+    if usd_php is None:
+        usd_php = _fetch_yahoo('PHP=X')                            # PHP per USD
 
     combined = pd.concat(
         [rbob.rename('rbob'), usd_php.rename('usd_php')], axis=1
