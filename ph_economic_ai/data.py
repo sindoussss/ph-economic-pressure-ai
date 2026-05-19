@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from ph_economic_ai.fetcher import fetch_dataset  # noqa: F401
 
 
 def generate_dataset(seed: int = 42) -> pd.DataFrame:

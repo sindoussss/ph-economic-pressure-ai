@@ -24,7 +24,7 @@ class _SettingsPage(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, df, regressor, parent=None):
+    def __init__(self, df, regressor, data_source: str = 'Live Data', parent=None):
         super().__init__(parent)
         self._df = df
         self._regressor = regressor
@@ -49,7 +49,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        self._sidebar = SidebarWidget()
+        self._sidebar = SidebarWidget(data_source=data_source)
         self._sidebar.page_changed.connect(self._on_page_changed)
         root.addWidget(self._sidebar)
 

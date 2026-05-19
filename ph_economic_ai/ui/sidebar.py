@@ -14,12 +14,13 @@ class SidebarWidget(QWidget):
         ('⚙', 'Settings', 3),
     ]
 
-    def __init__(self, parent=None):
+    def __init__(self, data_source: str = 'Live Data', parent=None):
         super().__init__(parent)
         self.setFixedWidth(190)
         self.setStyleSheet('background: #FFFFFF;')
         self._buttons: list[tuple[QPushButton, int]] = []
         self._active_idx = 0
+        self._data_source = data_source
         self._build()
 
     def _build(self):
@@ -61,9 +62,14 @@ class SidebarWidget(QWidget):
 
         layout.addStretch()
 
-        footer = QLabel('  ●  Trained · Offline')
+        _PILL_COLOR = {
+            'Live Data': '#4A90E2',
+            'Cached': '#888888',
+            'Cached · Stale': '#E0A84A',
+        }.get(self._data_source, '#888888')
+        footer = QLabel(f'  ●  {self._data_source}')
         footer.setStyleSheet(
-            'font-size:10px; color:#4A90E2; font-weight:600;'
+            f'font-size:10px; color:{_PILL_COLOR}; font-weight:600;'
             'background:#EBF4FF; border-radius:10px;'
             'padding:4px 8px; margin:12px 14px;'
         )
