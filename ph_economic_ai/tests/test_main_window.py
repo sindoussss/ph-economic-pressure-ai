@@ -1,0 +1,48 @@
+import sys
+import pytest
+from PyQt6.QtWidgets import QApplication
+import numpy as np
+import pandas as pd
+
+
+@pytest.fixture(scope='module')
+def app():
+    return QApplication.instance() or QApplication(sys.argv)
+
+
+@pytest.fixture
+def window(app):
+    from ph_economic_ai.ui.main_window import SimMainWindow
+    df = pd.DataFrame({
+        'date': pd.date_range('2024-01', periods=3, freq='M'),
+        'gas_price': [58.0, 59.0, 60.0],
+        'oil_price': [80.0, 81.0, 82.0],
+        'usd_php': [56.0, 56.5, 57.0],
+        'cpi': [120.0, 121.0, 122.0],
+        'remittances': [2.5, 2.6, 2.7],
+        'demand_index': [70.0, 71.0, 72.0],
+    })
+    from unittest.mock import MagicMock
+    reg = MagicMock()
+    reg.predict.return_value = np.array([60.0])
+    reg.feature_importances_ = np.array([0.5, 0.3, 0.2])
+    return SimMainWindow(df, reg)
+
+
+def test_main_window_has_swarm_panel(window):
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    assert hasattr(window, '_stage3_swarm')
+    assert isinstance(window._stage3_swarm, Stage3SwarmPanel)
+
+
+def test_on_run_requested_accepts_4_args(window):
+    from ph_economic_ai.ui.stage2_setup import Scenario
+    scenario = Scenario()
+    # Should not raise with swarm_mode=False
+    from ph_economic_ai.engine.debate import DEFAULT_AGENTS
+    window._on_run_requested(scenario, list(DEFAULT_AGENTS), False, 4)
+    assert window._stack.currentIndex() == 3  # Economy Overview at 0 shifted simulation to 3
+
+
+def test_stage5_has_set_swarm_context(window):
+    assert hasattr(window._stage5, 'set_swarm_context')

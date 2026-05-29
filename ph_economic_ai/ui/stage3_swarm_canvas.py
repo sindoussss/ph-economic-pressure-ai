@@ -1429,22 +1429,14 @@ class _SwarmCanvas(QGraphicsView):
             painter.drawText(QRectF(TR_X + 120, row_y, TR_W - 134, 14),
                              Qt.AlignmentFlag.AlignRight, v)
 
-        # ─── Bottom-left card: legend — anchored near Western Visayas cluster ──
-        # Positioned directly below the lowest visible cluster so it reads as
-        # part of the graph rather than a detached UI element.
-        BL_W, BL_H = 232, 92
-        BL_X = 16
-        BL_Y = vh - BL_H - 16   # tight to the bottom edge
+        # ─── Bottom-left card: legend ────────────────────────────────────────
+        BL_W, BL_H = 232, 108
+        BL_X, BL_Y = 12, vh - BL_H - 12
         _card(BL_X, BL_Y, BL_W, BL_H)
-
-        # Tiny vertical tick above the card — visual anchor to the graph
-        painter.setPen(QPen(QColor(SOFT_BORDER), 1.0, Qt.PenStyle.DotLine))
-        mid_x = BL_X + BL_W // 2
-        painter.drawLine(QPointF(mid_x, BL_Y - 20), QPointF(mid_x, BL_Y))
 
         painter.setPen(QColor(TEXT_1))
         painter.setFont(f_lbl)
-        painter.drawText(QPointF(BL_X + 14, BL_Y + 20), 'LEGEND')
+        painter.drawText(QPointF(BL_X + 14, BL_Y + 22), 'LEGEND')
 
         items = [
             (N_IDLE,     'idle'),
@@ -1455,7 +1447,7 @@ class _SwarmCanvas(QGraphicsView):
         for i, (color, label) in enumerate(items):
             col = i % 2
             row = i // 2
-            row_y = BL_Y + 36 + row * 18
+            row_y = BL_Y + 44 + row * 18
             col_x = BL_X + 22 + col * 100
             painter.setBrush(QBrush(QColor(color)))
             painter.setPen(Qt.PenStyle.NoPen)
@@ -1465,7 +1457,7 @@ class _SwarmCanvas(QGraphicsView):
             painter.drawText(QPointF(col_x + 10, row_y), label)
 
         # Scale bar inside the card
-        scale_y = BL_Y + BL_H - 14
+        scale_y = BL_Y + BL_H - 16
         painter.setPen(QPen(QColor(TEXT_3), 1.2))
         painter.drawLine(QPointF(BL_X + 18, scale_y), QPointF(BL_X + 70, scale_y))
         painter.drawLine(QPointF(BL_X + 18, scale_y - 3), QPointF(BL_X + 18, scale_y + 3))
@@ -1895,41 +1887,23 @@ class Stage3SwarmPanel(QWidget):
             top.addWidget(label_w)
             top.addStretch()
             cv.addLayout(top)
-
-            # Skeleton bar — visible while pending, hidden once value arrives
-            skeleton = QFrame()
-            skeleton.setFixedSize(96, 10)
-            skeleton.setStyleSheet(
-                f'QFrame{{background:{DIVIDER};border-radius:5px;border:none;}}'
-            )
-            cv.addSpacing(4)
-            cv.addWidget(skeleton)
-
-            val = QLabel()
-            val.hide()   # hidden until a real value arrives
+            val = QLabel('—')
             val.setStyleSheet(
                 f'font-family:Consolas,monospace;font-size:16px;font-weight:700;'
                 f'color:{TEXT_1};'
             )
-            sub = QLabel('waiting for simulation…')
+            sub = QLabel('pending')
             sub.setStyleSheet(
                 f'font-family:Consolas,monospace;font-size:9px;color:{TEXT_3};'
                 f'letter-spacing:0.3px;'
             )
             cv.addWidget(val)
-            cv.addSpacing(4)
             cv.addWidget(sub)
-
-            # Store skeleton ref on the card so we can hide it on update
-            card._skeleton = skeleton
             return card, val, sub
 
         gas_card, self._gas_val, self._gas_sub = _verdict_card('GAS', '#475569')
         food_card, self._food_val, self._food_sub = _verdict_card('FOOD', N_FOOD)
         elec_card, self._elec_val, self._elec_sub = _verdict_card('ELECTRICITY', N_ELEC)
-        self._gas_card = gas_card
-        self._food_card = food_card
-        self._elec_card = elec_card
 
         v.addWidget(gas_card)
         v.addSpacing(8)
@@ -2098,23 +2072,6 @@ class Stage3SwarmPanel(QWidget):
                 )
                 txt.setStyleSheet(f'font-size:11px;color:{TEXT_2};')
 
-    # ── Verdict skeleton → value reveal ──────────────────────────────────────
-    def _reveal_verdict(self, card: QFrame, val_lbl: QLabel, sub_lbl: QLabel,
-                        value: str, sub_text: str, color: str):
-        """Hide the loading skeleton and show the real value."""
-        skeleton = getattr(card, '_skeleton', None)
-        if skeleton is not None:
-            skeleton.hide()
-        val_lbl.setText(value)
-        val_lbl.setStyleSheet(
-            f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
-        )
-        val_lbl.show()
-        sub_lbl.setText(sub_text)
-        sub_lbl.setStyleSheet(
-            f'font-family:Consolas,monospace;font-size:9px;color:{color};'
-        )
-
     # ── SwarmThread signal handlers ───────────────────────────────────────────
     def _on_agent_typing(self, group_id: int, agent_name: str):
         self._start_clock()
@@ -2127,11 +2084,6 @@ class Stage3SwarmPanel(QWidget):
             self._status_badge.setStyleSheet(
                 f'font-family:Consolas,monospace;font-size:9px;font-weight:700;'
                 f'color:{N_ACTIVE};letter-spacing:1.2px;'
-            )
-            # Update gas card sub-label to 'computing…' so it no longer says 'waiting'
-            self._gas_sub.setText('computing…')
-            self._gas_sub.setStyleSheet(
-                f'font-family:Consolas,monospace;font-size:9px;color:{TEXT_2};'
             )
 
     def _on_agent_done_typing(self, group_id: int, agent_name: str):
@@ -2188,9 +2140,13 @@ class Stage3SwarmPanel(QWidget):
             f'font-family:Consolas,monospace;font-size:9px;font-weight:700;'
             f'color:{N_DONE};letter-spacing:1.2px;'
         )
-        self._reveal_verdict(
-            self._gas_card, self._gas_val, self._gas_sub,
-            est, f'{master_verdict.confidence_pct}% confidence', N_DONE,
+        self._gas_val.setText(est)
+        self._gas_val.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{N_DONE};'
+        )
+        self._gas_sub.setText(f'{master_verdict.confidence_pct}% confidence')
+        self._gas_sub.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:9px;color:{N_DONE};'
         )
         self._log(f'MASTER  gas={est}  conf={master_verdict.confidence_pct}%',
                   color='#34D399')
@@ -2239,10 +2195,14 @@ class Stage3SwarmPanel(QWidget):
         est_str = f'{avg:+.2f}%' if avg is not None else 'N/A'
         self._food_est = avg
         self._canvas.mark_sector_complete('food', est_str)
+        self._food_val.setText(est_str)
         color = N_FOOD if (avg or 0) >= 0 else N_ACTIVE
-        self._reveal_verdict(
-            self._food_card, self._food_val, self._food_sub,
-            est_str, 'consensus reached', color,
+        self._food_val.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
+        )
+        self._food_sub.setText('consensus reached')
+        self._food_sub.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
         self._log(f'FOOD CONSENSUS  {est_str}', color='#34D399')
 
@@ -2274,10 +2234,14 @@ class Stage3SwarmPanel(QWidget):
         est_str = f'+₱{avg:.4f}/kWh' if avg is not None else 'N/A'
         self._elec_est = avg
         self._canvas.mark_sector_complete('elec', est_str)
+        self._elec_val.setText(est_str)
         color = N_ELEC if (avg or 0) >= 0 else N_ACTIVE
-        self._reveal_verdict(
-            self._elec_card, self._elec_val, self._elec_sub,
-            est_str, 'consensus reached', color,
+        self._elec_val.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
+        )
+        self._elec_sub.setText('consensus reached')
+        self._elec_sub.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
         self._log(f'ELEC CONSENSUS  {est_str}', color='#FBBF24')
 
@@ -2314,19 +2278,12 @@ class Stage3SwarmPanel(QWidget):
         val_style = (f'font-family:Consolas,monospace;font-size:16px;'
                      f'font-weight:700;color:{TEXT_1};')
         sub_style = f'font-family:Consolas,monospace;font-size:9px;color:{TEXT_3};'
-        for card, val_lbl, sub_lbl in (
-            (self._gas_card,  self._gas_val,  self._gas_sub),
-            (self._food_card, self._food_val, self._food_sub),
-            (self._elec_card, self._elec_val, self._elec_sub),
-        ):
-            val_lbl.hide()
+        for val_lbl in (self._gas_val, self._food_val, self._elec_val):
+            val_lbl.setText('—')
             val_lbl.setStyleSheet(val_style)
-            skeleton = getattr(card, '_skeleton', None)
-            if skeleton is not None:
-                skeleton.show()
-        self._gas_sub.setText('waiting for simulation…')
-        self._food_sub.setText('waiting for simulation…')
-        self._elec_sub.setText('waiting for simulation…')
+        self._gas_sub.setText('pending')
+        self._food_sub.setText('pending')
+        self._elec_sub.setText('pending')
         for sub_lbl in (self._gas_sub, self._food_sub, self._elec_sub):
             sub_lbl.setStyleSheet(sub_style)
 
