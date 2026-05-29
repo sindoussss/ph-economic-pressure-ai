@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from ph_economic_ai.fetcher import fetch_dataset  # noqa: F401
+from ph_economic_ai.fetcher import fetch_dataset, _RAINFALL_NORMS_MM, _TEMP_NORMS_C  # noqa: F401
 
 
 def generate_dataset(seed: int = 42) -> pd.DataFrame:
@@ -35,10 +35,42 @@ def generate_dataset(seed: int = 42) -> pd.DataFrame:
     )
     gas = np.clip(gas, 62.0, 82.0)
 
+    # Synthetic weather: seasonal pattern for PH agricultural zones
+    months = [int(d[5:7]) for d in dates]
+    rainfall = np.array([_RAINFALL_NORMS_MM[m - 1] for m in months]) + rng.normal(0.0, 10.0, n)
+    rainfall = np.clip(rainfall, 0.0, 300.0).round(1)
+
+    temp = np.array([_TEMP_NORMS_C[m - 1] for m in months]) + rng.normal(0.0, 0.5, n)
+    temp = np.clip(temp, 22.0, 36.0).round(2)
+
+    # Synthetic food price index: base + gas pass-through + rainfall impact
+    gas_delta = np.diff(gas, prepend=gas[0])
+    rain_deficit = np.clip(
+        (np.array([_RAINFALL_NORMS_MM[m - 1] for m in months]) - rainfall)
+        / np.array([_RAINFALL_NORMS_MM[m - 1] for m in months]),
+        0.0, 1.0
+    )
+    food_idx = np.empty(n)
+    food_idx[0] = 100.0
+    for i in range(1, n):
+        food_idx[i] = food_idx[i - 1] + gas_delta[i] * 0.22 + rain_deficit[i] * 0.15
+    food_idx = np.clip(food_idx, 80.0, 180.0).round(2)
+
+    # Synthetic electricity rate: base + gas pass-through
+    elec = np.empty(n)
+    elec[0] = 11.20
+    for i in range(1, n):
+        elec[i] = elec[i - 1] + gas_delta[i] * 0.18
+    elec = np.clip(elec, 8.0, 18.0).round(2)
+
     return pd.DataFrame({
-        'date': dates,
-        'oil_price': oil.round(2),
-        'usd_php': usd.round(2),
-        'demand_index': demand.round(1),
-        'gas_price': gas.round(2),
+        'date':             dates,
+        'oil_price':        oil.round(2),
+        'usd_php':          usd.round(2),
+        'demand_index':     demand.round(1),
+        'gas_price':        gas.round(2),
+        'rainfall_mm':      rainfall,
+        'temp_c':           temp,
+        'food_price_idx':   food_idx,
+        'electricity_rate': elec,
     })

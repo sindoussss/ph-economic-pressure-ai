@@ -1,10 +1,26 @@
 import numpy as np
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QFrame, QPushButton, QScrollArea, QSizePolicy,
-                              QProgressBar)
+                              QProgressBar, QTabWidget, QGridLayout)
 from PyQt6.QtCore import pyqtSignal, Qt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from ph_economic_ai.ui.charts import PriceChart
 from ph_economic_ai.ui.pressure import PressureGauge, pressure_band_color
+
+
+# ── Indicator config (shared by build and update methods) ─────────────────────
+
+_INDICATOR_SPECS = [
+    ('oil_price',    'Oil Price',         'USD/bbl', '#4A90E2'),
+    ('usd_php',      'USD/PHP Rate',      'PHP/USD', '#E0A84A'),
+    ('demand_index', 'Demand Index',      'Index',   '#27AE60'),
+    ('psei',         'PSEi',              'Points',  '#9B59B6'),
+    ('cpi',          'CPI Inflation',     '% p.a.',  '#E74C3C'),
+    ('bsp_rate',     'BSP Lending Rate',  '% p.a.',  '#1ABC9C'),
+    ('remittances',  'OFW Remittances',   'USD bn',  '#E07A4A'),
+]
+_INDICATOR_META = {key: (title, ylabel, color) for key, title, ylabel, color in _INDICATOR_SPECS}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -411,10 +427,28 @@ class DashboardPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet('background:#FAFAFA;')
-        self._build()
 
-    def _build(self):
-        main = QHBoxLayout(self)
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setStyleSheet(
+            'QTabBar::tab { padding: 8px 22px; font-size: 12px; color: #888888; }'
+            'QTabBar::tab:selected { color: #111111; font-weight: 700; '
+            '  border-bottom: 2px solid #4A90E2; }'
+            'QTabWidget::pane { border: none; }'
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(self._tabs)
+
+        self._build_overview_tab()
+        self._build_indicators_tab()
+        self._build_model_insights_tab()
+
+    def _build_overview_tab(self):
+        overview = QWidget()
+        overview.setStyleSheet('background:#FAFAFA;')
+        main = QHBoxLayout(overview)
         main.setContentsMargins(0, 0, 0, 0)
         main.setSpacing(0)
 
@@ -431,7 +465,7 @@ class DashboardPage(QWidget):
         title_col.setSpacing(2)
         pg_title = QLabel('Gasoline Price Dashboard')
         pg_title.setStyleSheet('font-size:18px; font-weight:700; color:#111111;')
-        pg_sub = QLabel('Philippines · Synthetic data · 120 data points · Trained on startup')
+        pg_sub = QLabel('Philippines · Live data · Trained on startup')
         pg_sub.setStyleSheet('font-size:11px; color:#AAAAAA;')
         title_col.addWidget(pg_title)
         title_col.addWidget(pg_sub)
@@ -458,11 +492,9 @@ class DashboardPage(QWidget):
         hdr.addLayout(btn_row)
         clyt.addLayout(hdr)
 
-        # Chart
         self._chart = PriceChart()
         clyt.addWidget(self._chart)
 
-        # Mini cards
         mini_row = QHBoxLayout()
         mini_row.setSpacing(10)
         self._price_card  = _MiniCard('Predicted Price')
@@ -472,15 +504,185 @@ class DashboardPage(QWidget):
             mini_row.addWidget(card)
         clyt.addLayout(mini_row)
 
-        # Simulation panel
         self._sim_panel = SimulationPanel()
         clyt.addWidget(self._sim_panel)
 
-        # ── Right panel ───────────────────────────────────────────────────────
         self._right = _RightPanel()
 
         main.addWidget(center, stretch=1)
         main.addWidget(self._right)
+
+        self._tabs.addTab(overview, 'Overview')
+
+    def _build_indicators_tab(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet('QScrollArea { border:none; } QScrollBar { width:0px; }')
+
+        container = QWidget()
+        container.setStyleSheet('background:#FAFAFA;')
+        grid = QGridLayout(container)
+        grid.setContentsMargins(22, 20, 22, 20)
+        grid.setSpacing(14)
+
+        self._indicator_axes = {}
+        self._indicator_canvases = {}
+
+        for i, (key, title, ylabel, color) in enumerate(_INDICATOR_SPECS):
+            fig = Figure(figsize=(4, 2), dpi=96)
+            fig.patch.set_facecolor('#FFFFFF')
+            ax = fig.add_subplot(111)
+            ax.set_facecolor('#FFFFFF')
+            ax.set_title(title, fontsize=10, fontweight='bold', color='#111111', pad=4)
+            ax.set_ylabel(ylabel, fontsize=8, color='#888888')
+            ax.tick_params(labelsize=7, colors='#888888')
+            ax.spines[['top', 'right']].set_visible(False)
+            ax.spines[['left', 'bottom']].set_color('#EEEEEE')
+            ax.grid(axis='y', color='#F5F5F5', linewidth=0.5)
+            fig.tight_layout(pad=1.2)
+
+            canvas = FigureCanvasQTAgg(fig)
+            canvas.setFixedHeight(200)
+
+            row_i, col_i = divmod(i, 2)
+            grid.addWidget(canvas, row_i, col_i)
+
+            self._indicator_axes[key] = ax
+            self._indicator_canvases[key] = canvas
+
+        scroll.setWidget(container)
+        self._tabs.addTab(scroll, 'Indicators')
+
+    def _build_model_insights_tab(self):
+        container = QWidget()
+        container.setStyleSheet('background:#FAFAFA;')
+        lyt = QVBoxLayout(container)
+        lyt.setContentsMargins(22, 20, 22, 20)
+        lyt.setSpacing(16)
+
+        # ── Feature importance card ───────────────────────────────────────────
+        fi_frame = QFrame()
+        fi_frame.setStyleSheet(
+            'background:#FFFFFF; border:1px solid #EAEAEA; border-radius:10px;'
+        )
+        fi_inner = QVBoxLayout(fi_frame)
+        fi_inner.setContentsMargins(16, 14, 16, 14)
+        fi_inner.setSpacing(8)
+
+        fi_title = QLabel('Feature Importance')
+        fi_title.setStyleSheet('font-size:13px; font-weight:700; color:#111111; border:none;')
+        fi_inner.addWidget(fi_title)
+
+        fi_sub = QLabel('Which signals drive the gas price model most?  Blue = original · Purple = new')
+        fi_sub.setStyleSheet('font-size:10px; color:#AAAAAA; border:none;')
+        fi_inner.addWidget(fi_sub)
+
+        self._fi_fig = Figure(figsize=(6, 2.2), dpi=96)
+        self._fi_fig.patch.set_facecolor('#FFFFFF')
+        self._fi_ax = self._fi_fig.add_subplot(111)
+        self._fi_fig.tight_layout(pad=1.2)
+        self._fi_canvas = FigureCanvasQTAgg(self._fi_fig)
+        self._fi_canvas.setFixedHeight(220)
+        fi_inner.addWidget(self._fi_canvas)
+        lyt.addWidget(fi_frame)
+
+        # ── Forecast card ─────────────────────────────────────────────────────
+        fc_frame = QFrame()
+        fc_frame.setStyleSheet(
+            'background:#FFFFFF; border:1px solid #EAEAEA; border-radius:10px;'
+        )
+        fc_inner = QVBoxLayout(fc_frame)
+        fc_inner.setContentsMargins(16, 14, 16, 14)
+        fc_inner.setSpacing(8)
+
+        fc_title = QLabel('6-Month Gas Price Forecast  (indicative)')
+        fc_title.setStyleSheet('font-size:13px; font-weight:700; color:#111111; border:none;')
+        fc_inner.addWidget(fc_title)
+
+        self._fc_fig = Figure(figsize=(6, 2.2), dpi=96)
+        self._fc_fig.patch.set_facecolor('#FFFFFF')
+        self._fc_ax = self._fc_fig.add_subplot(111)
+        self._fc_fig.tight_layout(pad=1.2)
+        self._fc_canvas = FigureCanvasQTAgg(self._fc_fig)
+        self._fc_canvas.setFixedHeight(220)
+        fc_inner.addWidget(self._fc_canvas)
+
+        self._rmse_label = QLabel()
+        self._rmse_label.setStyleSheet('font-size:10px; color:#AAAAAA; border:none;')
+        fc_inner.addWidget(self._rmse_label)
+
+        lyt.addWidget(fc_frame)
+        lyt.addStretch()
+
+        self._tabs.addTab(container, 'Model Insights')
+
+    def _update_model_insights(self, result: dict):
+        _ORIGINAL = {'oil_price', 'usd_php', 'demand_index', 'prev_gas_price'}
+
+        # ── Feature importance ────────────────────────────────────────────────
+        fi = result.get('feature_importances', {})
+        if fi:
+            ax = self._fi_ax
+            ax.clear()
+            ax.set_facecolor('#FFFFFF')
+
+            names = list(fi.keys())
+            values = list(fi.values())
+            colors = ['#4A90E2' if n in _ORIGINAL else '#9B59B6' for n in names]
+
+            bars = ax.barh(names, values, color=colors, height=0.55)
+            ax.set_xlabel('Normalized importance', fontsize=8, color='#888888')
+            ax.tick_params(labelsize=8, colors='#333333')
+            ax.spines[['top', 'right', 'bottom']].set_visible(False)
+            ax.spines['left'].set_color('#EEEEEE')
+            ax.set_xlim(0, max(values) * 1.18 if values else 1)
+            for bar, val in zip(bars, values):
+                ax.text(val + 0.004, bar.get_y() + bar.get_height() / 2,
+                        f'{val:.3f}', va='center', fontsize=7, color='#888888')
+
+            self._fi_canvas.draw()
+
+        # ── Forecast ──────────────────────────────────────────────────────────
+        forecast_prices = result.get('forecast_prices')
+        cv_rmse = result.get('cv_rmse', 0.0)
+        df = result.get('df')
+        if forecast_prices is not None and df is not None and len(df) > 0:
+            ax = self._fc_ax
+            ax.clear()
+            ax.set_facecolor('#FFFFFF')
+
+            hist_dates = df['date'].tolist()[-12:]
+            hist_prices = df['gas_price'].values[-12:].astype(float)
+            n_hist = len(hist_dates)
+
+            ax.plot(range(n_hist), hist_prices, color='#AAAAAA', linewidth=1.5,
+                    label='Historical (last 12 mo)')
+
+            fc_x = list(range(n_hist - 1, n_hist + len(forecast_prices)))
+            fc_y = np.concatenate([[hist_prices[-1]], forecast_prices])
+            ax.plot(fc_x, fc_y, color='#4A90E2', linewidth=2, label='Forecast')
+            ax.fill_between(fc_x, fc_y - cv_rmse, fc_y + cv_rmse,
+                            color='#4A90E2', alpha=0.15,
+                            label=f'±₱{cv_rmse:.2f} CV-RMSE')
+
+            tick_pos = list(range(0, n_hist, max(1, n_hist // 4)))
+            ax.set_xticks(tick_pos)
+            ax.set_xticklabels([hist_dates[i] for i in tick_pos], rotation=30, fontsize=7)
+            ax.set_ylabel('₱ / liter', fontsize=8, color='#888888')
+            ax.tick_params(colors='#888888', labelsize=7)
+            ax.spines[['top', 'right']].set_visible(False)
+            ax.spines[['left', 'bottom']].set_color('#EEEEEE')
+            ax.grid(axis='y', color='#F5F5F5', linewidth=0.5)
+            ax.legend(fontsize=7, framealpha=0, loc='upper left')
+
+            self._fc_canvas.draw()
+
+            self._rmse_label.setText(
+                f'CV-RMSE: ₱{cv_rmse:.2f}/liter  ·  '
+                'Forecast uses flat projection of latest known input values'
+            )
+        else:
+            self._rmse_label.setText('')
 
     def refresh(self, result: dict):
         # Chart
@@ -526,3 +728,36 @@ class DashboardPage(QWidget):
 
         # Right panel
         self._right.refresh(result)
+        self._update_indicators(result)
+        self._update_model_insights(result)
+
+    def _update_indicators(self, result: dict):
+        df_raw = result.get('df_raw')
+        if df_raw is None:
+            return
+
+        dates = df_raw['date'].tolist()
+        tick_pos = list(range(0, len(dates), max(1, len(dates) // 5)))
+        tick_labels = [dates[i] for i in tick_pos]
+
+        for key, ax in self._indicator_axes.items():
+            if key not in df_raw.columns:
+                continue
+            title, ylabel, color = _INDICATOR_META[key]
+            values = df_raw[key].values.astype(float)
+            x = list(range(len(values)))
+
+            ax.clear()
+            ax.set_facecolor('#FFFFFF')
+            ax.set_title(title, fontsize=10, fontweight='bold', color='#111111', pad=4)
+            ax.set_ylabel(ylabel, fontsize=8, color='#888888')
+            ax.plot(x, values, color=color, linewidth=1.5)
+            ax.fill_between(x, float(values.min()), values, color=color, alpha=0.08)
+            ax.set_xticks(tick_pos)
+            ax.set_xticklabels(tick_labels, rotation=30, fontsize=7)
+            ax.tick_params(labelsize=7, colors='#888888')
+            ax.spines[['top', 'right']].set_visible(False)
+            ax.spines[['left', 'bottom']].set_color('#EEEEEE')
+            ax.grid(axis='y', color='#F5F5F5', linewidth=0.5)
+
+            self._indicator_canvases[key].draw()
