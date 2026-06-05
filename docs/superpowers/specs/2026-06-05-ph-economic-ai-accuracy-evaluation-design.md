@@ -47,13 +47,23 @@ layer** (renders the proof, computes nothing).
 
 ## 2. Scope
 
-### In scope
+The work is **two phases**. Phase 1 makes the confidence *truthful*; Phase 2
+makes it *higher* — but only by reducing real error, with every gain gated behind
+a measured backtest improvement. Phase 1 must land first because it is the
+measuring instrument Phase 2 is judged by.
+
+### In scope — Phase 1 (honest measurement)
 - A headless, reproducible **benchmark package** that proves the 1-month gas
   forecast claim against an open authoritative dataset and a naive baseline.
 - **Calibrated uncertainty** (split conformal) replacing the fake confidence.
 - A **hash-chained, prediction-locked live track record** fed by real DOE prices.
 - A read-only in-app **"Methodology & Accuracy"** view that renders the artifacts.
 - Honest relabeling of derived outputs and of the agent layer's role.
+
+### In scope — Phase 2 (earning higher confidence)
+- Re-grounding the model in the finished-product pass-through that actually sets
+  PH pump prices, plus more efficient interval construction. See §9 for the
+  ranked, individually-gated levers.
 
 ### Out of scope (YAGNI / future work)
 - Experiment-tracking infra (DVC/MLflow), competing model zoo, LaTeX paper.
@@ -240,7 +250,59 @@ Extends the existing `tests/` suite:
 
 ---
 
-## 9. Sources
+## 9. Phase 2 — Accuracy Improvement (earning higher confidence)
+
+**Principle:** "higher confidence" is *not* a setting — it is the consequence of
+smaller real error. Conformal band width is a direct function of out-of-sample
+residuals, so the only honest way to tighten the displayed interval is to make
+the model wrong by less. Every lever below is therefore **gated**: it is merged
+only if the Phase 1 backtest shows it *improves the skill score and/or narrows
+mean band width at equal coverage*. A lever that doesn't measurably help is
+reported as a negative result and dropped — not shipped.
+
+**Why there is genuine room:** DOE's weekly pricing is effectively a formula —
+landed cost of *finished* gasoline (MOPS Singapore / RBOB) × FX + fixed taxes and
+margins, passed through with a ~1-week lag. Much of next month's pump price is
+therefore already determined by the last few weeks of refined-product prices and
+FX. The current model leaves this on the table: it feeds on *Brent crude*
+(`oil_price`, `BZ=F`) plus a *synthetic cosine* `demand_index`.
+
+### Ranked, individually-gated levers
+
+| # | Lever | Mechanism | Effort |
+|---|---|---|---|
+| 1 | **Finished-gasoline features** — feed RBOB (`RB=F`, already fetched) / MOPS gasoline with explicit lags, replacing reliance on Brent crude | Pump price tracks refined product, not crude. Largest single expected gain. | Med |
+| 2 | **Structural + ML hybrid** — compute analytical landed cost (`RBOB × FX × conv + fixed taxes`) and have ML predict only the *residual margin* | Removes the deterministic part from the learning problem; grounded in the actual DOE mechanism, so it is both more accurate and more defensible. | Med-High |
+| 3 | **Pass-through lag features** — trailing 2–4 week MOPS/FX aggregates | At a 1-month horizon much of the answer is already locked in by recent weeks. | Low |
+| 4 | **Drop synthetic `demand_index`** | A cosine carries no information; removing it cuts variance. | Low |
+| 5 | **Weekly resolution + longer history** | More samples → lower-variance model and tighter conformal quantiles. | Med |
+| 6 | **Normalized / Mondrian conformal** — scale band half-width by local volatility | Same nominal coverage, narrower bands in calm regimes, honestly wider around shocks. Makes confidence as high as it truthfully can be. | Med |
+| 7 | **Tune HGB via nested CV** (currently `min_samples_leaf=5, max_leaf_nodes=15`, barely tuned) | Marginal vs. the above but cheap; nested CV avoids selection leakage. | Low |
+
+**Recommended core:** levers **1 + 2 + 3** (re-ground the model in the
+finished-product pass-through) typically move a Brent-based model from "≈ random
+walk" to "clearly beats it," which is what tightens the honest bands. Lever **6**
+then presents that confidence as favorably as the truth allows.
+
+### Methodology guards (so Phase 2 stays honest)
+- Each lever evaluated through the **same walk-forward, causal backtest** as
+  Phase 1 — no separate, friendlier evaluation.
+- Feature/lag selection and hyperparameter tuning happen **inside** the training
+  fold (nested CV); never on the test window. The leakage guard test from §7
+  covers this.
+- Results recorded as a **lever-by-lever ablation table** in
+  `accuracy_report.json` (skill score and mean band width before/after each
+  lever), so the improvement is auditable, not asserted.
+
+### Honest limit (stated, not hidden)
+No 1-month forecast can stay confident through a genuine oil shock. The target is
+**tight bands in normal months, honestly wide around shocks** — exactly what
+normalized conformal (#6) produces. Uniform high confidence is the fake 90%
+returning in disguise and is explicitly rejected.
+
+---
+
+## 10. Sources
 
 - World Bank Global Fuel Prices Database —
   https://datacatalog.worldbank.org/search/dataset/0066829/global-fuel-prices-database
