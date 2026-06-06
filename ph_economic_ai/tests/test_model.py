@@ -1,5 +1,6 @@
 import numpy as np
 import sys, os
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -7,7 +8,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from ph_economic_ai.data import generate_dataset
 from ph_economic_ai.utils.preprocessing import build_features
 from ph_economic_ai.model import (
-    train, predict, get_training_predictions, simulate_scenarios,
+    train, predict, predict_interval, get_training_predictions, simulate_scenarios,
     get_feature_importances, cross_val_rmse, forecast,
 )
 
@@ -30,14 +31,18 @@ def test_train_returns_fitted_model():
     assert hasattr(reg, 'feature_importances_')
 
 
-def test_predict_returns_tuple():
+def test_predict_returns_point_and_band():
     reg, X, y, df_feat, last_features, _, _ = _trained()
-    result = predict(reg, last_features)
-    assert len(result) == 3
-    predicted_price, confidence, pred_std = result
-    assert 50.0 < predicted_price < 90.0
-    assert 0.0 <= confidence <= 100.0
-    assert pred_std >= 0.0
+    point, low, high = predict_interval(reg, last_features, qhat=1.5)
+    assert 50.0 < point < 90.0
+    assert low == pytest.approx(point - 1.5)
+    assert high == pytest.approx(point + 1.5)
+
+
+def test_predict_interval_zero_width_when_qhat_zero():
+    reg, X, y, df_feat, last_features, _, _ = _trained()
+    point, low, high = predict_interval(reg, last_features, qhat=0.0)
+    assert low == pytest.approx(point) == pytest.approx(high)
 
 
 def test_get_training_predictions_shape():
