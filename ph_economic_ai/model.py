@@ -38,15 +38,40 @@ def train_sector(X: np.ndarray, y: np.ndarray) -> HistGradientBoostingRegressor:
     return train(X, y)
 
 
-def predict(regressor: HistGradientBoostingRegressor, last_features: np.ndarray) -> tuple:
+def predict_interval(regressor, last_features: np.ndarray, qhat: float) -> tuple:
+    """Predict next price with a conformal band. Returns (point, low, high).
+
+    qhat is the conformal half-width for the desired level (see
+    benchmark.conformal / accuracy_report.json). qhat=0 -> degenerate band.
     """
-    Predict next price from a 1-D feature vector.
-    Returns (predicted_price, confidence_0_100, pred_std).
-    pred_std is 0.0 — use cv_rmse from cross_val_rmse() for uncertainty bands.
+    point = float(regressor.predict(last_features.reshape(1, -1))[0])
+    return point, point - qhat, point + qhat
+
+
+def load_conformal_widths(report_path=None) -> dict:
+    """Load {level_str: qhat} from the frozen accuracy_report.json.
+
+    Returns {} if the report has not been generated yet (caller decides UX).
     """
-    X = last_features.reshape(1, -1)
-    predicted_price = float(regressor.predict(X)[0])
-    return predicted_price, 90.0, 0.0
+    from ph_economic_ai.benchmark.report import load_report, REPORT_PATH
+    path = report_path or REPORT_PATH
+    try:
+        return load_report(path).get('conformal_widths', {})
+    except FileNotFoundError:
+        return {}
+
+
+def predict(regressor, last_features: np.ndarray) -> tuple:
+    """Backward-compatible point forecast with a REAL 90% band derived from the
+    frozen conformal report. Returns (predicted_price, low_90, high_90).
+
+    Replaces the former hardcoded (price, 90.0, 0.0). If no report exists yet,
+    the band collapses to the point (low==high==point) and callers should show
+    'uncalibrated' until the benchmark has been run.
+    """
+    widths = load_conformal_widths()
+    qhat90 = float(widths.get('0.9', 0.0))
+    return predict_interval(regressor, last_features, qhat90)
 
 
 def get_training_predictions(regressor: HistGradientBoostingRegressor, X: np.ndarray) -> tuple:
