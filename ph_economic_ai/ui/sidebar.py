@@ -43,7 +43,8 @@ _NAV: list[tuple[int, str, bool]] = [
     (2, 'Simulation',        True),
     (3, 'Report',            True),
     (4, 'Interact',          False),   # break after Interact
-    (5, 'Agent performance', False),   # last row, no connector
+    (5, 'Agent performance', False),   # section item, no connector
+    (6, 'Methodology & accuracy', False),   # last row, no connector
 ]
 
 
