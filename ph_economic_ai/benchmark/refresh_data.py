@@ -62,65 +62,108 @@ def _ensure_workbook() -> Path:
     )
 
 
-def _find_col(cols, *needles) -> str | None:
-    """First column whose lowercased name contains ANY of the needles."""
-    low = {c: str(c).lower() for c in cols}
-    for c in cols:
-        if any(n in low[c] for n in needles):
-            return c
-    return None
+def _find_premium_sheet(xl: pd.ExcelFile) -> str:
+    """The local-currency premium-gasoline (RON95+) sheet, excluding the USD one."""
+    for sh in xl.sheet_names:
+        s = sh.lower().replace(' ', '')
+        if 'premium' in s and 'ron95' in s and 'usd' not in s:
+            return sh
+    raise SystemExit('Could not find a "Premium Gasoline RON95" LCU sheet; '
+                     f'available sheets: {xl.sheet_names}')
 
 
 def build_world_bank_csv() -> None:
+    """Extract the PH premium-gasoline (RON95+) monthly series in PHP/litre.
+
+    The workbook is wide-format: one sheet per fuel, country rows, month columns.
+    We use the LCU (local-currency) premium-gasoline sheet so prices are in
+    PHP/litre directly.
+    """
     xlsx = _ensure_workbook()
-    raw = pd.read_excel(xlsx)
-    print('Workbook columns:', list(raw.columns))
+    xl = pd.ExcelFile(xlsx)
+    sheet = _find_premium_sheet(xl)
+    df = xl.parse(sheet)
+    print(f'Using sheet: {sheet!r}  shape={df.shape}')
 
-    country_col = _find_col(raw.columns, 'country', 'economy')
-    product_col = _find_col(raw.columns, 'product', 'fuel', 'grade')
-    date_col    = _find_col(raw.columns, 'date', 'month', 'period', 'time')
-    # Prefer a local-currency (PHP) price column; fall back to a generic price col.
-    price_col = (_find_col(raw.columns, 'local', 'lcu', 'php')
-                 or _find_col(raw.columns, 'price', 'value', 'pump'))
-    print(f'Detected -> country={country_col!r} product={product_col!r} '
-          f'date={date_col!r} price={price_col!r}')
-    if not all([country_col, date_col, price_col]):
-        raise SystemExit('Could not auto-detect required columns; inspect the '
-                         'printed columns and adjust _find_col needles.')
+    country_col = df.columns[0]
+    units_col = df.columns[1] if 'unit' in str(df.columns[1]).lower() else None
+    date_cols = [c for c in df.columns if hasattr(c, 'year') and hasattr(c, 'month')]
+    if not date_cols:
+        raise SystemExit('No datetime month columns found in the sheet.')
 
-    df = raw.copy()
-    df = df[df[country_col].astype(str).str.contains('Philippines', case=False, na=False)]
-    if product_col is not None:
-        # Premium gasoline (RON95). Match on '95'/'premium' first, else any gasoline.
-        prem = df[df[product_col].astype(str).str.contains('95|premium', case=False, na=False, regex=True)]
-        df = prem if len(prem) else df[df[product_col].astype(str).str.contains('gasoline|petrol', case=False, na=False, regex=True)]
+    matches = df[df[country_col].astype(str).str.contains('Philippines', case=False, na=False)]
+    if matches.empty:
+        raise SystemExit('No Philippines row found in the premium-gasoline sheet.')
 
-    out = (df[[date_col, price_col]]
-           .assign(date=lambda d: pd.to_datetime(d[date_col], errors='coerce').dt.strftime('%Y-%m'))
-           .dropna(subset=['date'])
-           .rename(columns={price_col: 'ron95_php_per_liter'})
-           [['date', 'ron95_php_per_liter']]
-           .dropna()
-           .sort_values('date'))
-    out = out[~out['date'].duplicated(keep='last')]
+    # Among PH rows, pick the PHP-units row with the most observed months.
+    best, best_n, best_units = None, -1, None
+    for _, row in matches.iterrows():
+        units = str(row[units_col]) if units_col is not None else ''
+        if units_col is not None and 'php' not in units.lower():
+            continue
+        n = int(row[date_cols].notna().sum())
+        if n > best_n:
+            best, best_n, best_units = row, n, units
+    if best is None:                      # no explicit PHP row; fall back to fullest row
+        best = max((r for _, r in matches.iterrows()),
+                   key=lambda r: int(r[date_cols].notna().sum()))
+        best_units = str(best[units_col]) if units_col is not None else '?'
+    print(f'PH row units={best_units!r}, observed months={best_n}')
+
+    s = best[date_cols].dropna()
+    out = pd.DataFrame({
+        'date': [pd.Timestamp(d).strftime('%Y-%m') for d in s.index],
+        'ron95_php_per_liter': [round(float(v), 2) for v in s.values],
+    })
+    out = out[~out['date'].duplicated(keep='last')].sort_values('date')
     WB_OUT.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(WB_OUT, index=False)
-    print(f'Wrote {len(out)} rows to {WB_OUT} '
-          f'({out["date"].iloc[0]}..{out["date"].iloc[-1]})' if len(out) else
-          f'Wrote 0 rows to {WB_OUT} -- check column detection!')
-    if price_col and 'local' not in str(price_col).lower() and 'php' not in str(price_col).lower():
-        print('  WARNING: price column may not be in PHP/liter (could be USD). '
-              'Verify units before treating as gold ₱/L.')
+    if len(out):
+        print(f'Wrote {len(out)} rows to {WB_OUT} '
+              f'({out["date"].iloc[0]}..{out["date"].iloc[-1]})')
+    else:
+        print(f'Wrote 0 rows to {WB_OUT} -- check sheet/row detection!')
+    if 'php' not in (best_units or '').lower():
+        print('  WARNING: units may not be PHP/litre. Verify before treating as gold ₱/L.')
 
 
 # ── Predictor matrix (fully automatic) ──────────────────────────────────────────
 
+def _yahoo_monthly(ticker: str, rng: str = '10y') -> pd.Series:
+    """Monthly close series indexed 'YYYY-MM' (mirrors fetcher._fetch_yahoo, longer range)."""
+    import datetime as _dt
+    url = f'https://query1.finance.yahoo.com/v8/finance/chart/{ticker}'
+    r = requests.get(url, params={'interval': '1mo', 'range': rng},
+                     headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'},
+                     timeout=15)
+    r.raise_for_status()
+    res = r.json()['chart']['result'][0]
+    ts = res['timestamp']
+    closes = res['indicators']['quote'][0]['close']
+    dates = [_dt.datetime.fromtimestamp(t, tz=_dt.timezone.utc).strftime('%Y-%m') for t in ts]
+    s = pd.Series(closes, index=dates, dtype=float).dropna().round(2)
+    return s[~s.index.duplicated(keep='last')]
+
+
 def build_features_csv() -> None:
-    from ph_economic_ai.fetcher import _fetch_all
-    fdf = _fetch_all()
+    """Real monthly predictors aligned for the backtest: Brent oil, USD/PHP, the
+    RBOB-derived gas proxy, and a seasonal demand index. Skips PSEi (Yahoo ^PSEi
+    404s and it is not a model predictor)."""
+    from ph_economic_ai.fetcher import _compute_demand
+    oil = _yahoo_monthly('BZ=F')      # Brent crude, USD/bbl
+    usd = _yahoo_monthly('PHP=X')     # PHP per USD
+    rbob = _yahoo_monthly('RB=F')     # RBOB gasoline futures, USD/gal
+    base = pd.concat([oil.rename('oil_price'), usd.rename('usd_php'),
+                      rbob.rename('rbob')], axis=1).dropna()
+    # RBOB -> PHP/litre proxy (same formula as fetcher._fetch_doe_prices)
+    base['gas_price'] = ((base['rbob'] / 3.785 * base['usd_php']) * 1.35 + 12).round(2)
+    base = base.drop(columns=['rbob']).reset_index().rename(columns={'index': 'date'})
+    base['demand_index'] = _compute_demand(base['date'].tolist())
+    base = base.sort_values('date')
     FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
-    fdf.to_csv(FEATURES_OUT, index=False)
-    print(f'Wrote features_monthly.csv ({len(fdf)} rows)')
+    base.to_csv(FEATURES_OUT, index=False)
+    print(f'Wrote features_monthly.csv ({len(base)} rows, '
+          f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
 
 def main():
