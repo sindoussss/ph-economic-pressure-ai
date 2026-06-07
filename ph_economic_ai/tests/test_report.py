@@ -35,3 +35,21 @@ def test_report_roundtrips_to_json(tmp_path):
     p = tmp_path / 'r.json'
     write_report(rep, p)
     assert load_report(p)['data_hash'] == 'abc123'
+
+
+def test_report_includes_ablation_and_selected():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': 0.05},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        ablation=[{'name': 'baseline', 'skill_vs_rw': -0.18, 'band90': 21.5, 'rmse': 4.7, 'mae': 3.5, 'n': 79},
+                  {'name': 'structural_hybrid', 'skill_vs_rw': 0.05, 'band90': 9.0, 'rmse': 1.7, 'mae': 1.2, 'n': 79}],
+        selected_variant='structural_hybrid',
+    )
+    assert rep['selected_variant'] == 'structural_hybrid'
+    assert len(rep['ablation']) == 2
+    assert 'ablation' in REQUIRED_KEYS and 'selected_variant' in REQUIRED_KEYS

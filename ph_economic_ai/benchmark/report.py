@@ -11,6 +11,7 @@ REQUIRED_KEYS = (
     'model_metrics', 'baseline_metrics', 'skill',
     'headline_skill_vs_random_walk', 'conformal_widths', 'calibration',
     'proxy_validation', 'data_hash', 'limitations',
+    'ablation', 'selected_variant',
 )
 
 _LIMITATIONS = [
@@ -21,7 +22,7 @@ _LIMITATIONS = [
 
 
 def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
-                 calibration, proxy, data_hash) -> dict:
+                 calibration, proxy, data_hash, ablation=None, selected_variant=None) -> dict:
     conformal_widths = {str(r['nominal']): r['qhat'] for r in calibration}
     return {
         'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -36,6 +37,8 @@ def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
         'calibration': calibration,
         'proxy_validation': proxy,
         'data_hash': data_hash,
+        'ablation': ablation if ablation is not None else [],
+        'selected_variant': selected_variant,
         'limitations': _LIMITATIONS,
     }
 
