@@ -55,6 +55,11 @@ class AccuracyView(QWidget):
                     lbl = QLabel(); lbl.setPixmap(QPixmap(str(fp)))
                     col.addWidget(lbl)
             col.addWidget(self._calibration_table())
+            if self._report.get('ablation'):
+                abl = QLabel('<b>Lever comparison (Phase 2)</b><br>'
+                             + self.ablation_summary().replace('\n', '<br>'))
+                abl.setWordWrap(True)
+                col.addWidget(abl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -75,3 +80,15 @@ class AccuracyView(QWidget):
         items = ''.join(f'<li>{x}</li>' for x in self._report.get('limitations', []))
         lbl = QLabel(f"<b>Limitations</b><ul>{items}</ul>"); lbl.setWordWrap(True)
         return lbl
+
+    def ablation_summary(self) -> str:
+        if not self._report:
+            return ''
+        rows = self._report.get('ablation') or []
+        sel = self._report.get('selected_variant')
+        lines = []
+        for r in sorted(rows, key=lambda x: -x['skill_vs_rw']):
+            mark = '  <- selected' if r['name'] == sel else ''
+            lines.append(f"{r['name']}: skill {r['skill_vs_rw']:+.2f} vs RW, "
+                         f"90% band P{r['band90']:.2f}{mark}")
+        return '\n'.join(lines)
