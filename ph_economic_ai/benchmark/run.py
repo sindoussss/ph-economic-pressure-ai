@@ -31,9 +31,17 @@ def main():
     gold = load_world_bank_ron95()
     feats = pd.read_csv(FEATURES_CSV, dtype={'date': str}).set_index('date')
     df = feats.join(gold.rename('ron95'), how='inner').dropna().sort_index()
-    dates = df.index.tolist()
-    y = df['ron95'].to_numpy()
-    X = df.drop(columns=['ron95']).to_numpy()
+
+    # True 1-month-ahead design: predict ron95[i] from the PREVIOUS month's macro
+    # drivers plus the previous month's ron95 (so the model has everything the
+    # random-walk baseline has, plus extra signal — a fair test of added value).
+    design = df.drop(columns=['ron95']).shift(1)
+    design['prev_ron95'] = df['ron95'].shift(1)
+    design['ron95'] = df['ron95']
+    design = design.dropna().sort_index()
+    dates = design.index.tolist()
+    y = design['ron95'].to_numpy()
+    X = design.drop(columns=['ron95']).to_numpy()
 
     model_bt = walk_forward(y, X, _hgb_predict_fn, MIN_TRAIN)
     rw_bt = walk_forward(y, None, lambda Xt, yt, xn: baselines.random_walk_next(yt), MIN_TRAIN)

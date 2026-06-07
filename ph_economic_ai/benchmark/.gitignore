@@ -1,0 +1,3 @@
+# Raw World Bank workbook (5+ MB, reproducible via refresh_data download).
+# The extracted gold series lives in data/world_bank_ron95.csv, which IS tracked.
+global_fuel_prices.xlsx
