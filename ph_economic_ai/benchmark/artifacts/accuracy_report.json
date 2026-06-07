@@ -1,55 +1,55 @@
 {
-  "generated_at": "2026-06-07T10:59:33.640391+00:00",
+  "generated_at": "2026-06-07T15:59:16.865429+00:00",
   "horizon": "1_month",
   "date_range": [
-    "2017-03",
+    "2019-11",
     "2025-03"
   ],
   "n_months": 79,
   "model_metrics": {
-    "mae": 3.5437,
-    "rmse": 4.7346,
-    "mape": 5.6844,
-    "mase": 1.941
+    "mae": 3.0029,
+    "rmse": 4.0991,
+    "mape": 4.8736,
+    "mase": 1.5718
   },
   "baseline_metrics": {
     "random_walk": {
-      "rmse": 4.0039
+      "rmse": 4.0685
     },
     "seasonal_naive": {
-      "rmse": 11.2997
+      "rmse": 11.4971
     }
   },
   "skill": {
-    "vs_random_walk": -0.1825,
-    "vs_seasonal_naive": 0.581
+    "vs_random_walk": -0.0075,
+    "vs_seasonal_naive": 0.6435
   },
-  "headline_skill_vs_random_walk": -0.1825,
+  "headline_skill_vs_random_walk": -0.0075,
   "conformal_widths": {
-    "0.5": 2.4512,
-    "0.8": 4.9629,
-    "0.9": 10.765,
-    "0.95": 16.0393
+    "0.5": 2.5569,
+    "0.8": 5.8805,
+    "0.9": 10.4194,
+    "0.95": 11.863
   },
   "calibration": [
     {
       "nominal": 0.5,
-      "qhat": 2.4512,
-      "measured": 0.3333
+      "qhat": 2.5569,
+      "measured": 0.5769
     },
     {
       "nominal": 0.8,
-      "qhat": 4.9629,
-      "measured": 0.8148
+      "qhat": 5.8805,
+      "measured": 0.8846
     },
     {
       "nominal": 0.9,
-      "qhat": 10.765,
+      "qhat": 10.4194,
       "measured": 1.0
     },
     {
       "nominal": 0.95,
-      "qhat": 16.0393,
+      "qhat": 11.863,
       "measured": 1.0
     }
   ],
@@ -60,6 +60,49 @@
     "n": 79
   },
   "data_hash": "ed75dcb7169c2913",
+  "ablation": [
+    {
+      "name": "baseline",
+      "rmse": 4.6043,
+      "mae": 3.4402,
+      "skill_vs_rw": -0.1317,
+      "band90": 17.859,
+      "n": 52
+    },
+    {
+      "name": "drop_demand",
+      "rmse": 4.4139,
+      "mae": 3.3901,
+      "skill_vs_rw": -0.0849,
+      "band90": 16.8257,
+      "n": 52
+    },
+    {
+      "name": "passthrough_lags",
+      "rmse": 4.0991,
+      "mae": 3.0029,
+      "skill_vs_rw": -0.0075,
+      "band90": 14.4572,
+      "n": 52
+    },
+    {
+      "name": "finished_gas",
+      "rmse": 4.994,
+      "mae": 3.8109,
+      "skill_vs_rw": -0.2275,
+      "band90": 18.5693,
+      "n": 52
+    },
+    {
+      "name": "structural_hybrid",
+      "rmse": 5.55,
+      "mae": 3.9363,
+      "skill_vs_rw": -0.3642,
+      "band90": 19.6919,
+      "n": 52
+    }
+  ],
+  "selected_variant": "passthrough_lags",
   "limitations": [
     "World Bank gold series lags ~1 year; live grading uses DOE prices.",
     "Conformal assumes exchangeable residuals; q-hat uses a rolling recent window.",
