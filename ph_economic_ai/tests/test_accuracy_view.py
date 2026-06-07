@@ -24,6 +24,11 @@ def _report(tmp_path):
         'calibration': [{'nominal': 0.9, 'qhat': 2.6, 'measured': 0.91}],
         'proxy_validation': {'pearson_r': 0.97, 'bias_mean': 0.3, 'mae': 1.0, 'n': 100},
         'data_hash': 'abc', 'limitations': ['food/elec are derived'],
+        'ablation': [
+            {'name': 'baseline', 'skill_vs_rw': -0.18, 'band90': 21.5, 'rmse': 4.73, 'mae': 3.54, 'n': 79},
+            {'name': 'structural_hybrid', 'skill_vs_rw': 0.04, 'band90': 8.9, 'rmse': 3.8, 'mae': 2.9, 'n': 79},
+        ],
+        'selected_variant': 'structural_hybrid',
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -41,3 +46,10 @@ def test_view_handles_missing_report(tmp_path):
     view = AccuracyView(report_path=tmp_path / 'does_not_exist.json')
     # must not crash; shows an explanatory message
     assert 'run' in view.headline_text().lower()
+
+
+def test_view_shows_ablation_when_present(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    t = view.ablation_summary()
+    assert 'structural_hybrid' in t
+    assert 'baseline' in t
