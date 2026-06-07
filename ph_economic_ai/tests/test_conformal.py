@@ -35,3 +35,28 @@ def test_calibration_table_has_row_per_level():
     table = build_calibration_table(cal, y_true, y_pred, levels=(0.5, 0.8, 0.9, 0.95))
     assert [r['nominal'] for r in table] == [0.5, 0.8, 0.9, 0.95]
     assert all('measured' in r and 'qhat' in r for r in table)
+
+
+from ph_economic_ai.benchmark.conformal import (
+    normalized_conformal_quantile, normalized_coverage,
+)
+
+
+def test_normalized_coverage_near_nominal_heteroscedastic():
+    rng = np.random.default_rng(7)
+    n = 20000
+    sigma = rng.uniform(0.5, 3.0, n)
+    cal_res = rng.normal(0, 1, n) * sigma
+    qn = normalized_conformal_quantile(cal_res, sigma, level=0.90)
+    sigma_v = rng.uniform(0.5, 3.0, n)
+    val_res = rng.normal(0, 1, n) * sigma_v
+    cov = normalized_coverage(val_res, sigma_v, qn)
+    assert cov == pytest.approx(0.90, abs=0.02)
+
+
+def test_normalized_bands_are_wider_where_sigma_larger():
+    rng = np.random.default_rng(8)
+    sigma = np.array([1.0] * 1000 + [3.0] * 1000)
+    cal_res = rng.normal(0, 1, 2000) * sigma
+    qn = normalized_conformal_quantile(cal_res, sigma, level=0.90)
+    assert qn * 3.0 > qn * 1.0

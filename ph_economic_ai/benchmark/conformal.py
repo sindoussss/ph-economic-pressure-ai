@@ -38,3 +38,20 @@ def build_calibration_table(cal_residuals, y_true, y_pred, levels=(0.5, 0.8, 0.9
             'measured': round(coverage(y_true, y_pred, qhat), 4),
         })
     return table
+
+
+def normalized_conformal_quantile(cal_residuals, sigmas, level: float) -> float:
+    """Conformal quantile of |residual| / sigma. Band half-width is then qn * sigma_i,
+    giving narrower intervals where local volatility (sigma) is small."""
+    r = np.abs(np.asarray(cal_residuals, dtype=float))
+    s = np.asarray(sigmas, dtype=float)
+    if np.any(s <= 0):
+        raise ValueError('sigmas must be strictly positive')
+    return conformal_quantile(r / s, level)
+
+
+def normalized_coverage(y_residuals, sigmas, qn: float) -> float:
+    """Fraction of points within +/- qn * sigma_i."""
+    r = np.abs(np.asarray(y_residuals, dtype=float))
+    s = np.asarray(sigmas, dtype=float)
+    return float(np.mean(r <= qn * s))
