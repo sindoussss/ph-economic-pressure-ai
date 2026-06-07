@@ -10,6 +10,8 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from ph_economic_ai.benchmark import baselines, conformal, figures, report
+from ph_economic_ai.benchmark import ablation as ablation_mod
+from ph_economic_ai.benchmark.features import build_feature_frame, make_variant, VARIANTS
 from ph_economic_ai.benchmark.ground_truth import load_world_bank_ron95
 from ph_economic_ai.benchmark.backtest import walk_forward
 from ph_economic_ai.benchmark.metrics import mae, rmse, mape, mase, skill_score
@@ -32,27 +34,35 @@ def main():
     feats = pd.read_csv(FEATURES_CSV, dtype={'date': str}).set_index('date')
     df = feats.join(gold.rename('ron95'), how='inner').dropna().sort_index()
 
-    # True 1-month-ahead design: predict ron95[i] from the PREVIOUS month's macro
-    # drivers plus the previous month's ron95 (so the model has everything the
-    # random-walk baseline has, plus extra signal — a fair test of added value).
-    design = df.drop(columns=['ron95']).shift(1)
-    design['prev_ron95'] = df['ron95'].shift(1)
-    design['ron95'] = df['ron95']
-    design = design.dropna().sort_index()
-    dates = design.index.tolist()
-    y = design['ron95'].to_numpy()
-    X = design.drop(columns=['ron95']).to_numpy()
+    # ── Phase-2: ablation over feature variants, pick the winner by the gate ──
+    frame = build_feature_frame(df)
+    ablation_rows = ablation_mod.run_ablation(
+        frame, list(VARIANTS.keys()), _hgb_predict_fn, MIN_TRAIN)
+    winner = ablation_mod.select_winner(ablation_rows)
+    selected = winner['name']
+    print('Ablation (skill vs random walk):')
+    for r in sorted(ablation_rows, key=lambda x: -x['skill_vs_rw']):
+        mark = ' <= selected' if r['name'] == selected else ''
+        print(f"  {r['name']:<18} skill={r['skill_vs_rw']:+.3f} "
+              f"band90=P{r['band90']:.2f} rmse=P{r['rmse']:.2f}{mark}")
 
-    model_bt = walk_forward(y, X, _hgb_predict_fn, MIN_TRAIN)
-    rw_bt = walk_forward(y, None, lambda Xt, yt, xn: baselines.random_walk_next(yt), MIN_TRAIN)
-    sn_bt = walk_forward(y, None, lambda Xt, yt, xn: baselines.seasonal_naive_next(yt, 12), MIN_TRAIN)
+    # Re-run the winning variant to get its reconstructed predictions for the report.
+    v = make_variant(selected, frame)
+    bt = walk_forward(v.y_model, v.X, _hgb_predict_fn, MIN_TRAIN)
+    idx = bt['index']
+    dates = [frame.index[i] for i in idx]
+    yp = bt['y_pred'] + v.structural[idx]      # reconstruct to RON95 space
+    yt = v.y_actual[idx]
 
-    yt, yp = model_bt['y_true'], model_bt['y_pred']
+    rw_bt = walk_forward(v.y_actual, None,
+                         lambda Xt, ytr, xn: float(ytr[-1]), MIN_TRAIN)
+    sn_bt = walk_forward(v.y_actual, None,
+                         lambda Xt, ytr, xn: baselines.seasonal_naive_next(ytr, 12), MIN_TRAIN)
     rmse_model = rmse(yt, yp)
     rmse_rw = rmse(rw_bt['y_true'], rw_bt['y_pred'])
     rmse_sn = rmse(sn_bt['y_true'], sn_bt['y_pred'])
 
-    res = model_bt['residuals']
+    res = yt - yp
     half = len(res) // 2
     cal_res, val_true, val_pred = res[:half], yt[half:], yp[half:]
     calib = conformal.build_calibration_table(cal_res, val_true, val_pred, CONFORMAL_LEVELS)
@@ -66,16 +76,17 @@ def main():
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
-                       'mape': round(mape(yt, yp), 4), 'mase': round(mase(yt, yp, y[:MIN_TRAIN]), 4)},
+                       'mape': round(mape(yt, yp), 4), 'mase': round(mase(yt, yp, v.y_actual[:MIN_TRAIN]), 4)},
         baseline_metrics={'random_walk': {'rmse': round(rmse_rw, 4)},
                           'seasonal_naive': {'rmse': round(rmse_sn, 4)}},
         skill={'vs_random_walk': round(skill_score(rmse_model, rmse_rw), 4),
                'vs_seasonal_naive': round(skill_score(rmse_model, rmse_sn), 4)},
         calibration=calib, proxy=proxy_stats, data_hash=data_hash,
+        ablation=ablation_rows, selected_variant=selected,
     )
     report.write_report(rep)
 
-    bt_dates = [dates[i] for i in model_bt['index']]
+    bt_dates = dates
     figures.plot_pred_vs_actual(bt_dates, yt, yp, yp - qhat90, yp + qhat90)
     figures.plot_baseline_bars(rmse_model, rmse_rw, rmse_sn)
     figures.plot_proxy_scatter(proxy.values, df['ron95'].values)
@@ -83,7 +94,14 @@ def main():
     pd.DataFrame({'date': bt_dates, 'y_true': yt, 'y_pred': yp,
                   'low90': yp - qhat90, 'high90': yp + qhat90}
                  ).to_csv(report.ARTIFACTS / 'backtest_predictions.csv', index=False)
-    print(f"Skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
+
+    import json as _json
+    (report.ARTIFACTS / 'ablation_table.json').write_text(
+        _json.dumps({'selected': selected, 'rows': ablation_rows}, indent=2),
+        encoding='utf-8')
+
+    print(f"Selected variant: {selected} | "
+          f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
           f"over {rep['n_months']} months")
 
 
