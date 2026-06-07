@@ -300,6 +300,32 @@ No 1-month forecast can stay confident through a genuine oil shock. The target i
 normalized conformal (#6) produces. Uniform high confidence is the fake 90%
 returning in disguise and is explicitly rejected.
 
+### Phase 2 — measured outcome
+
+Ablation over five variants (baseline, drop_demand, passthrough_lags,
+finished_gas, structural_hybrid), same strictly-causal walk-forward, n=79 months
+(2017–2025 World Bank RON95). Skill vs random walk (higher = better):
+
+| Variant | skill vs RW | 90% band |
+|---|---|---|
+| **passthrough_lags** (selected) | **−0.007** | **₱14.46** |
+| drop_demand | −0.085 | ₱16.83 |
+| baseline (Phase 1) | −0.132 | ₱17.86 |
+| finished_gas | −0.228 | ₱18.57 |
+| structural_hybrid | −0.364 | ₱19.69 |
+
+**No variant beats random walk**, but `passthrough_lags` (trailing gas/FX
+aggregates + deltas) closed almost the entire gap — skill **−0.13 → −0.007**
+(essentially matching naive persistence) — and tightened the 90% band ~19%
+(₱17.86 → ₱14.46). The pass-through-lag hypothesis was directionally correct;
+monthly, policy-smoothed PH retail prices cap the gain short of zero. The
+structural hybrid did worst (the lagged RBOB proxy is too biased/noisy as a base
+component). **Honest conclusion:** at monthly resolution the macro-feature model
+cannot beat random walk; the next genuine lever is **weekly resolution + a true
+MOPS Singapore finished-product series (lever 5)**, which requires a new data
+pipeline and is the recommended Phase 3. Confidence is now both honest *and*
+~19% tighter — the most that's truthfully achievable on this data.
+
 ---
 
 ## 10. Sources
