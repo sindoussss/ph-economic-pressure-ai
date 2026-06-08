@@ -70,6 +70,11 @@ class AccuracyView(QWidget):
                 ptl = QLabel('<b>Mechanism</b><br>' + _pt)
                 ptl.setWordWrap(True)
                 col.addWidget(ptl)
+            if self._report.get('audit'):
+                aud = QLabel('<b>Predictability audit (PH economy)</b><br>'
+                             + self.audit_summary().replace('\n', '<br>'))
+                aud.setWordWrap(True)
+                col.addWidget(aud)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -111,6 +116,19 @@ class AccuracyView(QWidget):
                 f"(contemporaneous {p['beta0']:.2f}, lag-1 {p['beta1']:.2f}), "
                 f"R2={p['r2']:.2f}; driver delta-autocorrelation={p['driver_acf1']:.2f} "
                 f"(near 0 => random-walk input).")
+
+    def audit_summary(self) -> str:
+        if not self._report:
+            return ''
+        rows = self._report.get('audit') or []
+        lines = []
+        for r in rows:
+            if r.get('verdict') == 'insufficient_data':
+                lines.append(f"{r['target']}: insufficient data")
+            else:
+                lines.append(f"{r['target']}: {r['verdict']} "
+                             f"(best {r['best_method']}, skill {r['best_skill']:+.2f})")
+        return '\n'.join(lines)
 
     def ablation_summary(self) -> str:
         if not self._report:

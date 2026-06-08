@@ -34,6 +34,10 @@ def _report(tmp_path):
             {'method': 'hgb', 'skill_vs_rw': -0.18, 'dm_p': 0.21, 'rmse': 4.7, 'mae': 3.5, 'dm_stat': 1.2, 'n': 79},
         ],
         'passthrough': {'beta_total': 0.83, 'beta0': 0.6, 'beta1': 0.23, 'r2': 0.74, 'driver_acf1': 0.03, 'n': 96, 'alpha': 0.1},
+        'audit': [
+            {'target': 'fuel', 'verdict': 'efficient', 'best_method': 'random_walk', 'best_skill': 0.0, 'best_dm_p': None, 'n': 79},
+            {'target': 'inflation', 'verdict': 'predictable', 'best_method': 'ridge', 'best_skill': 0.22, 'best_dm_p': 0.01, 'n': 60},
+        ],
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -67,3 +71,10 @@ def test_view_shows_efficiency_and_passthrough(tmp_path):
     assert 'random_walk' in eff and 'hgb' in eff
     assert 'pass-through' in pt.lower() or 'β' in pt or 'beta' in pt.lower()
     assert '0.83' in pt
+
+
+def test_view_shows_audit(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    a = view.audit_summary()
+    assert 'fuel' in a and 'inflation' in a
+    assert 'efficient' in a and 'predictable' in a
