@@ -121,10 +121,27 @@ report 'mom_driver_ablation' + mom_driver_ablation_table.json ─► accuracy_vi
 
 ---
 
-## 9. The contribution — to be filled from the real run
-- **Result:** driver-only ablation [confirms / does not confirm] a within-month driver edge — best driver method [method], skill vs best baseline [x], DM p [p], n [n].
-- **Interpretation:** [if confirmed] the contemporaneous drivers carry genuine nowcast information beyond MoM's own dynamics — the headline MoM win is a true information edge, not merely autocorrelation. [if absent] the MoM win is attributable to ARIMA's univariate short-run dynamics; the published drivers alone do not beat persistence — the honest, narrower reading of the result.
-- **Why it matters:** demonstrates ablation discipline — separating a *time-series-dynamics* edge from an *information* edge — which is exactly the rigor that distinguishes a credible nowcasting claim from a hand-wave.
+## 9. The contribution — measured result
+
+Run on committed data (source: `artifacts/mom_driver_ablation_table.json`), n = 61 months.
+
+- **Result: the driver-only ablation does NOT confirm a significant within-month driver edge.**
+  `driver_edge = False`, verdict `no_better_than_naive`. With `prev_mom` removed and only
+  driver regressors competing, the best baseline (random-walk, RMSE 0.453) is not beaten at
+  DM significance. **However**, driver-only **Ridge posts the lowest RMSE of all methods
+  (0.399, ~12% below random-walk)** — directionally the contemporaneous drivers help, but
+  the edge is **not statistically significant at n = 61** (DM gate not cleared).
+- **Interpretation (the honest, narrower reading):** the headline MoM nowcast win
+  (ARIMA, +16.2%, DM p = 0.032) is attributable mainly to MoM inflation's **own short-run
+  dynamics**, not to a *significant* contemporaneous-driver information edge. The drivers
+  carry a **suggestive but underpowered** signal (Ridge 0.399 < 0.453) — consistent with a
+  real-but-small information edge that a larger sample might confirm.
+- **Why it matters:** demonstrates ablation discipline — separating a *time-series-dynamics*
+  edge from an *information* edge. The ablation **prevented overclaiming** "the drivers
+  nowcast inflation": the defensible statement is "MoM inflation is predictable via its own
+  dynamics; the within-month driver edge is suggestive (−12% RMSE) but not significant at
+  this sample size." That precision is exactly what distinguishes a credible nowcasting
+  claim from a hand-wave.
 
 ---
 
