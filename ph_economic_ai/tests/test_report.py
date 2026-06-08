@@ -120,3 +120,20 @@ def test_report_includes_nowcast_mom():
     )
     assert rep['nowcast_mom']['verdict'] == 'beats_best_naive'
     assert 'nowcast_mom' in REQUIRED_KEYS
+
+
+def test_report_includes_mom_driver_ablation():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        mom_driver_ablation={'verdict': 'no_better_than_naive', 'driver_edge': False,
+                             'best_method': 'random_walk', 'best_naive': 'random_walk',
+                             'best_skill_vs_naive': 0.0, 'dm_p': None, 'n': 61},
+    )
+    assert rep['mom_driver_ablation']['driver_edge'] is False
+    assert 'mom_driver_ablation' in REQUIRED_KEYS
