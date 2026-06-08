@@ -85,6 +85,11 @@ class AccuracyView(QWidget):
                 mcl = QLabel('<b>MoM nowcast (vs strongest baseline)</b><br>' + _mc)
                 mcl.setWordWrap(True)
                 col.addWidget(mcl)
+            _ab = self.mom_driver_ablation_summary()
+            if _ab:
+                abl = QLabel('<b>MoM driver-only ablation</b><br>' + _ab)
+                abl.setWordWrap(True)
+                col.addWidget(abl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -159,6 +164,17 @@ class AccuracyView(QWidget):
         return (f"MoM inflation nowcast: {m['verdict']} — best {m['best_method']} "
                 f"vs strongest baseline {m['best_naive']}, skill "
                 f"{m['best_skill_vs_naive']:+.2f} (DM p={m['dm_p']}).")
+
+    def mom_driver_ablation_summary(self) -> str:
+        if not self._report:
+            return ''
+        a = self._report.get('mom_driver_ablation') or {}
+        if not a or a.get('verdict') == 'insufficient_data':
+            return ''
+        edge = 'CONFIRMED' if a.get('driver_edge') else 'absent'
+        return (f"Driver-only ablation (no own-lag): within-month driver edge {edge} "
+                f"— best {a['best_method']} vs {a['best_naive']}, "
+                f"skill {a['best_skill_vs_naive']:+.2f} (DM p={a['dm_p']}).")
 
     def ablation_summary(self) -> str:
         if not self._report:
