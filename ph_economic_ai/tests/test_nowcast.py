@@ -42,3 +42,49 @@ def test_no_same_month_cpi_feature_leak(monkeypatch):
     f = build_nowcast_frame()
     cpi_like = [c for c in f.columns if 'infl' in c.lower() or 'cpi' in c.lower()]
     assert cpi_like == ['prev_inflation']
+
+
+from ph_economic_ai.benchmark.nowcast import run_nowcast
+
+
+def test_run_nowcast_beats_naive_on_constructed_signal():
+    idx = pd.date_range('2016-01', periods=90, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(1)
+    fuel = 60 + np.cumsum(rng.normal(0, 1.0, 90))
+    target = 0.5 * (fuel - 60) + rng.normal(0, 0.05, 90)
+    frame = pd.DataFrame({
+        'oil': 70 + rng.normal(0, 1, 90),
+        'fx': 55 + rng.normal(0, 0.1, 90),
+        'fuel': fuel,
+        'prev_inflation': np.r_[target[0], target[:-1]],
+        'target': target,
+    }, index=idx)
+    res = run_nowcast(min_train=24, frame=frame)
+    assert res['verdict'] == 'beats_naive'
+    assert res['best_method'] != 'random_walk'
+    assert res['best_skill'] > 0
+
+
+def test_run_nowcast_ties_naive_on_random_walk_target():
+    idx = pd.date_range('2016-01', periods=90, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(2)
+    target = np.cumsum(rng.normal(0, 0.3, 90)) + 3.0
+    frame = pd.DataFrame({
+        'oil': 70 + rng.normal(0, 1, 90),
+        'fx': 55 + rng.normal(0, 0.1, 90),
+        'fuel': 60 + rng.normal(0, 1, 90),
+        'prev_inflation': np.r_[target[0], target[:-1]],
+        'target': target,
+    }, index=idx)
+    res = run_nowcast(min_train=24, frame=frame)
+    assert res['verdict'] == 'no_better_than_naive'
+    assert res['best_method'] == 'random_walk'
+
+
+def test_run_nowcast_insufficient_data():
+    idx = pd.date_range('2020-01', periods=10, freq='MS').strftime('%Y-%m')
+    frame = pd.DataFrame({'oil': range(10), 'fx': range(10), 'fuel': range(10),
+                          'prev_inflation': range(10), 'target': range(10)},
+                         index=idx).astype(float)
+    res = run_nowcast(min_train=24, frame=frame)
+    assert res['verdict'] == 'insufficient_data'
