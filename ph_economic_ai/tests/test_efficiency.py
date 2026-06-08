@@ -37,3 +37,18 @@ def test_random_walk_row_has_zero_skill_and_null_dm():
     rw = next(r for r in rows if r['method'] == 'random_walk')
     assert rw['skill_vs_rw'] == 0.0
     assert rw['dm_p'] is None
+
+
+def test_run_panel_accepts_custom_target_col():
+    idx = pd.date_range('2017-01', periods=70, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(5)
+    y = 50 + np.cumsum(rng.normal(0, 0.4, 70))
+    frame = pd.DataFrame({
+        'prev_x': np.r_[y[0], y[:-1]],
+        'drv_lag1': np.r_[0, np.diff(y)],
+        'target': y,
+    }, index=idx)
+    rows = run_panel(frame, ['random_walk', 'ridge'], min_train=24,
+                     feature_cols=['prev_x', 'drv_lag1'], target_col='target')
+    assert [r['method'] for r in rows] == ['random_walk', 'ridge']
+    assert rows[0]['n'] > 0
