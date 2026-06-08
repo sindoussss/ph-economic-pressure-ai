@@ -41,3 +41,33 @@ def plot_proxy_scatter(proxy_vals, gold_vals):
     ax.set_xlabel('World Bank RON95'); ax.set_ylabel('RBOB proxy'); ax.legend()
     ax.set_title('Proxy vs gold')
     fig.tight_layout(); fig.savefig(FIG_DIR / 'proxy_scatter.png', dpi=120); plt.close(fig)
+
+
+def plot_method_skill_bar(rows):
+    """Bar of skill-vs-random-walk per method; red where DM p<0.05 (sig. different)."""
+    _ensure_dir()
+    rows = sorted(rows, key=lambda r: r['skill_vs_rw'])
+    names = [r['method'] for r in rows]
+    skills = [r['skill_vs_rw'] for r in rows]
+    colors = ['tab:red' if (r['dm_p'] is not None and r['dm_p'] < 0.05) else 'tab:gray'
+              for r in rows]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.barh(names, skills, color=colors)
+    ax.axvline(0, color='black', linewidth=1)
+    ax.set_xlabel('Skill vs random walk (>0 beats naive)')
+    ax.set_title('Forecaster panel - none beats random walk')
+    fig.tight_layout(); fig.savefig(FIG_DIR / 'method_skill_bar.png', dpi=120); plt.close(fig)
+
+
+def plot_passthrough(cost_delta, pump_delta, beta_total):
+    """Scatter of delta-pump vs delta-cost with the fitted pass-through slope."""
+    _ensure_dir()
+    import numpy as np
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.scatter(cost_delta, pump_delta, s=12, alpha=0.6)
+    xs = np.array([min(cost_delta), max(cost_delta)])
+    ax.plot(xs, beta_total * xs, color='black', linewidth=1,
+            label=f'pass-through beta={beta_total:.2f}')
+    ax.set_xlabel('delta landed cost (PHP/L)'); ax.set_ylabel('delta pump price (PHP/L)')
+    ax.legend(); ax.set_title('DOE pass-through')
+    fig.tight_layout(); fig.savefig(FIG_DIR / 'passthrough.png', dpi=120); plt.close(fig)

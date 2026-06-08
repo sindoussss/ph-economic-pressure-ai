@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-07T15:59:16.865429+00:00",
+  "generated_at": "2026-06-08T08:00:57.638828+00:00",
   "horizon": "1_month",
   "date_range": [
     "2019-11",
@@ -103,6 +103,80 @@
     }
   ],
   "selected_variant": "passthrough_lags",
+  "efficiency": [
+    {
+      "method": "random_walk",
+      "rmse": 4.0685,
+      "mae": 3.0762,
+      "skill_vs_rw": 0.0,
+      "dm_stat": 0.0,
+      "dm_p": null,
+      "n": 52
+    },
+    {
+      "method": "drift",
+      "rmse": 4.1101,
+      "mae": 3.1114,
+      "skill_vs_rw": -0.0102,
+      "dm_stat": 0.6725,
+      "dm_p": 0.5043,
+      "n": 52
+    },
+    {
+      "method": "seasonal_naive",
+      "rmse": 11.4971,
+      "mae": 8.8848,
+      "skill_vs_rw": -1.8259,
+      "dm_stat": 4.1033,
+      "dm_p": 0.0001,
+      "n": 52
+    },
+    {
+      "method": "arima",
+      "rmse": 4.3834,
+      "mae": 3.2829,
+      "skill_vs_rw": -0.0774,
+      "dm_stat": 2.1448,
+      "dm_p": 0.0368,
+      "n": 52
+    },
+    {
+      "method": "ets",
+      "rmse": 4.1828,
+      "mae": 3.1603,
+      "skill_vs_rw": -0.0281,
+      "dm_stat": 1.1028,
+      "dm_p": 0.2753,
+      "n": 52
+    },
+    {
+      "method": "ridge",
+      "rmse": 4.1046,
+      "mae": 3.1473,
+      "skill_vs_rw": -0.0089,
+      "dm_stat": 0.1501,
+      "dm_p": 0.8813,
+      "n": 52
+    },
+    {
+      "method": "hgb",
+      "rmse": 4.0991,
+      "mae": 3.0029,
+      "skill_vs_rw": -0.0075,
+      "dm_stat": 0.0998,
+      "dm_p": 0.9209,
+      "n": 52
+    }
+  ],
+  "passthrough": {
+    "n": 77,
+    "alpha": 0.1328,
+    "beta0": 0.3132,
+    "beta1": 0.2438,
+    "beta_total": 0.557,
+    "r2": 0.3323,
+    "driver_acf1": 0.1577
+  },
   "limitations": [
     "World Bank gold series lags ~1 year; live grading uses DOE prices.",
     "Conformal assumes exchangeable residuals; q-hat uses a rolling recent window.",
