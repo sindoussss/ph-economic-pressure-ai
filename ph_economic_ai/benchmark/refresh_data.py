@@ -166,6 +166,41 @@ def build_features_csv() -> None:
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
 
+FX_OUT = HERE / 'data' / 'usd_php_monthly.csv'
+CPI_OUT = HERE / 'data' / 'ph_cpi_monthly.csv'
+FRED_CPI_ID = 'PHLCPIALLMINMEI'   # OECD MEI monthly CPI, Philippines (index)
+
+
+def build_fx_csv() -> None:
+    """USD/PHP monthly close from Yahoo -> data/usd_php_monthly.csv."""
+    fx = _yahoo_monthly('PHP=X')
+    df = fx.rename('usd_php').reset_index()
+    df.columns = ['date', 'usd_php']
+    FX_OUT.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(FX_OUT, index=False)
+    print(f'Wrote usd_php_monthly.csv ({len(df)} rows, {df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+
+
+def build_cpi_csv() -> None:
+    """PH monthly CPI index from FRED -> data/ph_cpi_monthly.csv.
+
+    If FRED is unreachable or the id is retired, download manually from DBnomics:
+      https://api.db.nomics.world/v22/series/IMF/IFS/M.PH.PCPI_IX?observations=1
+    and save a 2-column CSV 'date,cpi_index' (date YYYY-MM) to CPI_OUT.
+    """
+    import io
+    url = f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_CPI_ID}'
+    r = requests.get(url, headers=_HEADERS, timeout=30)
+    r.raise_for_status()
+    raw = pd.read_csv(io.StringIO(r.text))
+    raw.columns = ['date', 'cpi_index']
+    raw['date'] = pd.to_datetime(raw['date']).dt.strftime('%Y-%m')
+    raw = raw[pd.to_numeric(raw['cpi_index'], errors='coerce').notna()]
+    CPI_OUT.parent.mkdir(parents=True, exist_ok=True)
+    raw.to_csv(CPI_OUT, index=False)
+    print(f'Wrote ph_cpi_monthly.csv ({len(raw)} rows, {raw["date"].iloc[0]}..{raw["date"].iloc[-1]})')
+
+
 def main():
     build_world_bank_csv()
     build_features_csv()
