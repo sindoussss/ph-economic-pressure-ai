@@ -14,6 +14,7 @@ REQUIRED_KEYS = (
     'ablation', 'selected_variant',
     'efficiency', 'passthrough',
     'audit',
+    'nowcast',
 )
 
 _LIMITATIONS = [
@@ -25,7 +26,7 @@ _LIMITATIONS = [
 
 def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
                  calibration, proxy, data_hash, ablation=None, selected_variant=None,
-                 efficiency=None, passthrough=None, audit=None) -> dict:
+                 efficiency=None, passthrough=None, audit=None, nowcast=None) -> dict:
     conformal_widths = {str(r['nominal']): r['qhat'] for r in calibration}
     return {
         'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -45,6 +46,7 @@ def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
         'efficiency': efficiency if efficiency is not None else [],
         'passthrough': passthrough if passthrough is not None else {},
         'audit': audit if audit is not None else [],
+        'nowcast': nowcast if nowcast is not None else {},
         'limitations': _LIMITATIONS,
     }
 
