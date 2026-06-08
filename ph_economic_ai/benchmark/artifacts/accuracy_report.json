@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-08T15:24:28.188962+00:00",
+  "generated_at": "2026-06-08T16:06:55.044938+00:00",
   "horizon": "1_month",
   "date_range": [
     "2019-11",
@@ -231,6 +231,23 @@
         "measured": 0.9677
       }
     ]
+  },
+  "nowcast_mom": {
+    "verdict": "beats_best_naive",
+    "best_method": "arima",
+    "best_naive": "random_walk",
+    "best_skill_vs_naive": 0.1616,
+    "dm_p": 0.0323,
+    "n": 61,
+    "rmse_by_method": {
+      "random_walk": 0.4532,
+      "drift": 0.4578,
+      "seasonal_naive": 0.5343,
+      "arima": 0.3799,
+      "ets": 0.4135,
+      "ridge": 0.398,
+      "hgb": 0.4574
+    }
   },
   "limitations": [
     "World Bank gold series lags ~1 year; live grading uses DOE prices.",

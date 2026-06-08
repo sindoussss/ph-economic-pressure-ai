@@ -108,6 +108,15 @@ def main():
         print(f"CPI nowcast: {nowcast_res['verdict']} | best={nowcast_res['best_method']} "
               f"skill_vs_naive={nowcast_res['best_skill']:+.3f} DM p={nowcast_res['best_dm_p']}")
 
+    # -- Month-over-month CPI nowcast (vs best simple baseline) --
+    mom_res = nowcast_mod.run_mom_nowcast(MIN_TRAIN)
+    if mom_res['verdict'] == 'insufficient_data':
+        print(f"MoM CPI nowcast: insufficient_data (n={mom_res.get('n', 0)})")
+    else:
+        print(f"MoM CPI nowcast: {mom_res['verdict']} | best={mom_res['best_method']} "
+              f"vs {mom_res['best_naive']} | skill={mom_res['best_skill_vs_naive']:+.3f} "
+              f"DM p={mom_res['dm_p']}")
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -121,6 +130,7 @@ def main():
         efficiency=efficiency_rows, passthrough=passthrough_stats,
         audit=[{k: v for k, v in a.items() if k != 'panel'} for a in audit_rows],
         nowcast={k: v for k, v in nowcast_res.items() if k != 'panel'},
+        nowcast_mom={k: v for k, v in mom_res.items() if k != 'calibration'},
     )
     report.write_report(rep)
 
@@ -161,6 +171,27 @@ def main():
         _nbt = walk_forward(_y, None, make_forecaster('random_walk'), MIN_TRAIN)
         _nd = [_nf.index[i] for i in _bt['index']]
         figures.plot_nowcast(_nd, _bt['y_true'], _bt['y_pred'], _nbt['y_pred'])
+        import os as _os_yoy
+        _os_yoy.replace(figures.FIG_DIR / 'nowcast.png', figures.FIG_DIR / 'nowcast_yoy.png')
+
+    import json as _json4
+    (report.ARTIFACTS / 'nowcast_mom_table.json').write_text(
+        _json4.dumps(mom_res, indent=2), encoding='utf-8')
+    if mom_res['verdict'] != 'insufficient_data':
+        _mf = nowcast_mod.build_nowcast_frame(
+            target_loader=nowcast_mod.load_inflation_mom, prev_col='prev_mom')
+        _mcols = [c for c in _mf.columns if c != 'target']
+        _my = _mf['target'].to_numpy(float); _mX = _mf[_mcols].to_numpy(float)
+        _mbt = walk_forward(_my, _mX, make_forecaster(mom_res['best_method']), MIN_TRAIN)
+        _mnbt = walk_forward(_my, _mX, make_forecaster(mom_res['best_naive']), MIN_TRAIN)
+        _md = [_mf.index[i] for i in _mbt['index']]
+        figures.plot_nowcast(_md, _mbt['y_true'], _mbt['y_pred'], _mnbt['y_pred'])
+        import os as _os
+        _os.replace(figures.FIG_DIR / 'nowcast.png', figures.FIG_DIR / 'nowcast_mom.png')
+        # Restore the YoY nowcast figure as nowcast.png (was temporarily saved as nowcast_yoy.png)
+        _yoy_tmp = figures.FIG_DIR / 'nowcast_yoy.png'
+        if _yoy_tmp.exists():
+            _os.replace(_yoy_tmp, figures.FIG_DIR / 'nowcast.png')
 
     print(f"Selected variant: {selected} | "
           f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
