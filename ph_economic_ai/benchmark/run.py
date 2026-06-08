@@ -17,8 +17,10 @@ from ph_economic_ai.benchmark import audit as audit_mod
 from ph_economic_ai.benchmark.features import build_feature_frame, make_variant, VARIANTS
 from ph_economic_ai.benchmark.ground_truth import load_world_bank_ron95
 from ph_economic_ai.benchmark.backtest import walk_forward
+from ph_economic_ai.benchmark.forecasters import make_forecaster
 from ph_economic_ai.benchmark.metrics import mae, rmse, mape, mase, skill_score
 from ph_economic_ai.benchmark.proxy_validation import proxy_vs_gold
+from ph_economic_ai.benchmark import nowcast as nowcast_mod
 
 FEATURES_CSV = Path(__file__).parent / 'data' / 'features_monthly.csv'
 MIN_TRAIN = 24
@@ -98,6 +100,14 @@ def main():
             print(f"  {a['target']:<10} {a['verdict']:<12} best={a['best_method']} "
                   f"skill={a['best_skill']:+.3f}")
 
+    # -- CPI nowcast (estimate inflation before official release) --
+    nowcast_res = nowcast_mod.run_nowcast(MIN_TRAIN)
+    if nowcast_res['verdict'] == 'insufficient_data':
+        print(f"CPI nowcast: insufficient_data (n={nowcast_res.get('n', 0)})")
+    else:
+        print(f"CPI nowcast: {nowcast_res['verdict']} | best={nowcast_res['best_method']} "
+              f"skill_vs_naive={nowcast_res['best_skill']:+.3f} DM p={nowcast_res['best_dm_p']}")
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -110,6 +120,7 @@ def main():
         ablation=ablation_rows, selected_variant=selected,
         efficiency=efficiency_rows, passthrough=passthrough_stats,
         audit=[{k: v for k, v in a.items() if k != 'panel'} for a in audit_rows],
+        nowcast={k: v for k, v in nowcast_res.items() if k != 'panel'},
     )
     report.write_report(rep)
 
@@ -138,6 +149,18 @@ def main():
     (report.ARTIFACTS / 'audit_table.json').write_text(
         _json2.dumps(audit_rows, indent=2), encoding='utf-8')
     figures.plot_audit_verdicts(audit_rows)
+
+    import json as _json3
+    (report.ARTIFACTS / 'nowcast_table.json').write_text(
+        _json3.dumps(nowcast_res, indent=2), encoding='utf-8')
+    if nowcast_res['verdict'] != 'insufficient_data':
+        _nf = nowcast_mod.build_nowcast_frame()
+        _y = _nf['target'].to_numpy(float)
+        _X = _nf[nowcast_mod.FEATURE_COLS].to_numpy(float)
+        _bt = walk_forward(_y, _X, make_forecaster(nowcast_res['best_method']), MIN_TRAIN)
+        _nbt = walk_forward(_y, None, make_forecaster('random_walk'), MIN_TRAIN)
+        _nd = [_nf.index[i] for i in _bt['index']]
+        figures.plot_nowcast(_nd, _bt['y_true'], _bt['y_pred'], _nbt['y_pred'])
 
     print(f"Selected variant: {selected} | "
           f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "

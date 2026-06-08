@@ -1,0 +1,94 @@
+{
+  "verdict": "no_better_than_naive",
+  "best_method": "random_walk",
+  "best_skill": 0.0,
+  "best_dm_p": null,
+  "n": 61,
+  "calibration": [
+    {
+      "nominal": 0.5,
+      "qhat": 0.4565,
+      "measured": 0.3871
+    },
+    {
+      "nominal": 0.8,
+      "qhat": 0.6871,
+      "measured": 0.5806
+    },
+    {
+      "nominal": 0.9,
+      "qhat": 0.9326,
+      "measured": 0.7742
+    },
+    {
+      "nominal": 0.95,
+      "qhat": 1.7792,
+      "measured": 0.9677
+    }
+  ],
+  "panel": [
+    {
+      "method": "random_walk",
+      "rmse": 0.6676,
+      "mae": 0.5216,
+      "skill_vs_rw": 0.0,
+      "dm_stat": 0.0,
+      "dm_p": null,
+      "n": 61
+    },
+    {
+      "method": "drift",
+      "rmse": 0.6797,
+      "mae": 0.5375,
+      "skill_vs_rw": -0.0181,
+      "dm_stat": 1.5194,
+      "dm_p": 0.1339,
+      "n": 61
+    },
+    {
+      "method": "seasonal_naive",
+      "rmse": 2.6415,
+      "mae": 2.2324,
+      "skill_vs_rw": -2.9567,
+      "dm_stat": 6.7961,
+      "dm_p": 0.0,
+      "n": 61
+    },
+    {
+      "method": "arima",
+      "rmse": 0.7004,
+      "mae": 0.516,
+      "skill_vs_rw": -0.0492,
+      "dm_stat": 0.7884,
+      "dm_p": 0.4336,
+      "n": 61
+    },
+    {
+      "method": "ets",
+      "rmse": 0.7482,
+      "mae": 0.5593,
+      "skill_vs_rw": -0.1207,
+      "dm_stat": 1.3141,
+      "dm_p": 0.1938,
+      "n": 61
+    },
+    {
+      "method": "ridge",
+      "rmse": 0.7039,
+      "mae": 0.5723,
+      "skill_vs_rw": -0.0544,
+      "dm_stat": 1.1646,
+      "dm_p": 0.2488,
+      "n": 61
+    },
+    {
+      "method": "hgb",
+      "rmse": 0.7674,
+      "mae": 0.5887,
+      "skill_vs_rw": -0.1495,
+      "dm_stat": 1.547,
+      "dm_p": 0.1271,
+      "n": 61
+    }
+  ]
+}
