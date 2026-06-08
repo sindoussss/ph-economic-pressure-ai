@@ -87,3 +87,19 @@ def test_report_includes_audit():
     )
     assert rep['audit'][0]['verdict'] == 'efficient'
     assert 'audit' in REQUIRED_KEYS
+
+
+def test_report_includes_nowcast():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        nowcast={'verdict': 'beats_naive', 'best_method': 'ridge', 'best_skill': 0.18,
+                 'best_dm_p': 0.02, 'n': 70},
+    )
+    assert rep['nowcast']['verdict'] == 'beats_naive'
+    assert 'nowcast' in REQUIRED_KEYS
