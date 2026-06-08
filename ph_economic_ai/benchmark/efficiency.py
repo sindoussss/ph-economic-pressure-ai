@@ -8,10 +8,10 @@ from ph_economic_ai.benchmark.metrics import mae, rmse, skill_score
 from ph_economic_ai.benchmark.significance import diebold_mariano
 
 
-def run_panel(frame, methods, min_train: int, feature_cols) -> list:
+def run_panel(frame, methods, min_train: int, feature_cols, target_col: str = 'ron95') -> list:
     """frame: build_feature_frame output. Returns one row per method:
     {method, rmse, mae, skill_vs_rw, dm_stat, dm_p, n}. Reference = random walk."""
-    y = frame['ron95'].to_numpy(dtype=float)
+    y = frame[target_col].to_numpy(dtype=float)
     X = frame[list(feature_cols)].to_numpy(dtype=float)
 
     rw_bt = walk_forward(y, None, make_forecaster('random_walk'), min_train)
