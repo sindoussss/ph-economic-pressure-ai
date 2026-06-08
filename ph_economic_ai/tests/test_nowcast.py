@@ -88,3 +88,25 @@ def test_run_nowcast_insufficient_data():
                          index=idx).astype(float)
     res = run_nowcast(min_train=24, frame=frame)
     assert res['verdict'] == 'insufficient_data'
+
+
+def test_build_nowcast_frame_mom_variant(monkeypatch):
+    idx = pd.date_range('2017-01', periods=40, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(4)
+    mom = pd.Series(rng.normal(0.3, 0.4, 40), index=idx)
+    feats = pd.DataFrame({
+        'oil_price': 70 + np.cumsum(rng.normal(0, 1, 40)),
+        'usd_php': 55 + np.cumsum(rng.normal(0, 0.1, 40)),
+        'gas_price': 60 + np.cumsum(rng.normal(0, 0.5, 40)),
+        'demand_index': 70 + rng.normal(0, 2, 40),
+    }, index=idx)
+    import ph_economic_ai.benchmark.nowcast as nc
+    monkeypatch.setattr(nc, '_features', lambda: feats)
+    f = nc.build_nowcast_frame(target_loader=lambda: mom, prev_col='prev_mom')
+    assert list(f.columns) == ['oil', 'fx', 'fuel', 'prev_mom', 'target']
+    t = f.index[5]
+    pos = list(idx).index(t)
+    assert f.loc[t, 'prev_mom'] == pytest.approx(mom.iloc[pos - 1])
+    assert f.loc[t, 'oil'] == pytest.approx(feats['oil_price'].iloc[pos])
+    cpi_like = [c for c in f.columns if 'mom' in c.lower() or 'infl' in c.lower() or 'cpi' in c.lower()]
+    assert cpi_like == ['prev_mom']
