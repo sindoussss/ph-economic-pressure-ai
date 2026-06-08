@@ -29,6 +29,11 @@ def _report(tmp_path):
             {'name': 'structural_hybrid', 'skill_vs_rw': 0.04, 'band90': 8.9, 'rmse': 3.8, 'mae': 2.9, 'n': 79},
         ],
         'selected_variant': 'structural_hybrid',
+        'efficiency': [
+            {'method': 'random_walk', 'skill_vs_rw': 0.0, 'dm_p': None, 'rmse': 4.0, 'mae': 3.1, 'dm_stat': 0.0, 'n': 79},
+            {'method': 'hgb', 'skill_vs_rw': -0.18, 'dm_p': 0.21, 'rmse': 4.7, 'mae': 3.5, 'dm_stat': 1.2, 'n': 79},
+        ],
+        'passthrough': {'beta_total': 0.83, 'beta0': 0.6, 'beta1': 0.23, 'r2': 0.74, 'driver_acf1': 0.03, 'n': 96, 'alpha': 0.1},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -53,3 +58,12 @@ def test_view_shows_ablation_when_present(tmp_path):
     t = view.ablation_summary()
     assert 'structural_hybrid' in t
     assert 'baseline' in t
+
+
+def test_view_shows_efficiency_and_passthrough(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    eff = view.efficiency_summary()
+    pt = view.passthrough_summary()
+    assert 'random_walk' in eff and 'hgb' in eff
+    assert 'pass-through' in pt.lower() or 'β' in pt or 'beta' in pt.lower()
+    assert '0.83' in pt
