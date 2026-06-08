@@ -71,3 +71,18 @@ def plot_passthrough(cost_delta, pump_delta, beta_total):
     ax.set_xlabel('delta landed cost (PHP/L)'); ax.set_ylabel('delta pump price (PHP/L)')
     ax.legend(); ax.set_title('DOE pass-through')
     fig.tight_layout(); fig.savefig(FIG_DIR / 'passthrough.png', dpi=120); plt.close(fig)
+
+
+def plot_audit_verdicts(rows):
+    """Per-target best-skill bar, colored green=predictable / gray=efficient."""
+    _ensure_dir()
+    rows = [r for r in rows if r.get('verdict') in ('efficient', 'predictable')]
+    names = [r['target'] for r in rows]
+    skills = [r.get('best_skill', 0.0) for r in rows]
+    colors = ['tab:green' if r['verdict'] == 'predictable' else 'tab:gray' for r in rows]
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    ax.bar(names, skills, color=colors)
+    ax.axhline(0, color='black', linewidth=1)
+    ax.set_ylabel('Best skill vs random walk')
+    ax.set_title('Predictability audit (green = predictable)')
+    fig.tight_layout(); fig.savefig(FIG_DIR / 'audit_verdicts.png', dpi=120); plt.close(fig)
