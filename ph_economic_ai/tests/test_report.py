@@ -53,3 +53,21 @@ def test_report_includes_ablation_and_selected():
     assert rep['selected_variant'] == 'structural_hybrid'
     assert len(rep['ablation']) == 2
     assert 'ablation' in REQUIRED_KEYS and 'selected_variant' in REQUIRED_KEYS
+
+
+def test_report_includes_efficiency_and_passthrough():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        efficiency=[{'method': 'random_walk', 'skill_vs_rw': 0.0, 'dm_p': None, 'rmse': 1.9, 'mae': 1.5, 'dm_stat': 0.0, 'n': 79},
+                    {'method': 'hgb', 'skill_vs_rw': -0.18, 'dm_p': 0.21, 'rmse': 2.2, 'mae': 1.8, 'dm_stat': 1.2, 'n': 79}],
+        passthrough={'beta_total': 0.83, 'beta0': 0.6, 'beta1': 0.23, 'r2': 0.74, 'driver_acf1': 0.03, 'n': 96, 'alpha': 0.1},
+    )
+    assert len(rep['efficiency']) == 2
+    assert rep['passthrough']['beta_total'] == 0.83
+    assert 'efficiency' in REQUIRED_KEYS and 'passthrough' in REQUIRED_KEYS
