@@ -161,6 +161,11 @@ Run on committed data (source: `artifacts/nowcast_mom_table.json`), n = 61 month
 - **Caveat:** n = 61 months is modest; the result is significant at 5% but not overwhelming,
   and ARIMA's edge is dynamics-driven. A longer sample and a driver-only ablation (exclude
   `prev_mom`/own-lags to isolate the pure nowcast information edge) are natural confirmations.
+- **Driver-only ablation result (see `2026-06-09-ph-cpi-mom-driver-ablation-design.md` §9):**
+  performed — the within-month driver edge is **not significant** (`driver_edge = False`).
+  Driver-only Ridge has the lowest RMSE (0.399 vs random-walk 0.453, −12%) but does not clear
+  DM significance at n = 61. So the headline MoM win is attributable to **own short-run
+  dynamics** (ARIMA), with the contemporaneous-driver edge **suggestive but underpowered**.
 
 ---
 
