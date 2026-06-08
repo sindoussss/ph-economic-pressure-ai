@@ -40,6 +40,9 @@ def _report(tmp_path):
         ],
         'nowcast': {'verdict': 'beats_naive', 'best_method': 'ridge', 'best_skill': 0.18,
                     'best_dm_p': 0.02, 'n': 70},
+        'nowcast_mom': {'verdict': 'beats_best_naive', 'best_method': 'arima',
+                        'best_naive': 'random_walk', 'best_skill_vs_naive': 0.16,
+                        'dm_p': 0.03, 'n': 61},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -88,3 +91,11 @@ def test_view_shows_nowcast(tmp_path):
     assert 'nowcast' in s.lower()
     assert 'ridge' in s
     assert 'beats' in s.lower()
+
+
+def test_view_shows_nowcast_mom(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.nowcast_mom_summary()
+    assert 'mom' in s.lower() or 'month-over-month' in s.lower()
+    assert 'arima' in s
+    assert 'random_walk' in s

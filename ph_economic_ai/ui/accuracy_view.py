@@ -80,6 +80,11 @@ class AccuracyView(QWidget):
                 ncl = QLabel('<b>Nowcast (present-before-release)</b><br>' + _nc)
                 ncl.setWordWrap(True)
                 col.addWidget(ncl)
+            _mc = self.nowcast_mom_summary()
+            if _mc:
+                mcl = QLabel('<b>MoM nowcast (vs strongest baseline)</b><br>' + _mc)
+                mcl.setWordWrap(True)
+                col.addWidget(mcl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -144,6 +149,16 @@ class AccuracyView(QWidget):
         return (f"CPI nowcast (estimate inflation before release): {n['verdict']} "
                 f"— best {n['best_method']}, skill {n['best_skill']:+.2f} vs naive "
                 f"(DM p={n['best_dm_p']}).")
+
+    def nowcast_mom_summary(self) -> str:
+        if not self._report:
+            return ''
+        m = self._report.get('nowcast_mom') or {}
+        if not m or m.get('verdict') == 'insufficient_data':
+            return ''
+        return (f"MoM inflation nowcast: {m['verdict']} — best {m['best_method']} "
+                f"vs strongest baseline {m['best_naive']}, skill "
+                f"{m['best_skill_vs_naive']:+.2f} (DM p={m['dm_p']}).")
 
     def ablation_summary(self) -> str:
         if not self._report:
