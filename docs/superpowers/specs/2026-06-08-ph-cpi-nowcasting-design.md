@@ -127,10 +127,33 @@ features_monthly.csv ─► oil_t, fx_t, fuel_t ──────────�
 
 ---
 
-## 9. The contribution, stated for the write-up
-- **Finding (filled from the real run):** the CPI nowcaster [beats / does not beat] the last-published-inflation benchmark — best method [method], skill vs naive [x], DM p [p], over [n] months.
-- **Interpretation:** nowcasting succeeds (where forecasting failed) because within-month fuel/oil/FX movements are informative about the *current* month's inflation that the previous print does not yet reflect — an information-timing edge, fully consistent with the efficiency result. If it does **not** beat naive, that itself is informative: PH headline inflation is so persistent that even contemporaneous drivers add little before release.
-- **Why it matters (data science):** demonstrates the honest, defensible form of numeric economic prediction — **estimating the present before it is announced** — with rigorous validation (causal backtest + DM + calibrated intervals), and a clear methodological line between what *is* (nowcasting) and *isn't* (forecasting) predictable for an emerging-market CPI.
+## 9. The contribution — measured result
+
+Run on committed data (source: `artifacts/nowcast_table.json`), n = 61 months.
+
+- **Finding:** the YoY-CPI nowcaster **does NOT beat** the last-published-inflation
+  benchmark. No panel method cleared the Diebold-Mariano bar (p < 0.05 with positive
+  skill); best method = `random_walk`, skill vs naive = 0.00. Verdict:
+  `no_better_than_naive`.
+- **Why (the key methodological nuance):** the target is **year-on-year** inflation,
+  where naive = last month's YoY. Consecutive YoY values overlap by 11 of 12 months,
+  so next month's YoY ≈ this month's YoY almost *mechanically* — naive is an
+  exceptionally strong benchmark, and contemporaneous oil/FX/fuel move only the single
+  new month entering the window. This reproduces **Atkeson-Ohanian (2001)**: naive
+  inflation benchmarks are very hard to beat. The result is honest and consistent with
+  the efficiency audit.
+- **The clear refinement (stated future work):** the standard nowcasting target where
+  the within-month signal actually lives is **month-over-month (MoM) inflation** (or the
+  CPI index level), which is noisier and directly driven by intra-month shocks. YoY
+  persistence masks the nowcast signal; MoM is the natural next target and the most
+  likely route to a genuine "beats naive." This is a target-definition change, not a
+  framework change — the same `build_nowcast_frame`/`run_nowcast` machinery applies.
+- **Why it matters (data science):** demonstrates the honest, defensible form of numeric
+  economic prediction — **estimating the present before it is announced** — with rigorous
+  validation (causal backtest + DM + calibrated intervals), and draws a precise line:
+  even *nowcasting* can't beat naive for **YoY** PH inflation, which is itself a
+  publishable-grade finding about where forecasting effort is and isn't worthwhile, and
+  points squarely at MoM as the next experiment.
 
 ---
 
