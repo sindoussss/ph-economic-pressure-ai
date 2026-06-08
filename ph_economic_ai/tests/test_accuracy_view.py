@@ -38,6 +38,8 @@ def _report(tmp_path):
             {'target': 'fuel', 'verdict': 'efficient', 'best_method': 'random_walk', 'best_skill': 0.0, 'best_dm_p': None, 'n': 79},
             {'target': 'inflation', 'verdict': 'predictable', 'best_method': 'ridge', 'best_skill': 0.22, 'best_dm_p': 0.01, 'n': 60},
         ],
+        'nowcast': {'verdict': 'beats_naive', 'best_method': 'ridge', 'best_skill': 0.18,
+                    'best_dm_p': 0.02, 'n': 70},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -78,3 +80,11 @@ def test_view_shows_audit(tmp_path):
     a = view.audit_summary()
     assert 'fuel' in a and 'inflation' in a
     assert 'efficient' in a and 'predictable' in a
+
+
+def test_view_shows_nowcast(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.nowcast_summary()
+    assert 'nowcast' in s.lower()
+    assert 'ridge' in s
+    assert 'beats' in s.lower()
