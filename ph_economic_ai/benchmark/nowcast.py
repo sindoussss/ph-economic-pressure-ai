@@ -14,19 +14,22 @@ import pandas as pd
 from ph_economic_ai.benchmark.targets import _features, load_inflation
 
 
-def build_nowcast_frame() -> pd.DataFrame:
-    """Columns: oil, fx, fuel (contemporaneous, month t), prev_inflation (t-1),
-    target (= inflation_t). Inner-joined on the monthly index, dropna'd."""
-    infl = load_inflation()
+def build_nowcast_frame(target_loader=None, prev_col: str = 'prev_inflation') -> pd.DataFrame:
+    """Contemporaneous nowcast frame: oil/fx/fuel (month t) + <prev_col> (t-1) +
+    target. target_loader defaults to load_inflation (resolved at call time so tests
+    can monkeypatch the module-level loader). For MoM, pass
+    target_loader=load_inflation_mom and prev_col='prev_mom'."""
+    loader = target_loader if target_loader is not None else load_inflation
+    tgt = loader()
     feats = _features()
     base = pd.DataFrame({
         'oil': feats['oil_price'],
         'fx': feats['usd_php'],
         'fuel': feats['gas_price'],
     })
-    base = base.join(infl.rename('target'), how='inner').sort_index()
-    base['prev_inflation'] = base['target'].shift(1)
-    return base[['oil', 'fx', 'fuel', 'prev_inflation', 'target']].dropna()
+    base = base.join(tgt.rename('target'), how='inner').sort_index()
+    base[prev_col] = base['target'].shift(1)
+    return base[['oil', 'fx', 'fuel', prev_col, 'target']].dropna()
 
 
 from ph_economic_ai.benchmark.backtest import walk_forward
