@@ -117,6 +117,15 @@ def main():
               f"vs {mom_res['best_naive']} | skill={mom_res['best_skill_vs_naive']:+.3f} "
               f"DM p={mom_res['dm_p']}")
 
+    # -- Driver-only ablation of the MoM nowcast (isolate the within-month edge) --
+    mom_abl = nowcast_mod.run_driver_only_ablation(MIN_TRAIN)
+    if mom_abl['verdict'] == 'insufficient_data':
+        print(f"MoM driver-only ablation: insufficient_data (n={mom_abl.get('n', 0)})")
+    else:
+        print(f"MoM driver-only ablation: driver_edge={mom_abl['driver_edge']} | "
+              f"best={mom_abl['best_method']} vs {mom_abl['best_naive']} | "
+              f"skill={mom_abl['best_skill_vs_naive']:+.3f} DM p={mom_abl['dm_p']}")
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -131,6 +140,7 @@ def main():
         audit=[{k: v for k, v in a.items() if k != 'panel'} for a in audit_rows],
         nowcast={k: v for k, v in nowcast_res.items() if k != 'panel'},
         nowcast_mom={k: v for k, v in mom_res.items() if k != 'calibration'},
+        mom_driver_ablation={k: v for k, v in mom_abl.items() if k != 'calibration'},
     )
     report.write_report(rep)
 
@@ -177,6 +187,10 @@ def main():
     import json as _json4
     (report.ARTIFACTS / 'nowcast_mom_table.json').write_text(
         _json4.dumps(mom_res, indent=2), encoding='utf-8')
+
+    import json as _json5
+    (report.ARTIFACTS / 'mom_driver_ablation_table.json').write_text(
+        _json5.dumps(mom_abl, indent=2), encoding='utf-8')
     if mom_res['verdict'] != 'insufficient_data':
         _mf = nowcast_mod.build_nowcast_frame(
             target_loader=nowcast_mod.load_inflation_mom, prev_col='prev_mom')
