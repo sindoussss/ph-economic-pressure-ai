@@ -60,6 +60,16 @@ class AccuracyView(QWidget):
                              + self.ablation_summary().replace('\n', '<br>'))
                 abl.setWordWrap(True)
                 col.addWidget(abl)
+            if self._report.get('efficiency'):
+                eff = QLabel('<b>Forecaster panel - efficiency</b><br>'
+                             + self.efficiency_summary().replace('\n', '<br>'))
+                eff.setWordWrap(True)
+                col.addWidget(eff)
+            _pt = self.passthrough_summary()
+            if _pt:
+                ptl = QLabel('<b>Mechanism</b><br>' + _pt)
+                ptl.setWordWrap(True)
+                col.addWidget(ptl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -80,6 +90,27 @@ class AccuracyView(QWidget):
         items = ''.join(f'<li>{x}</li>' for x in self._report.get('limitations', []))
         lbl = QLabel(f"<b>Limitations</b><ul>{items}</ul>"); lbl.setWordWrap(True)
         return lbl
+
+    def efficiency_summary(self) -> str:
+        if not self._report:
+            return ''
+        rows = self._report.get('efficiency') or []
+        lines = []
+        for r in sorted(rows, key=lambda x: -x['skill_vs_rw']):
+            p = 'n/a' if r.get('dm_p') is None else f"p={r['dm_p']:.2f}"
+            lines.append(f"{r['method']}: skill {r['skill_vs_rw']:+.2f} vs RW ({p})")
+        return '\n'.join(lines)
+
+    def passthrough_summary(self) -> str:
+        if not self._report:
+            return ''
+        p = self._report.get('passthrough') or {}
+        if not p or p.get('beta_total') is None:
+            return ''
+        return (f"DOE pass-through: total beta={p['beta_total']:.2f} "
+                f"(contemporaneous {p['beta0']:.2f}, lag-1 {p['beta1']:.2f}), "
+                f"R2={p['r2']:.2f}; driver delta-autocorrelation={p['driver_acf1']:.2f} "
+                f"(near 0 => random-walk input).")
 
     def ablation_summary(self) -> str:
         if not self._report:
