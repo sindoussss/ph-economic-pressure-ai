@@ -16,6 +16,7 @@ REQUIRED_KEYS = (
     'audit',
     'nowcast',
     'nowcast_mom',
+    'mom_driver_ablation',
 )
 
 _LIMITATIONS = [
@@ -28,7 +29,7 @@ _LIMITATIONS = [
 def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
                  calibration, proxy, data_hash, ablation=None, selected_variant=None,
                  efficiency=None, passthrough=None, audit=None, nowcast=None,
-                 nowcast_mom=None) -> dict:
+                 nowcast_mom=None, mom_driver_ablation=None) -> dict:
     conformal_widths = {str(r['nominal']): r['qhat'] for r in calibration}
     return {
         'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -50,6 +51,7 @@ def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
         'audit': audit if audit is not None else [],
         'nowcast': nowcast if nowcast is not None else {},
         'nowcast_mom': nowcast_mom if nowcast_mom is not None else {},
+        'mom_driver_ablation': mom_driver_ablation if mom_driver_ablation is not None else {},
         'limitations': _LIMITATIONS,
     }
 
