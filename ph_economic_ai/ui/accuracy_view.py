@@ -75,6 +75,11 @@ class AccuracyView(QWidget):
                              + self.audit_summary().replace('\n', '<br>'))
                 aud.setWordWrap(True)
                 col.addWidget(aud)
+            _nc = self.nowcast_summary()
+            if _nc:
+                ncl = QLabel('<b>Nowcast (present-before-release)</b><br>' + _nc)
+                ncl.setWordWrap(True)
+                col.addWidget(ncl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -129,6 +134,16 @@ class AccuracyView(QWidget):
                 lines.append(f"{r['target']}: {r['verdict']} "
                              f"(best {r['best_method']}, skill {r['best_skill']:+.2f})")
         return '\n'.join(lines)
+
+    def nowcast_summary(self) -> str:
+        if not self._report:
+            return ''
+        n = self._report.get('nowcast') or {}
+        if not n or n.get('verdict') == 'insufficient_data':
+            return ''
+        return (f"CPI nowcast (estimate inflation before release): {n['verdict']} "
+                f"— best {n['best_method']}, skill {n['best_skill']:+.2f} vs naive "
+                f"(DM p={n['best_dm_p']}).")
 
     def ablation_summary(self) -> str:
         if not self._report:
