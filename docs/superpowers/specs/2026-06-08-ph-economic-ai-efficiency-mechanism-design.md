@@ -125,10 +125,52 @@ features_monthly.csv + world_bank_ron95.csv
 
 ---
 
-## 8. The contribution, stated for the eventual write-up
-- **Finding:** Across {random walk, drift, seasonal-naive, ARIMA, ETS, Ridge, HGB, structural pass-through}, none achieves a statistically significant accuracy gain over random walk at the 1-month horizon (DM p > 0.05) for NCR RON95, 2017–2025.
-- **Explanation:** DOE's automatic pricing passes through landed cost with total elasticity β≈<measured> at lag 0–1 month (R²≈<measured>); landed cost is itself a random walk (Δ-autocorrelation ≈ 0). A near-unit pass-through of a random-walk input yields a random-walk output — so naive persistence is the efficient forecast, and added model complexity cannot help.
-- **Why it matters:** quantifies fuel-price predictability and the pass-through elasticity for PH policy (OPSF/excise debates), and demonstrates an honest, reproducible evaluation protocol for a data-poor regulated market.
+## 8. The contribution — measured results
+
+Run on the committed data (NCR RON95, World Bank, 2017–2025; n = 79 backtest months,
+n = 77 pass-through observations). Source: `artifacts/accuracy_report.json`.
+
+**Finding (efficiency):** across the forecaster panel, **no method achieves a
+statistically significant accuracy gain over random walk** at the 1-month horizon.
+Skill vs random walk | Diebold-Mariano p:
+
+| Method | skill vs RW | DM p | verdict |
+|---|---|---|---|
+| random walk | 0.000 | — | reference |
+| HGB | −0.008 | 0.92 | not distinguishable |
+| Ridge | −0.009 | 0.88 | not distinguishable |
+| drift | −0.010 | 0.50 | not distinguishable |
+| ETS | −0.028 | 0.28 | not distinguishable |
+| ARIMA | −0.077 | 0.037 | significantly **worse** |
+| seasonal-naive | −1.826 | 0.0001 | significantly **worse** |
+
+No method has positive skill; the only methods statistically distinguishable from
+random walk (ARIMA, seasonal-naive) are *worse*. (The Phase-2 `structural_hybrid`
+variant, evaluated separately in `ablation_table.json`, also underperformed.) This
+is consistent with **weak-form efficiency** of NCR retail gasoline at the monthly
+horizon.
+
+**Explanation (mechanism):** the DOE pass-through regression
+`Δpump = α + β₀·Δcost + β₁·Δcost₋₁` gives total elasticity **β ≈ 0.56**
+(β₀ = 0.31 contemporaneous, β₁ = 0.24 at one-month lag), **R² ≈ 0.33**, with the
+landed-cost driver near-serially-uncorrelated (**Δ-autocorrelation ≈ 0.16**).
+Interpretation: only ~56% of a landed-cost change reaches the pump within two
+months, and cost changes explain only a third of pump-price variation; the driver
+is itself close to a random walk. A partial, lagged pass-through of a
+near-random-walk input — plus substantial unexplained month-to-month variation —
+leaves the pump series with little predictable structure, so naive persistence is
+the efficient forecast and added model complexity cannot help.
+
+**Why it matters:** quantifies fuel-price predictability and the pass-through
+elasticity/lag for PH policy debates (OPSF, excise), and demonstrates an honest,
+reproducible evaluation protocol (causal backtest + DM significance + calibrated
+conformal intervals) for a data-poor regulated market.
+
+**Honest caveat:** β ≈ 0.56 (not near-unity) and R² ≈ 0.33 mean the mechanism
+explains the efficiency result only partially; the unexplained third reflects
+policy smoothing, rounding, timing, and grade/area aggregation in the monthly
+gold series. Weekly resolution + a true MOPS series (the deferred Phase 3) would
+sharpen both the pass-through estimate and the efficiency test.
 
 ---
 
