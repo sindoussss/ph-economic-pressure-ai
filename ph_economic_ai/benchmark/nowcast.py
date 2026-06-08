@@ -115,19 +115,21 @@ def mom_verdict(rmse_by_method: dict, loss_by_method: dict,
             'best_naive': best_naive, 'best_skill_vs_naive': 0.0, 'dm_p': None}
 
 
-def run_mom_nowcast(min_train: int = 24, baseline_pool=BASELINE_POOL, frame=None) -> dict:
+def run_mom_nowcast(min_train: int = 24, baseline_pool=BASELINE_POOL, frame=None,
+                    methods=None) -> dict:
     """Nowcast MoM inflation; verdict via DM against the best simple baseline."""
     if frame is None:
         frame = build_nowcast_frame(target_loader=load_inflation_mom, prev_col='prev_mom')
     if len(frame) < min_train + 5:
         return {'verdict': 'insufficient_data', 'n': int(len(frame))}
+    methods = list(PANEL_METHODS) if methods is None else list(methods)
 
     feature_cols = [c for c in frame.columns if c != 'target']
     y = frame['target'].to_numpy(dtype=float)
     X = frame[feature_cols].to_numpy(dtype=float)
 
     rmse_by, loss_by, n_pred = {}, {}, 0
-    for m in PANEL_METHODS:
+    for m in methods:
         bt = walk_forward(y, X, make_forecaster(m), min_train)
         loss_by[m] = (bt['y_true'] - bt['y_pred']) ** 2
         rmse_by[m] = _rmse(bt['y_true'], bt['y_pred'])
@@ -142,3 +144,17 @@ def run_mom_nowcast(min_train: int = 24, baseline_pool=BASELINE_POOL, frame=None
                                     CONFORMAL_LEVELS) if len(res) > 3 else []
     return {**v, 'n': int(n_pred), 'calibration': calib,
             'rmse_by_method': {k: round(val, 4) for k, val in rmse_by.items()}}
+
+
+def run_driver_only_ablation(min_train: int = 24, frame=None) -> dict:
+    """Isolate the pure within-month driver edge: drop the own-lag (prev_mom) and
+    let only driver regressors {ridge, hgb} compete against the simple baselines.
+    Adds boolean 'driver_edge' (True iff a driver regressor beats the best simple
+    baseline, DM-significant)."""
+    if frame is None:
+        frame = build_nowcast_frame(target_loader=load_inflation_mom, prev_col='prev_mom')
+    driver_frame = frame.drop(columns=['prev_mom'], errors='ignore')
+    res = run_mom_nowcast(min_train, frame=driver_frame,
+                          methods=['random_walk', 'seasonal_naive', 'drift', 'ridge', 'hgb'])
+    res['driver_edge'] = (res.get('verdict') == 'beats_best_naive')
+    return res

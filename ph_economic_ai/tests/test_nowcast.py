@@ -168,3 +168,60 @@ def test_run_mom_nowcast_insufficient_data():
                          index=idx).astype(float)
     res = run_mom_nowcast(min_train=24, frame=frame)
     assert res['verdict'] == 'insufficient_data'
+
+
+from ph_economic_ai.benchmark.nowcast import run_driver_only_ablation
+
+
+def test_run_mom_nowcast_respects_methods_param():
+    idx = pd.date_range('2016-01', periods=90, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(3)
+    target = rng.normal(0.3, 0.4, 90)
+    frame = pd.DataFrame({
+        'oil': 70 + rng.normal(0, 1, 90), 'fx': 55 + rng.normal(0, 0.1, 90),
+        'fuel': 60 + rng.normal(0, 1, 90), 'prev_mom': np.r_[target[0], target[:-1]],
+        'target': target,
+    }, index=idx)
+    res = run_mom_nowcast(min_train=24, frame=frame, methods=['random_walk', 'ridge'])
+    assert set(res['rmse_by_method']) == {'random_walk', 'ridge'}
+
+
+def _driver_signal_frame(n=110, seed=5):
+    idx = pd.date_range('2016-01', periods=n, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(seed)
+    fuel = 60 + np.cumsum(rng.normal(0, 1.0, n))
+    target = 0.5 * fuel + rng.normal(0, 0.02, n)
+    return pd.DataFrame({
+        'oil': 70 + rng.normal(0, 1, n), 'fx': 55 + rng.normal(0, 0.1, n),
+        'fuel': fuel, 'prev_mom': np.r_[target[0], target[:-1]], 'target': target,
+    }, index=idx)
+
+
+def test_driver_ablation_detects_driver_edge():
+    res = run_driver_only_ablation(min_train=24, frame=_driver_signal_frame())
+    assert res['driver_edge'] is True
+    assert res['verdict'] == 'beats_best_naive'
+    assert res['best_method'] in ('ridge', 'hgb')
+    assert set(res['rmse_by_method']) == {'random_walk', 'seasonal_naive', 'drift', 'ridge', 'hgb'}
+
+
+def test_driver_ablation_absent_when_pure_ar_noise_drivers():
+    n = 130
+    idx = pd.date_range('2016-01', periods=n, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(6)
+    target = np.empty(n); target[0] = 0.0
+    for i in range(1, n):
+        target[i] = 0.7 * target[i - 1] + rng.normal(0, 0.3)
+    frame = pd.DataFrame({
+        'oil': rng.normal(0, 1, n), 'fx': rng.normal(0, 1, n), 'fuel': rng.normal(0, 1, n),
+        'prev_mom': np.r_[target[0], target[:-1]], 'target': target,
+    }, index=idx)
+    res = run_driver_only_ablation(min_train=24, frame=frame)
+    assert res['driver_edge'] is False
+    assert res['verdict'] == 'no_better_than_naive'
+
+
+def test_driver_ablation_handles_frame_without_prev_mom():
+    f = _driver_signal_frame().drop(columns=['prev_mom'])
+    res = run_driver_only_ablation(min_train=24, frame=f)
+    assert 'verdict' in res
