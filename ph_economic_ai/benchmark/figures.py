@@ -86,3 +86,15 @@ def plot_audit_verdicts(rows):
     ax.set_ylabel('Best skill vs random walk')
     ax.set_title('Predictability audit (green = predictable)')
     fig.tight_layout(); fig.savefig(FIG_DIR / 'audit_verdicts.png', dpi=120); plt.close(fig)
+
+
+def plot_nowcast(dates, actual, nowcast, naive):
+    """Inflation: actual vs nowcast vs naive (last published) over the backtest."""
+    _ensure_dir()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(dates, actual, label='Actual inflation', color='black')
+    ax.plot(dates, nowcast, label='Nowcast', color='tab:blue')
+    ax.plot(dates, naive, label='Naive (last published)', color='tab:gray', linestyle='--')
+    ax.set_ylabel('YoY inflation (%)'); ax.legend(); ax.tick_params(axis='x', rotation=45)
+    ax.set_title('CPI nowcast vs actual vs naive')
+    fig.tight_layout(); fig.savefig(FIG_DIR / 'nowcast.png', dpi=120); plt.close(fig)
