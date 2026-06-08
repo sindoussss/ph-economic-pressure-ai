@@ -1,0 +1,221 @@
+[
+  {
+    "target": "fuel",
+    "verdict": "efficient",
+    "best_method": "random_walk",
+    "best_skill": 0.0,
+    "best_dm_p": null,
+    "n": 52,
+    "panel": [
+      {
+        "method": "random_walk",
+        "rmse": 4.0685,
+        "mae": 3.0762,
+        "skill_vs_rw": 0.0,
+        "dm_stat": 0.0,
+        "dm_p": null,
+        "n": 52
+      },
+      {
+        "method": "drift",
+        "rmse": 4.1101,
+        "mae": 3.1114,
+        "skill_vs_rw": -0.0102,
+        "dm_stat": 0.6725,
+        "dm_p": 0.5043,
+        "n": 52
+      },
+      {
+        "method": "seasonal_naive",
+        "rmse": 11.4971,
+        "mae": 8.8848,
+        "skill_vs_rw": -1.8259,
+        "dm_stat": 4.1033,
+        "dm_p": 0.0001,
+        "n": 52
+      },
+      {
+        "method": "arima",
+        "rmse": 4.3834,
+        "mae": 3.2829,
+        "skill_vs_rw": -0.0774,
+        "dm_stat": 2.1448,
+        "dm_p": 0.0368,
+        "n": 52
+      },
+      {
+        "method": "ets",
+        "rmse": 4.1828,
+        "mae": 3.1603,
+        "skill_vs_rw": -0.0281,
+        "dm_stat": 1.1028,
+        "dm_p": 0.2753,
+        "n": 52
+      },
+      {
+        "method": "ridge",
+        "rmse": 4.171,
+        "mae": 3.2302,
+        "skill_vs_rw": -0.0252,
+        "dm_stat": 0.4211,
+        "dm_p": 0.6755,
+        "n": 52
+      },
+      {
+        "method": "hgb",
+        "rmse": 4.2169,
+        "mae": 3.1858,
+        "skill_vs_rw": -0.0365,
+        "dm_stat": 0.5027,
+        "dm_p": 0.6173,
+        "n": 52
+      }
+    ]
+  },
+  {
+    "target": "fx",
+    "verdict": "efficient",
+    "best_method": "random_walk",
+    "best_skill": 0.0,
+    "best_dm_p": null,
+    "n": 38,
+    "panel": [
+      {
+        "method": "random_walk",
+        "rmse": 1.2896,
+        "mae": 0.9511,
+        "skill_vs_rw": 0.0,
+        "dm_stat": 0.0,
+        "dm_p": null,
+        "n": 38
+      },
+      {
+        "method": "drift",
+        "rmse": 1.2975,
+        "mae": 0.9656,
+        "skill_vs_rw": -0.0061,
+        "dm_stat": 0.3864,
+        "dm_p": 0.7014,
+        "n": 38
+      },
+      {
+        "method": "seasonal_naive",
+        "rmse": 4.1526,
+        "mae": 3.4603,
+        "skill_vs_rw": -2.22,
+        "dm_stat": 4.7025,
+        "dm_p": 0.0,
+        "n": 38
+      },
+      {
+        "method": "arima",
+        "rmse": 1.3349,
+        "mae": 1.0518,
+        "skill_vs_rw": -0.0351,
+        "dm_stat": 1.4725,
+        "dm_p": 0.1493,
+        "n": 38
+      },
+      {
+        "method": "ets",
+        "rmse": 1.3668,
+        "mae": 1.0041,
+        "skill_vs_rw": -0.0599,
+        "dm_stat": 1.1985,
+        "dm_p": 0.2383,
+        "n": 38
+      },
+      {
+        "method": "ridge",
+        "rmse": 1.1232,
+        "mae": 0.8979,
+        "skill_vs_rw": 0.129,
+        "dm_stat": -1.0777,
+        "dm_p": 0.2882,
+        "n": 38
+      },
+      {
+        "method": "hgb",
+        "rmse": 1.4582,
+        "mae": 1.1777,
+        "skill_vs_rw": -0.1307,
+        "dm_stat": 1.2656,
+        "dm_p": 0.2136,
+        "n": 38
+      }
+    ]
+  },
+  {
+    "target": "inflation",
+    "verdict": "efficient",
+    "best_method": "random_walk",
+    "best_skill": 0.0,
+    "best_dm_p": null,
+    "n": 59,
+    "panel": [
+      {
+        "method": "random_walk",
+        "rmse": 0.6713,
+        "mae": 0.5212,
+        "skill_vs_rw": 0.0,
+        "dm_stat": 0.0,
+        "dm_p": null,
+        "n": 59
+      },
+      {
+        "method": "drift",
+        "rmse": 0.6792,
+        "mae": 0.5292,
+        "skill_vs_rw": -0.0116,
+        "dm_stat": 1.1522,
+        "dm_p": 0.254,
+        "n": 59
+      },
+      {
+        "method": "seasonal_naive",
+        "rmse": 2.6835,
+        "mae": 2.2876,
+        "skill_vs_rw": -2.9972,
+        "dm_stat": 6.8789,
+        "dm_p": 0.0,
+        "n": 59
+      },
+      {
+        "method": "arima",
+        "rmse": 0.7182,
+        "mae": 0.5346,
+        "skill_vs_rw": -0.0699,
+        "dm_stat": 1.0505,
+        "dm_p": 0.2978,
+        "n": 59
+      },
+      {
+        "method": "ets",
+        "rmse": 0.7444,
+        "mae": 0.5573,
+        "skill_vs_rw": -0.1089,
+        "dm_stat": 1.1889,
+        "dm_p": 0.2393,
+        "n": 59
+      },
+      {
+        "method": "ridge",
+        "rmse": 0.7417,
+        "mae": 0.586,
+        "skill_vs_rw": -0.1048,
+        "dm_stat": 1.6455,
+        "dm_p": 0.1053,
+        "n": 59
+      },
+      {
+        "method": "hgb",
+        "rmse": 0.8825,
+        "mae": 0.7012,
+        "skill_vs_rw": -0.3145,
+        "dm_stat": 2.8186,
+        "dm_p": 0.0066,
+        "n": 59
+      }
+    ]
+  }
+]

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-08T08:00:57.638828+00:00",
+  "generated_at": "2026-06-08T14:47:07.403573+00:00",
   "horizon": "1_month",
   "date_range": [
     "2019-11",
@@ -177,6 +177,32 @@
     "r2": 0.3323,
     "driver_acf1": 0.1577
   },
+  "audit": [
+    {
+      "target": "fuel",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 52
+    },
+    {
+      "target": "fx",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 38
+    },
+    {
+      "target": "inflation",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 59
+    }
+  ],
   "limitations": [
     "World Bank gold series lags ~1 year; live grading uses DOE prices.",
     "Conformal assumes exchangeable residuals; q-hat uses a rolling recent window.",
