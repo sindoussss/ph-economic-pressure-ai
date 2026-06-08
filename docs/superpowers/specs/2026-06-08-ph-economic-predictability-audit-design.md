@@ -134,10 +134,38 @@ features_monthly.csv ───────────────────�
 
 ---
 
-## 8. The contribution, stated for the write-up
-- **Finding (to be filled from the real run):** a 3-series predictability audit — fuel: efficient (done, DM p>0.05 all methods); FX: [verdict]; inflation: [verdict], best method [method] with skill [x] and DM p [p].
-- **Interpretation:** efficiency results reflect (near) random-walk drivers passed through mechanically (fuel) or textbook FX random-walk behavior; any predictability (likely inflation) reflects persistence/mean-reversion to the BSP target band.
-- **Why it matters (data science):** demonstrates a rigorous, reproducible predictability-audit protocol (causal backtest + forecaster panel + Diebold-Mariano + calibrated conformal intervals) for a data-poor emerging-market economy, and characterizes which macro series are forecastable — directly informing where modeling effort is and isn't worthwhile.
+## 8. The contribution — measured results
+
+Run on committed data (1-month-ahead, World Bank fuel + Yahoo FX + DBnomics/IMF CPI;
+n = 79 backtest months for fuel). Source: `artifacts/audit_table.json`.
+
+| Target | Verdict | Best method | Skill vs RW | DM p |
+|---|---|---|---|---|
+| fuel (RON95) | **efficient** | random_walk | 0.00 | — |
+| FX (USD/PHP) | **efficient** | random_walk | 0.00 | — |
+| inflation (CPI YoY) | **efficient** | random_walk | 0.00 | — |
+
+- **Finding:** all three Philippine macro series are **informationally efficient at the
+  1-month horizon** — across the full forecaster panel (random walk, drift,
+  seasonal-naive, ARIMA, ETS, Ridge, HGB), *no method significantly beats naive
+  persistence* (no method clears DM p < 0.05 with positive skill) for any target.
+- **Interpretation, grounded in the literature:** the FX result reproduces the
+  classic **Meese-Rogoff (1983)** random-walk-beats-structural-models finding; the
+  inflation result reproduces **Atkeson-Ohanian (2001)**, who showed naive forecasts
+  are hard to beat (here, next-month YoY inflation is so persistent that random walk
+  already captures it); the fuel result follows from the partial, lagged DOE
+  pass-through (β ≈ 0.56) of a near-random-walk cost driver (Efficiency+Mechanism
+  spec). Three independent series, one consistent conclusion.
+- **Why it matters (data science):** a rigorous, reproducible **predictability-audit
+  protocol** (causal walk-forward + 7-method panel + Diebold-Mariano + calibrated
+  conformal intervals) applied to an emerging-market economy, reproducing two
+  landmark efficiency results for the Philippines and showing *where forecasting
+  effort is and isn't worthwhile* — the honest, defensible form of "predicting the
+  economy."
+- **Honest caveat:** "efficient" here means *unbeatable by these methods at monthly
+  resolution on this data* — not a proof of strict efficiency. Higher frequency
+  (weekly), longer history, or richer feature sets could change the FX/inflation
+  verdicts; that is stated future work, not a claim closed here.
 
 ---
 
