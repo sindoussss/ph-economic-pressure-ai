@@ -135,10 +135,32 @@ features_monthly.csv ─► oil_t, fx_t, fuel_t ─┤
 
 ---
 
-## 9. The contribution, stated for the write-up
-- **Finding (filled from the real run):** the MoM-CPI nowcaster [beats / does not beat] the best simple baseline ([baseline]) — best method [method], skill vs best baseline [x], DM p [p], over [n] months.
-- **Interpretation:** if it beats the strong baseline, within-month fuel/FX/fuel-pump movements carry genuine, exploitable information about the current month's price change before PSA publishes it — the honest numeric "yes." If it does not, MoM inflation's idiosyncratic month-to-month noise dominates the observable drivers, and seasonality (captured by seasonal-naive) is the ceiling. Either way the bar is *strong* (best-of-baselines, DM-tested), so the result is defense-proof.
-- **Why it matters (data science):** completes the predictability map — forecasting (efficient), YoY nowcast (efficient), MoM nowcast ([result]) — and demonstrates rigorous baseline selection (beating the *strongest* naive, not the weakest), the methodological point that separates a real result from a hollow one.
+## 9. The contribution — measured result
+
+Run on committed data (source: `artifacts/nowcast_mom_table.json`), n = 61 months.
+
+- **Finding: the MoM-CPI nowcaster BEATS the best simple baseline.** Best method
+  **ARIMA**, RMSE **0.380** vs the strongest baseline **random-walk** 0.453 (seasonal-naive
+  0.534, drift 0.458) — **skill +16.2%**, **Diebold-Mariano p = 0.032** (significant).
+  Verdict: `beats_best_naive`. This is the **first and only genuine numeric "yes"** in
+  the whole project, and it cleared the hard bar (best-of-baselines + DM significance),
+  so it is not a hollow win.
+- **Honest mechanism nuance:** the winner is **ARIMA, a univariate method** — so the edge
+  comes primarily from modeling MoM inflation's own short-run autocorrelation/mean-reversion
+  dynamics, which the random-walk benchmark ignores; it is **not** purely a within-month
+  driver (oil/FX/fuel) information edge. That said, the **driver-based Ridge also beats
+  random-walk** (RMSE 0.398 < 0.453), so the contemporaneous drivers do carry some signal —
+  ARIMA simply edged it. The honest headline is "MoM inflation has exploitable short-run
+  structure beyond naive," with the driver edge a secondary, weaker contributor.
+- **Why it matters (data science):** completes the predictability map —
+  forecasting (efficient), YoY nowcast (efficient), **MoM nowcast (predictable, +16% skill,
+  p=0.032)** — and demonstrates rigorous baseline selection (beating the *strongest* naive,
+  DM-tested), the methodological point that separates a real result from a hollow one. The
+  contrast YoY-efficient vs MoM-predictable is itself the interesting finding: persistence
+  hides predictability at the annual frame but reveals it at the monthly frame.
+- **Caveat:** n = 61 months is modest; the result is significant at 5% but not overwhelming,
+  and ARIMA's edge is dynamics-driven. A longer sample and a driver-only ablation (exclude
+  `prev_mom`/own-lags to isolate the pure nowcast information edge) are natural confirmations.
 
 ---
 
