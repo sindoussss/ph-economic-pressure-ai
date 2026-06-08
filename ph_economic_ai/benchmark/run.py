@@ -11,6 +11,8 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 
 from ph_economic_ai.benchmark import baselines, conformal, figures, report
 from ph_economic_ai.benchmark import ablation as ablation_mod
+from ph_economic_ai.benchmark import efficiency as efficiency_mod
+from ph_economic_ai.benchmark import passthrough as passthrough_mod
 from ph_economic_ai.benchmark.features import build_feature_frame, make_variant, VARIANTS
 from ph_economic_ai.benchmark.ground_truth import load_world_bank_ron95
 from ph_economic_ai.benchmark.backtest import walk_forward
@@ -45,6 +47,18 @@ def main():
         mark = ' <= selected' if r['name'] == selected else ''
         print(f"  {r['name']:<18} skill={r['skill_vs_rw']:+.3f} "
               f"band90=P{r['band90']:.2f} rmse=P{r['rmse']:.2f}{mark}")
+
+    # -- Efficiency panel + pass-through mechanism --
+    panel_methods = ['random_walk', 'drift', 'seasonal_naive', 'arima', 'ets', 'ridge', 'hgb']
+    efficiency_rows = efficiency_mod.run_panel(
+        frame, panel_methods, MIN_TRAIN, VARIANTS['passthrough_lags']['cols'])
+    passthrough_stats = passthrough_mod.estimate_passthrough(df)
+    print('Efficiency panel (skill vs RW | DM p):')
+    for r in sorted(efficiency_rows, key=lambda x: -x['skill_vs_rw']):
+        p = 'n/a' if r['dm_p'] is None else f"{r['dm_p']:.3f}"
+        print(f"  {r['method']:<14} skill={r['skill_vs_rw']:+.3f}  DM p={p}")
+    print(f"Pass-through: beta_total={passthrough_stats['beta_total']} "
+          f"R2={passthrough_stats['r2']} driver_acf1={passthrough_stats['driver_acf1']}")
 
     # Re-run the winning variant to get its reconstructed predictions for the report.
     v = make_variant(selected, frame)
@@ -83,6 +97,7 @@ def main():
                'vs_seasonal_naive': round(skill_score(rmse_model, rmse_sn), 4)},
         calibration=calib, proxy=proxy_stats, data_hash=data_hash,
         ablation=ablation_rows, selected_variant=selected,
+        efficiency=efficiency_rows, passthrough=passthrough_stats,
     )
     report.write_report(rep)
 
@@ -90,6 +105,13 @@ def main():
     figures.plot_pred_vs_actual(bt_dates, yt, yp, yp - qhat90, yp + qhat90)
     figures.plot_baseline_bars(rmse_model, rmse_rw, rmse_sn)
     figures.plot_proxy_scatter(proxy.values, df['ron95'].values)
+    figures.plot_method_skill_bar(efficiency_rows)
+    _dc = df['gas_price'].diff().dropna()
+    _dp = df['ron95'].diff().reindex(_dc.index)
+    _mask = _dp.notna()
+    if passthrough_stats['beta_total'] is not None:
+        figures.plot_passthrough(_dc[_mask].to_numpy(), _dp[_mask].to_numpy(),
+                                 passthrough_stats['beta_total'])
 
     pd.DataFrame({'date': bt_dates, 'y_true': yt, 'y_pred': yp,
                   'low90': yp - qhat90, 'high90': yp + qhat90}
