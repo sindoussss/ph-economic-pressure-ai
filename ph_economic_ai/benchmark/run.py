@@ -13,6 +13,7 @@ from ph_economic_ai.benchmark import baselines, conformal, figures, report
 from ph_economic_ai.benchmark import ablation as ablation_mod
 from ph_economic_ai.benchmark import efficiency as efficiency_mod
 from ph_economic_ai.benchmark import passthrough as passthrough_mod
+from ph_economic_ai.benchmark import audit as audit_mod
 from ph_economic_ai.benchmark.features import build_feature_frame, make_variant, VARIANTS
 from ph_economic_ai.benchmark.ground_truth import load_world_bank_ron95
 from ph_economic_ai.benchmark.backtest import walk_forward
@@ -87,6 +88,16 @@ def main():
 
     data_hash = hashlib.sha256(pd.util.hash_pandas_object(df, index=True).values.tobytes()).hexdigest()[:16]
 
+    # -- Cross-target predictability audit --
+    audit_rows = audit_mod.run_audit(['fuel', 'fx', 'inflation'], MIN_TRAIN)
+    print('Predictability audit:')
+    for a in audit_rows:
+        if a['verdict'] == 'insufficient_data':
+            print(f"  {a['target']:<10} insufficient_data (n={a.get('n', 0)})")
+        else:
+            print(f"  {a['target']:<10} {a['verdict']:<12} best={a['best_method']} "
+                  f"skill={a['best_skill']:+.3f}")
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -98,6 +109,7 @@ def main():
         calibration=calib, proxy=proxy_stats, data_hash=data_hash,
         ablation=ablation_rows, selected_variant=selected,
         efficiency=efficiency_rows, passthrough=passthrough_stats,
+        audit=[{k: v for k, v in a.items() if k != 'panel'} for a in audit_rows],
     )
     report.write_report(rep)
 
@@ -121,6 +133,11 @@ def main():
     (report.ARTIFACTS / 'ablation_table.json').write_text(
         _json.dumps({'selected': selected, 'rows': ablation_rows}, indent=2),
         encoding='utf-8')
+
+    import json as _json2
+    (report.ARTIFACTS / 'audit_table.json').write_text(
+        _json2.dumps(audit_rows, indent=2), encoding='utf-8')
+    figures.plot_audit_verdicts(audit_rows)
 
     print(f"Selected variant: {selected} | "
           f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
