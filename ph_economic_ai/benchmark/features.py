@@ -70,3 +70,19 @@ def make_variant(name: str, frame: pd.DataFrame) -> Variant:
         y_model = y_actual.copy()
     return Variant(name=name, dates=frame.index.tolist(), X=X,
                    y_actual=y_actual, y_model=y_model, structural=structural)
+
+
+def build_target_frame(target_series, driver_df, target_name: str, drivers: list):
+    """Generic 1-month-ahead frame for any target. Produces prev_<target_name>,
+    plus lag-1 and 3-month-MA of each driver, and a 'target' column. All features
+    are lagged (known at t-1). Inner-joins target and drivers on the date index,
+    dropna'd to common support."""
+    base = pd.DataFrame({'__t__': target_series})
+    joined = base.join(driver_df[list(drivers)], how='inner').sort_index()
+    f = pd.DataFrame(index=joined.index)
+    f[f'prev_{target_name}'] = joined['__t__'].shift(1)
+    for d in drivers:
+        f[f'{d}_lag1'] = joined[d].shift(1)
+        f[f'{d}_ma3'] = joined[d].shift(1).rolling(3).mean()
+    f['target'] = joined['__t__']
+    return f.dropna()
