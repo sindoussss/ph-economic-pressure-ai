@@ -71,3 +71,19 @@ def test_report_includes_efficiency_and_passthrough():
     assert len(rep['efficiency']) == 2
     assert rep['passthrough']['beta_total'] == 0.83
     assert 'efficiency' in REQUIRED_KEYS and 'passthrough' in REQUIRED_KEYS
+
+
+def test_report_includes_audit():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        audit=[{'target': 'fuel', 'verdict': 'efficient', 'best_method': 'random_walk',
+                'best_skill': 0.0, 'best_dm_p': None, 'n': 79}],
+    )
+    assert rep['audit'][0]['verdict'] == 'efficient'
+    assert 'audit' in REQUIRED_KEYS
