@@ -75,3 +75,19 @@ TARGETS = {
     'fx': Target('fx', load_fx, _fx_frame, has_mechanism=False),
     'inflation': Target('inflation', load_inflation, _inflation_frame, has_mechanism=False),
 }
+
+
+def cpi_to_mom(cpi_index: pd.Series) -> pd.Series:
+    """Convert a monthly CPI index to month-over-month inflation %, dropping the
+    first (undefined) month."""
+    s = cpi_index.sort_index()
+    mom = (s / s.shift(1) - 1.0) * 100.0
+    return mom.dropna()
+
+
+def load_inflation_mom(csv_path: Path = CPI_CSV) -> pd.Series:
+    """Load the committed CPI index and return month-over-month inflation %."""
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    cpi = pd.Series(df['cpi_index'].astype(float).values, index=df['date'].astype(str).values)
+    cpi = cpi[~cpi.index.duplicated(keep='last')]
+    return cpi_to_mom(cpi)
