@@ -59,3 +59,33 @@ def test_registry_columns_exist_in_frame():
             assert c in f.columns, f'{name} references missing column {c}'
         if spec['structural']:
             assert spec['structural'] in f.columns
+
+
+from ph_economic_ai.benchmark.features import build_target_frame
+
+
+def test_build_target_frame_lags_and_target():
+    idx = pd.date_range('2018-01', periods=30, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(3)
+    tgt = pd.Series(50 + np.cumsum(rng.normal(0, 1, 30)), index=idx)
+    drivers = pd.DataFrame({'oil': 70 + np.cumsum(rng.normal(0, 1, 30)),
+                            'fx': 55 + np.cumsum(rng.normal(0, 0.1, 30))}, index=idx)
+    f = build_target_frame(tgt, drivers, 'fx', ['oil', 'fx'])
+    assert 'target' in f.columns
+    assert 'prev_fx' in f.columns
+    for c in ('oil_lag1', 'oil_ma3', 'fx_lag1', 'fx_ma3'):
+        assert c in f.columns
+    assert not f.isna().any().any()
+    t = f.index[4]
+    pos = list(tgt.index).index(t)
+    assert f.loc[t, 'prev_fx'] == pytest.approx(tgt.iloc[pos - 1])
+    assert f.loc[t, 'oil_lag1'] == pytest.approx(drivers['oil'].iloc[pos - 1])
+
+
+def test_build_target_frame_inner_join_on_dates():
+    tgt = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0],
+                    index=['2020-01', '2020-02', '2020-03', '2020-04', '2020-05'])
+    drivers = pd.DataFrame({'oil': [10.0, 11.0, 12.0]},
+                           index=['2020-01', '2020-02', '2020-03'])
+    f = build_target_frame(tgt, drivers, 'x', ['oil'])
+    assert len(f) <= 1
