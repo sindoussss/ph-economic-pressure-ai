@@ -110,3 +110,61 @@ def test_build_nowcast_frame_mom_variant(monkeypatch):
     assert f.loc[t, 'oil'] == pytest.approx(feats['oil_price'].iloc[pos])
     cpi_like = [c for c in f.columns if 'mom' in c.lower() or 'infl' in c.lower() or 'cpi' in c.lower()]
     assert cpi_like == ['prev_mom']
+
+
+from ph_economic_ai.benchmark.nowcast import mom_verdict, run_mom_nowcast
+
+
+def test_mom_verdict_beats_best_naive():
+    rng = np.random.default_rng(0)
+    n = 300
+    base_loss = rng.uniform(0.8, 1.2, n)
+    rmse = {'random_walk': 1.5, 'seasonal_naive': 1.0, 'drift': 1.3,
+            'arima': 1.2, 'ets': 1.1, 'ridge': 0.7, 'hgb': 0.9}
+    loss = {'random_walk': base_loss + 1.0, 'seasonal_naive': base_loss,
+            'drift': base_loss + 0.6, 'arima': base_loss + 0.4, 'ets': base_loss + 0.2,
+            'ridge': base_loss - 0.4, 'hgb': base_loss - 0.1}
+    v = mom_verdict(rmse, loss)
+    assert v['verdict'] == 'beats_best_naive'
+    assert v['best_method'] == 'ridge'
+    assert v['best_naive'] == 'seasonal_naive'
+
+
+def test_mom_verdict_hollow_win_guard():
+    rng = np.random.default_rng(1)
+    n = 300
+    seas = rng.uniform(0.4, 0.6, n)
+    rmse = {'random_walk': 1.5, 'seasonal_naive': 0.5, 'drift': 1.2,
+            'arima': 1.1, 'ets': 1.0, 'ridge': 0.9, 'hgb': 1.0}
+    loss = {'random_walk': seas + 1.0, 'seasonal_naive': seas, 'drift': seas + 0.7,
+            'arima': seas + 0.6, 'ets': seas + 0.5, 'ridge': seas + 0.4, 'hgb': seas + 0.5}
+    v = mom_verdict(rmse, loss)
+    assert v['verdict'] == 'no_better_than_naive'
+    assert v['best_method'] == 'seasonal_naive'
+
+
+def test_run_mom_nowcast_beats_on_constructed_signal():
+    idx = pd.date_range('2016-01', periods=110, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(2)
+    fuel = 60 + np.cumsum(rng.normal(0, 1.0, 110))
+    dfuel = np.r_[0.0, np.diff(fuel)]
+    target = 0.6 * dfuel + rng.normal(0, 0.05, 110)
+    frame = pd.DataFrame({
+        'oil': 70 + rng.normal(0, 1, 110),
+        'fx': 55 + rng.normal(0, 0.1, 110),
+        'fuel': fuel,
+        'prev_mom': np.r_[target[0], target[:-1]],
+        'target': target,
+    }, index=idx)
+    res = run_mom_nowcast(min_train=24, frame=frame)
+    assert res['verdict'] == 'beats_best_naive'
+    assert res['best_method'] in ('ridge', 'hgb', 'arima', 'ets')
+
+
+def test_run_mom_nowcast_insufficient_data():
+    idx = pd.date_range('2020-01', periods=12, freq='MS').strftime('%Y-%m')
+    frame = pd.DataFrame({'oil': range(12), 'fx': range(12), 'fuel': range(12),
+                          'prev_mom': range(12), 'target': range(12)},
+                         index=idx).astype(float)
+    res = run_mom_nowcast(min_train=24, frame=frame)
+    assert res['verdict'] == 'insufficient_data'

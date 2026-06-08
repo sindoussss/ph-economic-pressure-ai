@@ -77,3 +77,68 @@ def run_nowcast(min_train: int = 24, frame=None) -> dict:
         'calibration': calib,
         'panel': panel,
     }
+
+
+from ph_economic_ai.benchmark.metrics import rmse as _rmse
+from ph_economic_ai.benchmark.significance import diebold_mariano
+from ph_economic_ai.benchmark.targets import load_inflation_mom
+
+BASELINE_POOL = ('random_walk', 'seasonal_naive', 'drift')
+
+
+def mom_verdict(rmse_by_method: dict, loss_by_method: dict,
+                baseline_pool=BASELINE_POOL) -> dict:
+    """Verdict for the MoM nowcast: a model 'beats_best_naive' only if it has lower
+    RMSE than the BEST simple baseline AND a significant Diebold-Mariano edge over
+    it (p<0.05, lower loss). Otherwise 'no_better_than_naive'. Pure function."""
+    pool = [m for m in baseline_pool if m in rmse_by_method] or ['random_walk']
+    best_naive = min(pool, key=lambda m: rmse_by_method[m])
+    base_rmse = rmse_by_method[best_naive]
+    base_loss = loss_by_method[best_naive]
+
+    winners = []
+    for m in rmse_by_method:
+        if m in baseline_pool or rmse_by_method[m] >= base_rmse:
+            continue
+        dm = diebold_mariano(loss_by_method[m], base_loss)
+        if dm['p_value'] < 0.05 and dm['dm_stat'] < 0:
+            winners.append(m)
+
+    if winners:
+        best_method = min(winners, key=lambda m: rmse_by_method[m])
+        dm_p = diebold_mariano(loss_by_method[best_method], base_loss)['p_value']
+        return {'verdict': 'beats_best_naive', 'best_method': best_method,
+                'best_naive': best_naive,
+                'best_skill_vs_naive': round(1 - rmse_by_method[best_method] / base_rmse, 4),
+                'dm_p': round(dm_p, 4)}
+    return {'verdict': 'no_better_than_naive', 'best_method': best_naive,
+            'best_naive': best_naive, 'best_skill_vs_naive': 0.0, 'dm_p': None}
+
+
+def run_mom_nowcast(min_train: int = 24, baseline_pool=BASELINE_POOL, frame=None) -> dict:
+    """Nowcast MoM inflation; verdict via DM against the best simple baseline."""
+    if frame is None:
+        frame = build_nowcast_frame(target_loader=load_inflation_mom, prev_col='prev_mom')
+    if len(frame) < min_train + 5:
+        return {'verdict': 'insufficient_data', 'n': int(len(frame))}
+
+    feature_cols = [c for c in frame.columns if c != 'target']
+    y = frame['target'].to_numpy(dtype=float)
+    X = frame[feature_cols].to_numpy(dtype=float)
+
+    rmse_by, loss_by, n_pred = {}, {}, 0
+    for m in PANEL_METHODS:
+        bt = walk_forward(y, X, make_forecaster(m), min_train)
+        loss_by[m] = (bt['y_true'] - bt['y_pred']) ** 2
+        rmse_by[m] = _rmse(bt['y_true'], bt['y_pred'])
+        n_pred = len(bt['y_true'])
+
+    v = mom_verdict(rmse_by, loss_by, baseline_pool)
+
+    bt = walk_forward(y, X, make_forecaster(v['best_method']), min_train)
+    res = bt['y_true'] - bt['y_pred']
+    half = max(1, len(res) // 2)
+    calib = build_calibration_table(res[:half], bt['y_true'][half:], bt['y_pred'][half:],
+                                    CONFORMAL_LEVELS) if len(res) > 3 else []
+    return {**v, 'n': int(n_pred), 'calibration': calib,
+            'rmse_by_method': {k: round(val, 4) for k, val in rmse_by.items()}}
