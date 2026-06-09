@@ -137,3 +137,22 @@ def test_report_includes_mom_driver_ablation():
     )
     assert rep['mom_driver_ablation']['driver_edge'] is False
     assert 'mom_driver_ablation' in REQUIRED_KEYS
+
+
+def test_report_includes_mom_longsample():
+    rep = build_report(
+        date_range=('2017-03', '2025-03'), n_months=79,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 79},
+        data_hash='abc123',
+        mom_longsample={'n_long': 190,
+                        'mom': {'verdict': 'beats_best_naive', 'best_method': 'arima',
+                                'best_skill_vs_naive': 0.14, 'dm_p': 0.01},
+                        'driver_ablation': {'verdict': 'no_better_than_naive',
+                                            'driver_edge': False}},
+    )
+    assert rep['mom_longsample']['n_long'] == 190
+    assert 'mom_longsample' in REQUIRED_KEYS
