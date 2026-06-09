@@ -201,6 +201,29 @@ def build_cpi_csv() -> None:
     print(f'Wrote ph_cpi_monthly.csv ({len(raw)} rows, {raw["date"].iloc[0]}..{raw["date"].iloc[-1]})')
 
 
+LONG_FEATURES_OUT = HERE / 'data' / 'features_monthly_long.csv'
+
+
+def build_long_features(rng: str = 'max') -> None:
+    """Longer-history predictor matrix (default Yahoo range='max') for the MoM
+    nowcast longer-sample confirmation. Same columns/derivations as
+    build_features_csv, just a longer window -> data/features_monthly_long.csv."""
+    from ph_economic_ai.fetcher import _compute_demand
+    oil = _yahoo_monthly('BZ=F', rng)
+    usd = _yahoo_monthly('PHP=X', rng)
+    rbob = _yahoo_monthly('RB=F', rng)
+    base = pd.concat([oil.rename('oil_price'), usd.rename('usd_php'),
+                      rbob.rename('rbob')], axis=1).dropna()
+    base['gas_price'] = ((base['rbob'] / 3.785 * base['usd_php']) * 1.35 + 12).round(2)
+    base = base.drop(columns=['rbob']).reset_index().rename(columns={'index': 'date'})
+    base['demand_index'] = _compute_demand(base['date'].tolist())
+    base = base.sort_values('date')
+    LONG_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
+    base.to_csv(LONG_FEATURES_OUT, index=False)
+    print(f'Wrote features_monthly_long.csv ({len(base)} rows, '
+          f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
+
+
 def main():
     build_world_bank_csv()
     build_features_csv()
