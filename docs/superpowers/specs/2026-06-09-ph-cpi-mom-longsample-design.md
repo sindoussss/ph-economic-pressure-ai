@@ -115,10 +115,36 @@ load_long_features + load_inflation_mom ─► build_nowcast_frame(features=long
 
 ---
 
-## 9. The contribution — to be filled from the real run
-- **Result:** on n = [n_long] months (~2007–2026), the MoM nowcast [still beats / no longer beats] the best simple baseline — best method [method], skill [x], DM p [p]; the driver-only edge is [significant / still suggestive / absent] (`driver_edge` = [bool], Ridge RMSE [r] vs baseline [rb]).
-- **Interpretation:** [if confirmed] the MoM predictability is robust across ~3× the sample and a varied regime mix — strengthening the headline result. [if driver edge now significant] the larger sample resolves the earlier underpowered driver signal into a genuine within-month information edge. [if changed] note the regime heterogeneity caveat — a longer window mixes GFC/2014/COVID dynamics, so a different verdict may reflect regime shifts, not only power.
-- **Why it matters:** demonstrates sample-size/robustness discipline — re-testing a positive result on more (and more varied) data before leaning on it — the final check that separates a fragile finding from a durable one.
+## 9. The contribution — measured result
+
+Run on the committed long features (source: `artifacts/mom_longsample_table.json`),
+**n = 143** months (~2007–2026, incl. GFC, 2014 oil crash, COVID).
+
+| Metric | n = 61 (10y) | n = 143 (long) |
+|---|---|---|
+| MoM verdict | beats_best_naive | **beats_best_naive** |
+| best method | ARIMA | ARIMA |
+| skill vs best naive (random-walk) | +16.2% | **+16.3%** |
+| DM p | 0.032 | **0.001** |
+| driver_edge | False | **False** (Ridge 0.374 vs RW 0.413, −9.5%, not significant) |
+
+- **Result: the MoM nowcast win HOLDS and strengthens.** Across ~2.3× the sample *and*
+  a more heterogeneous regime mix, ARIMA still beats the best simple baseline (random-walk)
+  by ~16%, and the DM p-value **tightens from 0.032 → 0.001** — the expected direction with
+  more data. This is a robust, not fragile, positive result.
+- **Driver edge: still not significant.** Even at n = 143, driver-only Ridge is directionally
+  better (RMSE 0.374 vs random-walk 0.413, −9.5%) but does not clear DM significance. So the
+  MoM predictability is firmly attributable to inflation's **own short-run dynamics** (ARIMA),
+  not to a statistically-significant within-month driver information edge. The earlier
+  underpowered driver signal did **not** resolve into significance with more data — a clean,
+  honest negative on the driver-attribution question.
+- **Regime-robustness note:** the verdict is unchanged despite the longer window spanning the
+  GFC/2014/COVID — so the result is not an artifact of the calm 2016–2026 sub-period; it is
+  stable across varied macro regimes.
+- **Why it matters:** demonstrates sample-size/robustness discipline — re-testing a positive
+  result on more (and more varied) data before leaning on it. The headline MoM nowcast claim
+  is now durable (p = 0.001, n = 143, across regimes), with its mechanism honestly bounded
+  (own-dynamics, not a significant driver edge).
 
 ---
 
