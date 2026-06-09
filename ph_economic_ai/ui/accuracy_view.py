@@ -90,6 +90,11 @@ class AccuracyView(QWidget):
                 abl = QLabel('<b>MoM driver-only ablation</b><br>' + _ab)
                 abl.setWordWrap(True)
                 col.addWidget(abl)
+            _ls = self.mom_longsample_summary()
+            if _ls:
+                lsl = QLabel('<b>MoM longer-sample confirmation</b><br>' + _ls)
+                lsl.setWordWrap(True)
+                col.addWidget(lsl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -175,6 +180,18 @@ class AccuracyView(QWidget):
         return (f"Driver-only ablation (no own-lag): within-month driver edge {edge} "
                 f"— best {a['best_method']} vs {a['best_naive']}, "
                 f"skill {a['best_skill_vs_naive']:+.2f} (DM p={a['dm_p']}).")
+
+    def mom_longsample_summary(self) -> str:
+        if not self._report:
+            return ''
+        L = self._report.get('mom_longsample') or {}
+        if not L or L.get('verdict') == 'not_run':
+            return ''
+        mom = L.get('mom') or {}
+        abl = L.get('driver_ablation') or {}
+        return (f"Longer sample (n={L.get('n_long')}): MoM {mom.get('verdict')} "
+                f"(best {mom.get('best_method')}, skill {mom.get('best_skill_vs_naive')}, "
+                f"DM p={mom.get('dm_p')}); driver_edge={abl.get('driver_edge')}.")
 
     def ablation_summary(self) -> str:
         if not self._report:

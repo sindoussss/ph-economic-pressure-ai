@@ -46,6 +46,11 @@ def _report(tmp_path):
         'mom_driver_ablation': {'verdict': 'no_better_than_naive', 'driver_edge': False,
                                 'best_method': 'random_walk', 'best_naive': 'random_walk',
                                 'best_skill_vs_naive': 0.0, 'dm_p': None, 'n': 61},
+        'mom_longsample': {'n_long': 143,
+                           'mom': {'verdict': 'beats_best_naive', 'best_method': 'arima',
+                                   'best_skill_vs_naive': 0.16, 'dm_p': 0.001},
+                           'driver_ablation': {'verdict': 'no_better_than_naive',
+                                               'driver_edge': False}},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -109,3 +114,10 @@ def test_view_shows_mom_driver_ablation(tmp_path):
     s = view.mom_driver_ablation_summary()
     assert 'driver' in s.lower()
     assert 'random_walk' in s
+
+
+def test_view_shows_mom_longsample(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.mom_longsample_summary()
+    assert '143' in s
+    assert 'arima' in s
