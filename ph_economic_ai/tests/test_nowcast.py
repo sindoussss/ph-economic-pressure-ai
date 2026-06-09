@@ -225,3 +225,22 @@ def test_driver_ablation_handles_frame_without_prev_mom():
     f = _driver_signal_frame().drop(columns=['prev_mom'])
     res = run_driver_only_ablation(min_train=24, frame=f)
     assert 'verdict' in res
+
+
+def test_build_nowcast_frame_accepts_features_arg(monkeypatch):
+    idx = pd.date_range('2010-01', periods=50, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(9)
+    mom = pd.Series(rng.normal(0.3, 0.4, 50), index=idx)
+    feats = pd.DataFrame({
+        'oil_price': 40 + np.cumsum(rng.normal(0, 1, 50)),
+        'usd_php': 48 + np.cumsum(rng.normal(0, 0.1, 50)),
+        'gas_price': 45 + np.cumsum(rng.normal(0, 0.5, 50)),
+        'demand_index': 70 + rng.normal(0, 2, 50),
+    }, index=idx)
+    import ph_economic_ai.benchmark.nowcast as nc
+    monkeypatch.setattr(nc, '_features', lambda: (_ for _ in ()).throw(AssertionError('used _features')))
+    f = nc.build_nowcast_frame(target_loader=lambda: mom, prev_col='prev_mom', features=feats)
+    assert list(f.columns) == ['oil', 'fx', 'fuel', 'prev_mom', 'target']
+    t = f.index[5]
+    pos = list(idx).index(t)
+    assert f.loc[t, 'oil'] == pytest.approx(feats['oil_price'].iloc[pos])
