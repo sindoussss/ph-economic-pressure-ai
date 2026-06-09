@@ -29,6 +29,7 @@ from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
 from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
 from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
 from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+from ph_economic_ai.ui.accuracy_view import AccuracyView
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -227,6 +228,7 @@ class SimMainWindow(QMainWindow):
         self._stage3_container.addWidget(self._stage3_swarm)
 
         self._agent_perf = AgentPerformancePanel(self._store)
+        self._accuracy_view = AccuracyView()
 
         # ── Wrap the landing in a vertical scroll area (website-style) ──────
         landing_scroll = QScrollArea()
@@ -244,10 +246,11 @@ class SimMainWindow(QMainWindow):
         landing_scroll.setWidget(self._landing)
         self._landing_scroll = landing_scroll
 
-        # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report, 4=Interact, 5=AgentPerf
+        # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report,
+        #              4=Interact, 5=AgentPerf, 6=Methodology & Accuracy
         for widget in (landing_scroll, self._economy_overview,
                        self._stage3_container, self._stage4, self._stage5,
-                       self._agent_perf):
+                       self._agent_perf, self._accuracy_view):
             self._stack.addWidget(widget)
 
         # Wire DOE checker → agent perf panel refresh

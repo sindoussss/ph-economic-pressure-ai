@@ -164,6 +164,8 @@ class Stage4ReportPanel(QWidget):
     def _build_swarm_left(self, master_verdict, consensus: dict):
         """Left column for swarm mode: master consensus box + regional verdicts table."""
         card, cl = self._card('Swarm Consensus')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
 
         avg = consensus.get('weighted_avg')
         conf = consensus.get('confidence_pct', 0)
@@ -181,11 +183,11 @@ class Stage4ReportPanel(QWidget):
         val_lbl = QLabel(val_str)
         val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
 
-        sub_lbl = QLabel(f'Master judge estimate · {conf}% confidence')
+        sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
 
         range_row = QHBoxLayout()
-        for label, value in [('Low', low), ('High', high), ('Confidence', f'{conf}%')]:
+        for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
@@ -200,6 +202,12 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
         cf_layout.addLayout(range_row)
+        _cal = _hs.calibrated_interval_line(_report)
+        if _cal:
+            _cal_lbl = QLabel(_cal)
+            _cal_lbl.setWordWrap(True)
+            _cal_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#1C7C54;')
+            cf_layout.addWidget(_cal_lbl)
         cl.addWidget(consensus_frame)
 
         # Dissenting regions
@@ -230,7 +238,7 @@ class Stage4ReportPanel(QWidget):
             head_row.addWidget(est_lbl)
             rvfl.addLayout(head_row)
 
-            conf_lbl = QLabel(f'Confidence: {rv.confidence:.0%}')
+            conf_lbl = QLabel(f'Agent agreement: {rv.confidence:.0%}')
             conf_lbl.setStyleSheet('font-size:8px;color:#9EA3AE;')
             rvfl.addWidget(conf_lbl)
 
@@ -260,6 +268,8 @@ class Stage4ReportPanel(QWidget):
 
     def _build_left(self, consensus: dict, responses: list):
         card, cl = self._card('Debate Summary')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
 
         avg = consensus.get('weighted_avg')
         conf = consensus.get('confidence_pct', 0)
@@ -276,11 +286,11 @@ class Stage4ReportPanel(QWidget):
         val_lbl = QLabel(f'+₱{avg:.2f}/L' if avg is not None else 'No consensus')
         val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
 
-        sub_lbl = QLabel(f'Weighted average · {conf}% agreement')
+        sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
 
         range_row = QHBoxLayout()
-        for label, value in [('Low', low), ('High', high), ('Confidence', f'{conf}%')]:
+        for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
@@ -295,6 +305,12 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
         cf_layout.addLayout(range_row)
+        _cal = _hs.calibrated_interval_line(_report)
+        if _cal:
+            _cal_lbl = QLabel(_cal)
+            _cal_lbl.setWordWrap(True)
+            _cal_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#1C7C54;')
+            cf_layout.addWidget(_cal_lbl)
         cl.addWidget(consensus_frame)
 
         final_round = max((r.round_num for r in responses), default=1)
@@ -328,6 +344,12 @@ class Stage4ReportPanel(QWidget):
 
     def _build_right(self, regressor, df, cv_rmse, scenario, consensus):
         card, cl = self._card('Final Outputs')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
+        _exp = self._muted('Exploratory forecasts — not validated. Backtest shows no '
+                           'method beats naive persistence for these (see Methodology & Accuracy).')
+        _exp.setWordWrap(True)
+        cl.addWidget(_exp)
 
         avg = consensus.get('weighted_avg') or 0.0
         X, y, feature_cols, df_feat = build_features(df)
@@ -383,7 +405,8 @@ class Stage4ReportPanel(QWidget):
                 ax = fig.add_subplot(111)
                 xs = list(range(1, n + 1))
                 ax.plot(xs, forecast_prices, color='#1C1E26', linewidth=2)
-                ax.fill_between(xs, forecast_prices - cv_rmse, forecast_prices + cv_rmse,
+                _band = _hs.conformal_halfwidth(_report) or cv_rmse
+                ax.fill_between(xs, forecast_prices - _band, forecast_prices + _band,
                                 alpha=0.15, color='#1C1E26')
                 ax.set_facecolor('#F7F8FA')
                 ax.set_xticks(xs)
@@ -393,6 +416,11 @@ class Stage4ReportPanel(QWidget):
                 canvas = FigureCanvasQTAgg(fig)
                 canvas.setFixedHeight(200)
                 cl.addWidget(canvas)
+                _bcap = self._muted('90% calibrated interval (conformal)'
+                                    if _hs.conformal_halfwidth(_report) is not None
+                                    else '±cross-val RMSE (uncalibrated)')
+                _bcap.setWordWrap(True)
+                cl.addWidget(_bcap)
             except Exception:
                 pass
 
@@ -415,6 +443,16 @@ class Stage4ReportPanel(QWidget):
             pass
 
         self._right.addWidget(card)
+        try:
+            acc_card, acc_l = self._card('Validated accuracy')
+            for _line in _hs.validated_summary_lines(_report):
+                _ql = QLabel(_line)
+                _ql.setWordWrap(True)
+                _ql.setStyleSheet('font-size:12px;color:#475467;')
+                acc_l.addWidget(_ql)
+            self._right.addWidget(acc_card)
+        except Exception:
+            pass
         # Causal chain panel below the ML outputs
         self._right.addWidget(self._chain_widget)
         self._right.addStretch()
