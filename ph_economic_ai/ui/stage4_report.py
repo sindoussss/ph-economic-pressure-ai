@@ -164,6 +164,8 @@ class Stage4ReportPanel(QWidget):
     def _build_swarm_left(self, master_verdict, consensus: dict):
         """Left column for swarm mode: master consensus box + regional verdicts table."""
         card, cl = self._card('Swarm Consensus')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
 
         avg = consensus.get('weighted_avg')
         conf = consensus.get('confidence_pct', 0)
@@ -181,11 +183,11 @@ class Stage4ReportPanel(QWidget):
         val_lbl = QLabel(val_str)
         val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
 
-        sub_lbl = QLabel(f'Master judge estimate · {conf}% confidence')
+        sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
 
         range_row = QHBoxLayout()
-        for label, value in [('Low', low), ('High', high), ('Confidence', f'{conf}%')]:
+        for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
@@ -200,6 +202,12 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
         cf_layout.addLayout(range_row)
+        _cal = _hs.calibrated_interval_line(_report)
+        if _cal:
+            _cal_lbl = QLabel(_cal)
+            _cal_lbl.setWordWrap(True)
+            _cal_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#1C7C54;')
+            cf_layout.addWidget(_cal_lbl)
         cl.addWidget(consensus_frame)
 
         # Dissenting regions
@@ -230,7 +238,7 @@ class Stage4ReportPanel(QWidget):
             head_row.addWidget(est_lbl)
             rvfl.addLayout(head_row)
 
-            conf_lbl = QLabel(f'Confidence: {rv.confidence:.0%}')
+            conf_lbl = QLabel(f'Agent agreement: {rv.confidence:.0%}')
             conf_lbl.setStyleSheet('font-size:8px;color:#9EA3AE;')
             rvfl.addWidget(conf_lbl)
 
