@@ -328,6 +328,12 @@ class Stage4ReportPanel(QWidget):
 
     def _build_right(self, regressor, df, cv_rmse, scenario, consensus):
         card, cl = self._card('Final Outputs')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
+        _exp = self._muted('Exploratory forecasts — not validated. Backtest shows no '
+                           'method beats naive persistence for these (see Methodology & Accuracy).')
+        _exp.setWordWrap(True)
+        cl.addWidget(_exp)
 
         avg = consensus.get('weighted_avg') or 0.0
         X, y, feature_cols, df_feat = build_features(df)
@@ -383,7 +389,8 @@ class Stage4ReportPanel(QWidget):
                 ax = fig.add_subplot(111)
                 xs = list(range(1, n + 1))
                 ax.plot(xs, forecast_prices, color='#1C1E26', linewidth=2)
-                ax.fill_between(xs, forecast_prices - cv_rmse, forecast_prices + cv_rmse,
+                _band = _hs.conformal_halfwidth(_report) or cv_rmse
+                ax.fill_between(xs, forecast_prices - _band, forecast_prices + _band,
                                 alpha=0.15, color='#1C1E26')
                 ax.set_facecolor('#F7F8FA')
                 ax.set_xticks(xs)
@@ -393,6 +400,11 @@ class Stage4ReportPanel(QWidget):
                 canvas = FigureCanvasQTAgg(fig)
                 canvas.setFixedHeight(200)
                 cl.addWidget(canvas)
+                _bcap = self._muted('90% calibrated interval (conformal)'
+                                    if _hs.conformal_halfwidth(_report) is not None
+                                    else '±cross-val RMSE (uncalibrated)')
+                _bcap.setWordWrap(True)
+                cl.addWidget(_bcap)
             except Exception:
                 pass
 
@@ -415,6 +427,16 @@ class Stage4ReportPanel(QWidget):
             pass
 
         self._right.addWidget(card)
+        try:
+            acc_card, acc_l = self._card('Validated accuracy')
+            for _line in _hs.validated_summary_lines(_report):
+                _ql = QLabel(_line)
+                _ql.setWordWrap(True)
+                _ql.setStyleSheet('font-size:12px;color:#475467;')
+                acc_l.addWidget(_ql)
+            self._right.addWidget(acc_card)
+        except Exception:
+            pass
         # Causal chain panel below the ML outputs
         self._right.addWidget(self._chain_widget)
         self._right.addStretch()
