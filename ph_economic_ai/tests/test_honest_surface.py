@@ -50,3 +50,23 @@ def test_summary_lines_missing_keys_no_crash():
     lines = validated_summary_lines({'something': 1})
     assert isinstance(lines, list)
     assert any('Methodology' in l for l in lines)
+
+
+from ph_economic_ai.ui.honest_surface import calibrated_interval_line
+
+
+def test_calibrated_interval_line_full():
+    line = calibrated_interval_line({'conformal_widths': {'0.9': 10.42}})
+    assert line is not None
+    assert '10.42' in line and 'calibrated' in line and '90%' in line
+
+
+def test_calibrated_interval_line_custom_level():
+    line = calibrated_interval_line({'conformal_widths': {'0.8': 5.0}}, level='0.8')
+    assert '80%' in line and '5.00' in line
+
+
+def test_calibrated_interval_line_missing_returns_none():
+    assert calibrated_interval_line(None) is None
+    assert calibrated_interval_line({'conformal_widths': {}}) is None
+    assert calibrated_interval_line({}) is None
