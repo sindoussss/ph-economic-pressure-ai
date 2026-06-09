@@ -253,9 +253,17 @@ class EconomyOverviewWidget(QWidget):
         cards_row = QHBoxLayout()
         cards_row.setSpacing(14)
 
-        self._gas_card  = SectorCard('Gas',         '₱/L',   '#4A90E2')
-        self._food_card = SectorCard('Food Index',  'pts',   '#27AE60')
-        self._elec_card = SectorCard('Electricity', '₱/kWh', '#E0A84A')
+        self._gas_card  = SectorCard('Gas',                  '₱/L',   '#4A90E2')
+        self._food_card = SectorCard('Food Index (derived)', 'pts',   '#27AE60')
+        self._elec_card = SectorCard('Electricity (derived)', '₱/kWh', '#E0A84A')
+
+        # Honest framing: only gas is independently forecast. Food and electricity
+        # are deterministic pass-through transforms of the gas price, not
+        # independent predictions — make that explicit on hover.
+        _derived_tip = ('Derived from the gas price via a fixed pass-through '
+                        'coefficient — not an independent forecast.')
+        self._food_card.setToolTip(_derived_tip)
+        self._elec_card.setToolTip(_derived_tip)
 
         for card in (self._gas_card, self._food_card, self._elec_card):
             cards_row.addWidget(card)

@@ -1,0 +1,309 @@
+{
+  "generated_at": "2026-06-09T01:33:47.451007+00:00",
+  "horizon": "1_month",
+  "date_range": [
+    "2019-11",
+    "2025-03"
+  ],
+  "n_months": 79,
+  "model_metrics": {
+    "mae": 3.0029,
+    "rmse": 4.0991,
+    "mape": 4.8736,
+    "mase": 1.5718
+  },
+  "baseline_metrics": {
+    "random_walk": {
+      "rmse": 4.0685
+    },
+    "seasonal_naive": {
+      "rmse": 11.4971
+    }
+  },
+  "skill": {
+    "vs_random_walk": -0.0075,
+    "vs_seasonal_naive": 0.6435
+  },
+  "headline_skill_vs_random_walk": -0.0075,
+  "conformal_widths": {
+    "0.5": 2.5569,
+    "0.8": 5.8805,
+    "0.9": 10.4194,
+    "0.95": 11.863
+  },
+  "calibration": [
+    {
+      "nominal": 0.5,
+      "qhat": 2.5569,
+      "measured": 0.5769
+    },
+    {
+      "nominal": 0.8,
+      "qhat": 5.8805,
+      "measured": 0.8846
+    },
+    {
+      "nominal": 0.9,
+      "qhat": 10.4194,
+      "measured": 1.0
+    },
+    {
+      "nominal": 0.95,
+      "qhat": 11.863,
+      "measured": 1.0
+    }
+  ],
+  "proxy_validation": {
+    "pearson_r": 0.91,
+    "bias_mean": -5.8805,
+    "mae": 6.5653,
+    "n": 79
+  },
+  "data_hash": "ed75dcb7169c2913",
+  "ablation": [
+    {
+      "name": "baseline",
+      "rmse": 4.6043,
+      "mae": 3.4402,
+      "skill_vs_rw": -0.1317,
+      "band90": 17.859,
+      "n": 52
+    },
+    {
+      "name": "drop_demand",
+      "rmse": 4.4139,
+      "mae": 3.3901,
+      "skill_vs_rw": -0.0849,
+      "band90": 16.8257,
+      "n": 52
+    },
+    {
+      "name": "passthrough_lags",
+      "rmse": 4.0991,
+      "mae": 3.0029,
+      "skill_vs_rw": -0.0075,
+      "band90": 14.4572,
+      "n": 52
+    },
+    {
+      "name": "finished_gas",
+      "rmse": 4.994,
+      "mae": 3.8109,
+      "skill_vs_rw": -0.2275,
+      "band90": 18.5693,
+      "n": 52
+    },
+    {
+      "name": "structural_hybrid",
+      "rmse": 5.55,
+      "mae": 3.9363,
+      "skill_vs_rw": -0.3642,
+      "band90": 19.6919,
+      "n": 52
+    }
+  ],
+  "selected_variant": "passthrough_lags",
+  "efficiency": [
+    {
+      "method": "random_walk",
+      "rmse": 4.0685,
+      "mae": 3.0762,
+      "skill_vs_rw": 0.0,
+      "dm_stat": 0.0,
+      "dm_p": null,
+      "n": 52
+    },
+    {
+      "method": "drift",
+      "rmse": 4.1101,
+      "mae": 3.1114,
+      "skill_vs_rw": -0.0102,
+      "dm_stat": 0.6725,
+      "dm_p": 0.5043,
+      "n": 52
+    },
+    {
+      "method": "seasonal_naive",
+      "rmse": 11.4971,
+      "mae": 8.8848,
+      "skill_vs_rw": -1.8259,
+      "dm_stat": 4.1033,
+      "dm_p": 0.0001,
+      "n": 52
+    },
+    {
+      "method": "arima",
+      "rmse": 4.3834,
+      "mae": 3.2829,
+      "skill_vs_rw": -0.0774,
+      "dm_stat": 2.1448,
+      "dm_p": 0.0368,
+      "n": 52
+    },
+    {
+      "method": "ets",
+      "rmse": 4.1828,
+      "mae": 3.1603,
+      "skill_vs_rw": -0.0281,
+      "dm_stat": 1.1028,
+      "dm_p": 0.2753,
+      "n": 52
+    },
+    {
+      "method": "ridge",
+      "rmse": 4.1046,
+      "mae": 3.1473,
+      "skill_vs_rw": -0.0089,
+      "dm_stat": 0.1501,
+      "dm_p": 0.8813,
+      "n": 52
+    },
+    {
+      "method": "hgb",
+      "rmse": 4.0991,
+      "mae": 3.0029,
+      "skill_vs_rw": -0.0075,
+      "dm_stat": 0.0998,
+      "dm_p": 0.9209,
+      "n": 52
+    }
+  ],
+  "passthrough": {
+    "n": 77,
+    "alpha": 0.1328,
+    "beta0": 0.3132,
+    "beta1": 0.2438,
+    "beta_total": 0.557,
+    "r2": 0.3323,
+    "driver_acf1": 0.1577
+  },
+  "audit": [
+    {
+      "target": "fuel",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 52
+    },
+    {
+      "target": "fx",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 38
+    },
+    {
+      "target": "inflation",
+      "verdict": "efficient",
+      "best_method": "random_walk",
+      "best_skill": 0.0,
+      "best_dm_p": null,
+      "n": 59
+    }
+  ],
+  "nowcast": {
+    "verdict": "no_better_than_naive",
+    "best_method": "random_walk",
+    "best_skill": 0.0,
+    "best_dm_p": null,
+    "n": 61,
+    "calibration": [
+      {
+        "nominal": 0.5,
+        "qhat": 0.4565,
+        "measured": 0.3871
+      },
+      {
+        "nominal": 0.8,
+        "qhat": 0.6871,
+        "measured": 0.5806
+      },
+      {
+        "nominal": 0.9,
+        "qhat": 0.9326,
+        "measured": 0.7742
+      },
+      {
+        "nominal": 0.95,
+        "qhat": 1.7792,
+        "measured": 0.9677
+      }
+    ]
+  },
+  "nowcast_mom": {
+    "verdict": "beats_best_naive",
+    "best_method": "arima",
+    "best_naive": "random_walk",
+    "best_skill_vs_naive": 0.1616,
+    "dm_p": 0.0323,
+    "n": 61,
+    "rmse_by_method": {
+      "random_walk": 0.4532,
+      "drift": 0.4578,
+      "seasonal_naive": 0.5343,
+      "arima": 0.3799,
+      "ets": 0.4135,
+      "ridge": 0.398,
+      "hgb": 0.4574
+    }
+  },
+  "mom_driver_ablation": {
+    "verdict": "no_better_than_naive",
+    "best_method": "random_walk",
+    "best_naive": "random_walk",
+    "best_skill_vs_naive": 0.0,
+    "dm_p": null,
+    "n": 61,
+    "rmse_by_method": {
+      "random_walk": 0.4532,
+      "seasonal_naive": 0.5343,
+      "drift": 0.4578,
+      "ridge": 0.3993,
+      "hgb": 0.4431
+    },
+    "driver_edge": false
+  },
+  "mom_longsample": {
+    "n_long": 143,
+    "mom": {
+      "verdict": "beats_best_naive",
+      "best_method": "arima",
+      "best_naive": "random_walk",
+      "best_skill_vs_naive": 0.1627,
+      "dm_p": 0.001,
+      "n": 143,
+      "rmse_by_method": {
+        "random_walk": 0.413,
+        "drift": 0.4159,
+        "seasonal_naive": 0.4761,
+        "arima": 0.3458,
+        "ets": 0.3735,
+        "ridge": 0.3604,
+        "hgb": 0.4297
+      }
+    },
+    "driver_ablation": {
+      "verdict": "no_better_than_naive",
+      "best_method": "random_walk",
+      "best_naive": "random_walk",
+      "best_skill_vs_naive": 0.0,
+      "dm_p": null,
+      "n": 143,
+      "rmse_by_method": {
+        "random_walk": 0.413,
+        "seasonal_naive": 0.4761,
+        "drift": 0.4159,
+        "ridge": 0.3739,
+        "hgb": 0.4272
+      },
+      "driver_edge": false
+    }
+  },
+  "limitations": [
+    "World Bank gold series lags ~1 year; live grading uses DOE prices.",
+    "Conformal assumes exchangeable residuals; q-hat uses a rolling recent window.",
+    "Food and electricity are deterministic transforms of gas, not independent forecasts."
+  ]
+}

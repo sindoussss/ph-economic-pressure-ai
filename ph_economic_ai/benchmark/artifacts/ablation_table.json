@@ -1,0 +1,45 @@
+{
+  "selected": "passthrough_lags",
+  "rows": [
+    {
+      "name": "baseline",
+      "rmse": 4.6043,
+      "mae": 3.4402,
+      "skill_vs_rw": -0.1317,
+      "band90": 17.859,
+      "n": 52
+    },
+    {
+      "name": "drop_demand",
+      "rmse": 4.4139,
+      "mae": 3.3901,
+      "skill_vs_rw": -0.0849,
+      "band90": 16.8257,
+      "n": 52
+    },
+    {
+      "name": "passthrough_lags",
+      "rmse": 4.0991,
+      "mae": 3.0029,
+      "skill_vs_rw": -0.0075,
+      "band90": 14.4572,
+      "n": 52
+    },
+    {
+      "name": "finished_gas",
+      "rmse": 4.994,
+      "mae": 3.8109,
+      "skill_vs_rw": -0.2275,
+      "band90": 18.5693,
+      "n": 52
+    },
+    {
+      "name": "structural_hybrid",
+      "rmse": 5.55,
+      "mae": 3.9363,
+      "skill_vs_rw": -0.3642,
+      "band90": 19.6919,
+      "n": 52
+    }
+  ]
+}
