@@ -55,3 +55,14 @@ def validated_summary_lines(report: Optional[dict]) -> list:
 
     lines.append('Full detail: Methodology & Accuracy tab.')
     return lines
+
+
+def calibrated_interval_line(report: Optional[dict], level: str = '0.9') -> Optional[str]:
+    """One-line calibrated interval for the given level, or None if unavailable.
+
+    e.g. '90% calibrated interval: ±₱10.42/L (conformal, validated)'."""
+    qhat = conformal_halfwidth(report, level)
+    if qhat is None:
+        return None
+    pct = int(round(float(level) * 100))
+    return f'{pct}% calibrated interval: ±₱{qhat:.2f}/L (conformal, validated)'
