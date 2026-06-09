@@ -126,6 +126,18 @@ def main():
               f"best={mom_abl['best_method']} vs {mom_abl['best_naive']} | "
               f"skill={mom_abl['best_skill_vs_naive']:+.3f} DM p={mom_abl['dm_p']}")
 
+    # -- MoM nowcast longer-sample confirmation (isolated long feature history) --
+    try:
+        from ph_economic_ai.benchmark import longsample as longsample_mod
+        mom_long = longsample_mod.run_mom_longsample(MIN_TRAIN)
+        _lm, _la = mom_long['mom'], mom_long['driver_ablation']
+        print(f"MoM long-sample (n={mom_long['n_long']}): mom={_lm['verdict']} "
+              f"best={_lm.get('best_method')} skill={_lm.get('best_skill_vs_naive')} "
+              f"DM p={_lm.get('dm_p')} | driver_edge={_la.get('driver_edge')}")
+    except FileNotFoundError:
+        mom_long = {'verdict': 'not_run', 'reason': 'features_monthly_long.csv missing'}
+        print('MoM long-sample: not_run (features_monthly_long.csv missing)')
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -141,6 +153,7 @@ def main():
         nowcast={k: v for k, v in nowcast_res.items() if k != 'panel'},
         nowcast_mom={k: v for k, v in mom_res.items() if k != 'calibration'},
         mom_driver_ablation={k: v for k, v in mom_abl.items() if k != 'calibration'},
+        mom_longsample=mom_long,
     )
     report.write_report(rep)
 
@@ -191,6 +204,11 @@ def main():
     import json as _json5
     (report.ARTIFACTS / 'mom_driver_ablation_table.json').write_text(
         _json5.dumps(mom_abl, indent=2), encoding='utf-8')
+
+    import json as _json6
+    (report.ARTIFACTS / 'mom_longsample_table.json').write_text(
+        _json6.dumps(mom_long, indent=2), encoding='utf-8')
+
     if mom_res['verdict'] != 'insufficient_data':
         _mf = nowcast_mod.build_nowcast_frame(
             target_loader=nowcast_mod.load_inflation_mom, prev_col='prev_mom')

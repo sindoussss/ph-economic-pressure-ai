@@ -1,0 +1,36 @@
+{
+  "n_long": 143,
+  "mom": {
+    "verdict": "beats_best_naive",
+    "best_method": "arima",
+    "best_naive": "random_walk",
+    "best_skill_vs_naive": 0.1627,
+    "dm_p": 0.001,
+    "n": 143,
+    "rmse_by_method": {
+      "random_walk": 0.413,
+      "drift": 0.4159,
+      "seasonal_naive": 0.4761,
+      "arima": 0.3458,
+      "ets": 0.3735,
+      "ridge": 0.3604,
+      "hgb": 0.4297
+    }
+  },
+  "driver_ablation": {
+    "verdict": "no_better_than_naive",
+    "best_method": "random_walk",
+    "best_naive": "random_walk",
+    "best_skill_vs_naive": 0.0,
+    "dm_p": null,
+    "n": 143,
+    "rmse_by_method": {
+      "random_walk": 0.413,
+      "seasonal_naive": 0.4761,
+      "drift": 0.4159,
+      "ridge": 0.3739,
+      "hgb": 0.4272
+    },
+    "driver_edge": false
+  }
+}
