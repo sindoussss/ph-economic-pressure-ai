@@ -268,6 +268,8 @@ class Stage4ReportPanel(QWidget):
 
     def _build_left(self, consensus: dict, responses: list):
         card, cl = self._card('Debate Summary')
+        from ph_economic_ai.ui import honest_surface as _hs
+        _report = _hs.load_validated()
 
         avg = consensus.get('weighted_avg')
         conf = consensus.get('confidence_pct', 0)
@@ -284,11 +286,11 @@ class Stage4ReportPanel(QWidget):
         val_lbl = QLabel(f'+₱{avg:.2f}/L' if avg is not None else 'No consensus')
         val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
 
-        sub_lbl = QLabel(f'Weighted average · {conf}% agreement')
+        sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
 
         range_row = QHBoxLayout()
-        for label, value in [('Low', low), ('High', high), ('Confidence', f'{conf}%')]:
+        for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
@@ -303,6 +305,12 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
         cf_layout.addLayout(range_row)
+        _cal = _hs.calibrated_interval_line(_report)
+        if _cal:
+            _cal_lbl = QLabel(_cal)
+            _cal_lbl.setWordWrap(True)
+            _cal_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#1C7C54;')
+            cf_layout.addWidget(_cal_lbl)
         cl.addWidget(consensus_frame)
 
         final_round = max((r.round_num for r in responses), default=1)
