@@ -417,7 +417,7 @@ class LandingPanel(QWidget):
             f'border-bottom:1px solid {DIVIDER};}}'
             f'QFrame QLabel{{background:transparent;border:none;}}'
         )
-        wrap.setFixedHeight(124)
+        wrap.setMinimumHeight(190)
 
         # Center the strip
         outer = QHBoxLayout(wrap)
@@ -430,6 +430,16 @@ class LandingPanel(QWidget):
         cl = QVBoxLayout(center)
         cl.setContentsMargins(60, 18, 60, 18)
         cl.setSpacing(10)
+
+        latest_head = QLabel('LATEST FORECAST  ·  exploratory')
+        latest_head.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
+            f'color:{TEXT_3};letter-spacing:2px;'
+        )
+        cl.addWidget(latest_head)
+        self._latest_row = QHBoxLayout()
+        self._latest_row.setSpacing(28)
+        cl.addLayout(self._latest_row)
 
         head = QLabel('RECENT FUEL FORECASTS')
         head.setStyleSheet(
@@ -666,6 +676,23 @@ class LandingPanel(QWidget):
         except Exception:
             runs = []
 
+        # Latest 3-sector forecast (top of the card)
+        while self._latest_row.count():
+            it = self._latest_row.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                w.deleteLater()
+        if runs:
+            from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
+            latest = runs[0]
+            for r in sector_forecast_rows(
+                gas=latest.get('final_estimate'),
+                food=latest.get('food_estimate'),
+                elec=latest.get('electricity_estimate'),
+            ):
+                self._latest_row.addWidget(self._build_sector_tile(r))
+        self._latest_row.addStretch()
+
         # Clear existing
         while self._runs_row.count():
             item = self._runs_row.takeAt(0)
@@ -683,6 +710,26 @@ class LandingPanel(QWidget):
         for r in runs:
             self._runs_row.addWidget(self._build_run_tile(r))
         self._runs_row.addStretch()
+
+    def _build_sector_tile(self, r: dict) -> QWidget:
+        tile = QWidget()
+        tile.setStyleSheet('background:transparent;')
+        tile.setMaximumWidth(180)
+        v = QVBoxLayout(tile)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        name = QLabel(r['label'])
+        name.setStyleSheet(
+            f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
+            f'color:{TEXT_3};letter-spacing:1px;'
+        )
+        v.addWidget(name)
+        arrows = {'up': '▲', 'down': '▼', 'flat': '■', 'na': '·'}
+        color = {'up': UP, 'down': DOWN, 'flat': TEXT_3, 'na': TEXT_3}[r['direction']]
+        val = QLabel(f"{arrows[r['direction']]}  {r['value_str']}")
+        val.setStyleSheet(f'font-size:15px;font-weight:700;color:{color};')
+        v.addWidget(val)
+        return tile
 
     def _build_run_tile(self, run: dict) -> QWidget:
         tile = QWidget()
