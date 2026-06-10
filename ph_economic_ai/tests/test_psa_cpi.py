@@ -61,3 +61,17 @@ def test_load_food_mom(tmp_path):
     assert mom['2018-02'] == pytest.approx(2.0)
     assert mom['2018-03'] == pytest.approx(0.0)
     assert '2018-01' not in mom.index
+
+
+from ph_economic_ai.benchmark.psa_cpi import load_electricity_mom
+
+
+def test_load_electricity_mom(tmp_path):
+    import pytest
+    p = tmp_path / 'elec.csv'
+    p.write_text('date,electricity_cpi\n2018-01,100.0\n2018-02,103.0\n2018-03,103.0\n',
+                 encoding='utf-8')
+    mom = load_electricity_mom(p)
+    assert mom['2018-02'] == pytest.approx(3.0)
+    assert mom['2018-03'] == pytest.approx(0.0)
+    assert '2018-01' not in mom.index
