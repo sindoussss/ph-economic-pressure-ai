@@ -138,6 +138,18 @@ def main():
         mom_long = {'verdict': 'not_run', 'reason': 'features_monthly_long.csv missing'}
         print('MoM long-sample: not_run (features_monthly_long.csv missing)')
 
+    # -- MoM Transport-CPI nowcast (fuel -> inflation pass-through) --
+    try:
+        from ph_economic_ai.benchmark import transport_nowcast as transport_mod
+        transport_res = transport_mod.run_transport_nowcast(MIN_TRAIN)
+        _tm = transport_res['mom']
+        print(f"Transport nowcast (n={transport_res['n']}): mom={_tm['verdict']} "
+              f"best={_tm.get('best_method')} skill={_tm.get('best_skill_vs_naive')} "
+              f"DM p={_tm.get('dm_p')} | driver_edge={transport_res['driver_edge']}")
+    except FileNotFoundError:
+        transport_res = {'verdict': 'not_run', 'reason': 'transport gold missing'}
+        print('Transport nowcast: not_run (psa_transport_cpi_monthly.csv missing)')
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -154,6 +166,7 @@ def main():
         nowcast_mom={k: v for k, v in mom_res.items() if k != 'calibration'},
         mom_driver_ablation={k: v for k, v in mom_abl.items() if k != 'calibration'},
         mom_longsample=mom_long,
+        transport_nowcast=transport_res,
     )
     report.write_report(rep)
 
@@ -208,6 +221,10 @@ def main():
     import json as _json6
     (report.ARTIFACTS / 'mom_longsample_table.json').write_text(
         _json6.dumps(mom_long, indent=2), encoding='utf-8')
+
+    import json as _json7
+    (report.ARTIFACTS / 'transport_nowcast_table.json').write_text(
+        _json7.dumps(transport_res, indent=2), encoding='utf-8')
 
     if mom_res['verdict'] != 'insufficient_data':
         _mf = nowcast_mod.build_nowcast_frame(

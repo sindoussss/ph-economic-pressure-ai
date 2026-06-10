@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-09T01:33:47.451007+00:00",
+  "generated_at": "2026-06-10T06:37:11.341533+00:00",
   "horizon": "1_month",
   "date_range": [
     "2019-11",
@@ -300,6 +300,43 @@
       },
       "driver_edge": false
     }
+  },
+  "transport_nowcast": {
+    "n": 151,
+    "mom": {
+      "verdict": "no_better_than_naive",
+      "best_method": "seasonal_naive",
+      "best_naive": "seasonal_naive",
+      "best_skill_vs_naive": 0.0,
+      "dm_p": null,
+      "n": 151,
+      "rmse_by_method": {
+        "random_walk": 2.0355,
+        "drift": 2.0435,
+        "seasonal_naive": 1.8463,
+        "arima": 1.62,
+        "ets": 1.6328,
+        "ridge": 1.6116,
+        "hgb": 1.7342
+      }
+    },
+    "driver_ablation": {
+      "verdict": "beats_best_naive",
+      "best_method": "ridge",
+      "best_naive": "seasonal_naive",
+      "best_skill_vs_naive": 0.1475,
+      "dm_p": 0.0214,
+      "n": 151,
+      "rmse_by_method": {
+        "random_walk": 2.0355,
+        "seasonal_naive": 1.8463,
+        "drift": 2.0435,
+        "ridge": 1.574,
+        "hgb": 1.7375
+      },
+      "driver_edge": true
+    },
+    "driver_edge": true
   },
   "limitations": [
     "World Bank gold series lags ~1 year; live grading uses DOE prices.",
