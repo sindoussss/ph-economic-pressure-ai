@@ -82,7 +82,18 @@ _PERIOD_TO_MM = {str(i): f'{i + 1:02d}' for i in range(12)}  # '0'->'01' .. '11'
 _PSA_HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
 
-def _fetch_px_table(url: str, first_year: int) -> dict:
+def _resolve_commodity_id(commodity_var: dict, coicop_prefix: str) -> str:
+    """Return the value id whose label is the COICOP division `coicop_prefix`
+    (e.g. '01' -> '01 - FOOD AND NON-ALCOHOLIC BEVERAGES', not '01.1 - FOOD')."""
+    needle = f'{coicop_prefix} -'
+    for vid, txt in zip(commodity_var['values'], commodity_var['valueTexts']):
+        if txt.strip().startswith(needle):
+            return vid
+    raise ValueError(f"no commodity matching '{needle}'; "
+                     f"available: {commodity_var['valueTexts'][:12]}")
+
+
+def _fetch_px_table(url: str, first_year: int, coicop_prefix: str) -> dict:
     """POST a PSA PX-Web table and return {YYYY-MM: float}.
 
     Uses the tabular 'json' format (not json-stat2) because the json-stat2
@@ -94,12 +105,15 @@ def _fetch_px_table(url: str, first_year: int) -> dict:
         PX-Web .px endpoint URL.
     first_year : int
         Calendar year corresponding to year value-id '0' in this table.
+    coicop_prefix : str
+        COICOP division code (e.g. '07' for Transport, '01' for Food).
     """
     import json
     import requests
 
     meta = requests.get(url, headers=_PSA_HEADERS, timeout=30).json()
     by_code = {v['code']: v for v in meta['variables']}
+    commodity_id = _resolve_commodity_id(by_code['Commodity Description'], coicop_prefix)
     year_var = by_code['Year']
     period_var = by_code['Period']
 
@@ -112,7 +126,7 @@ def _fetch_px_table(url: str, first_year: int) -> dict:
             {'code': 'Geolocation',
              'selection': {'filter': 'item', 'values': ['0']}},
             {'code': 'Commodity Description',
-             'selection': {'filter': 'item', 'values': ['203']}},
+             'selection': {'filter': 'item', 'values': [commodity_id]}},
             {'code': 'Year',
              'selection': {'filter': 'item', 'values': all_year_ids}},
             {'code': 'Period',
@@ -155,8 +169,8 @@ def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
     The tables are fetched using the tabular 'json' response format; the
     json-stat2 value array is sparse/incorrect on this PSA PX-Web instance.
     """
-    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994)
-    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018)
+    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='07')
+    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='07')
 
     # Merge; current table takes precedence for any overlap (2018 overlap)
     combined = {**series_back, **series_curr}
@@ -177,3 +191,41 @@ def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
         f'Wrote psa_transport_cpi_monthly.csv ({len(df)} rows, '
         f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})'
     )
+
+
+# ---------------------------------------------------------------------------
+# Food CPI (COICOP 01) — monthly index (2018=100)
+# ---------------------------------------------------------------------------
+
+FOOD_CSV = HERE / 'data' / 'psa_food_cpi_monthly.csv'
+
+
+def fetch_food_cpi(out_csv: Path = FOOD_CSV) -> None:
+    """Fetch monthly Food (COICOP 01) CPI from PSA OpenSTAT and freeze to CSV."""
+    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='01')
+    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='01')
+
+    # Merge; current table takes precedence for any overlap (2018 overlap)
+    combined = {**series_back, **series_curr}
+
+    if len(combined) < 100:
+        raise ValueError(f'food CPI series too short ({len(combined)} rows)')
+
+    df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'food_cpi'])
+          .sort_values('date'))
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_csv, index=False)
+    print(f'Wrote psa_food_cpi_monthly.csv ({len(df)} rows, '
+          f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+
+
+def load_food_cpi(csv_path: Path = FOOD_CSV) -> pd.Series:
+    """Monthly Food CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['food_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_food_mom(csv_path: Path = FOOD_CSV) -> pd.Series:
+    """Month-over-month Food inflation % from the committed gold."""
+    return cpi_to_mom(load_food_cpi(csv_path))
