@@ -58,3 +58,46 @@ def test_refresh_recent_picks_up_late_sector_data(app):
     texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
     assert '2.60' in texts and '%' in texts       # food now shown
     assert '0.1800' in texts and 'kWh' in texts   # electricity now shown
+
+
+def _run(rid, ts, gas, conf, food=None, elec=None):
+    return {'run_id': rid, 'timestamp': ts, 'final_estimate': gas,
+            'confidence_pct': conf, 'food_estimate': food,
+            'electricity_estimate': elec, 'actual_price_change': None}
+
+
+def test_latest_heading_shows_date_and_agreement(app):
+    from ph_economic_ai.ui.landing import LandingPanel
+    runs = [_run(6, '2026-06-10T00:00:00+00:00', -1.8, 72, -2.6, 0.18),
+            _run(5, '2026-06-10T00:00:00+00:00', -1.5, 50),
+            _run(4, '2026-06-09T00:00:00+00:00', -2.4, 54)]
+    panel = LandingPanel(store=_FakeStore(runs))
+    panel.refresh_recent()
+    texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert 'LATEST FORECAST' in texts
+    assert '72% agreement' in texts
+    assert 'Jun 10' in texts
+
+
+def test_track_record_excludes_latest_run(app):
+    from ph_economic_ai.ui.landing import LandingPanel
+    runs = [_run(6, '2026-06-10T00:00:00+00:00', -1.8, 72, -2.6, 0.18),
+            _run(5, '2026-06-10T00:00:00+00:00', -1.5, 50),
+            _run(4, '2026-06-09T00:00:00+00:00', -2.4, 54)]
+    panel = LandingPanel(store=_FakeStore(runs))
+    panel.refresh_recent()
+    labels = [l.text() for l in panel.findChildren(QLabel)]
+    text = ' || '.join(labels)
+    assert 'FUEL TRACK RECORD' in text
+    assert any(t.startswith('#5') for t in labels)
+    assert not any(t.startswith('#6') for t in labels)
+    assert 'agreement' in text and 'confidence' not in text
+
+
+def test_single_run_track_record_placeholder(app):
+    from ph_economic_ai.ui.landing import LandingPanel
+    panel = LandingPanel(store=_FakeStore([_run(6, '2026-06-10T00:00:00+00:00', -1.8, 72, -2.6, 0.18)]))
+    panel.refresh_recent()
+    text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert 'LATEST FORECAST' in text
+    assert 'No simulations on record yet.' in text
