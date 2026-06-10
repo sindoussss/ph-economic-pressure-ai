@@ -54,7 +54,6 @@ class _TopNavBar(QFrame):
         (0, 'Home',        False),
         (2, 'Simulation',  True),
         (3, 'Report',      True),
-        (4, 'Interact',    True),
     ]
 
     def __init__(self, parent=None):
@@ -66,7 +65,7 @@ class _TopNavBar(QFrame):
         )
         self._buttons: dict[int, QPushButton] = {}
         self._active = 0
-        self._locked: set[int] = {2, 3, 4}
+        self._locked: set[int] = {2, 3}
         self._build()
 
     def _build(self):
@@ -221,9 +220,9 @@ class SimMainWindow(QMainWindow):
         self._landing = LandingPanel(store=self._store)
         self._stage3 = Stage3CanvasPanel(self._rag, self._agents, self._regressor,
                                          self._df, self._cv_rmse)
-        self._stage4 = Stage4ReportPanel()
         self._stage5 = Stage5InteractPanel(self._rag, self._agents, self._regressor,
                                            self._df, self._cv_rmse)
+        self._stage4 = Stage4ReportPanel(interact_panel=self._stage5)
 
         self._stage3_container = QStackedWidget()
         self._stage3_container.addWidget(self._stage3)
@@ -249,10 +248,10 @@ class SimMainWindow(QMainWindow):
         landing_scroll.setWidget(self._landing)
         self._landing_scroll = landing_scroll
 
-        # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report,
-        #              4=Interact, 5=AgentPerf, 6=Methodology & Accuracy
+        # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report(workbench),
+        #              4=AgentPerf, 5=Methodology & Accuracy
         for widget in (landing_scroll, self._economy_overview,
-                       self._stage3_container, self._stage4, self._stage5,
+                       self._stage3_container, self._stage4,
                        self._agent_perf, self._accuracy_view):
             self._stack.addWidget(widget)
 
@@ -270,7 +269,7 @@ class SimMainWindow(QMainWindow):
         self._landing.view_overview_requested.connect(
             lambda: (self._sidebar.set_active(1), self._stack.setCurrentIndex(1)))
         self._landing.view_performance_requested.connect(
-            lambda: (self._sidebar.set_active(5), self._stack.setCurrentIndex(5)))
+            lambda: (self._sidebar.set_active(4), self._stack.setCurrentIndex(4)))
 
         corpus_path = Path(__file__).parent.parent / 'assets' / 'corpus' / 'neda_2024_2026.txt'
         if corpus_path.exists():
@@ -283,7 +282,7 @@ class SimMainWindow(QMainWindow):
 
     def _on_stage_changed(self, idx: int):
         self._stack.setCurrentIndex(idx)
-        if idx == 5:        # Agent Performance is now index 5
+        if idx == 4:        # Agent Performance is now index 4
             self._agent_perf.refresh()
 
     def _on_landing_run(self):
@@ -574,8 +573,8 @@ class SimMainWindow(QMainWindow):
         self._stage5.update_context(responses, self._stage3.scenario())
         self._stage5.set_debate_engine(self._stage3.engine)
         self._stage5.update_gas_verdict(self._gas_verdict)
-        # Sidebar indices: 2=Simulation, 3=Report, 4=Interact
-        self._sidebar.unlock_stages([2, 3, 4])
+        # Sidebar indices: 2=Simulation, 3=Report
+        self._sidebar.unlock_stages([2, 3])
         self._sidebar.set_active(3)
         self._stack.setCurrentIndex(3)
         # Update gas sector card on Economy Overview
@@ -627,8 +626,8 @@ class SimMainWindow(QMainWindow):
         self._stage4.set_regional_estimates(master_verdict.regional_estimates or {})
         self._stage5.set_swarm_context(master_verdict, self._last_scenario)
         self._stage5.update_gas_verdict(self._gas_verdict)
-        # Sidebar indices: 2=Simulation, 3=Report, 4=Interact
-        self._sidebar.unlock_stages([2, 3, 4])
+        # Sidebar indices: 2=Simulation, 3=Report
+        self._sidebar.unlock_stages([2, 3])
         self._sidebar.set_active(3)
         self._stack.setCurrentIndex(3)
         self._landing.set_busy(False)
