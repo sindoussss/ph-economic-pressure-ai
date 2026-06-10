@@ -156,3 +156,22 @@ def test_report_includes_mom_longsample():
     )
     assert rep['mom_longsample']['n_long'] == 190
     assert 'mom_longsample' in REQUIRED_KEYS
+
+
+def test_report_includes_transport_nowcast():
+    rep = build_report(
+        date_range=('2007-08', '2025-05'), n_months=200,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 200},
+        data_hash='abc123',
+        transport_nowcast={'n': 180, 'driver_edge': True,
+                           'mom': {'verdict': 'beats_best_naive', 'best_method': 'ridge',
+                                   'best_skill_vs_naive': 0.2, 'dm_p': 0.004},
+                           'driver_ablation': {'verdict': 'beats_best_naive',
+                                               'driver_edge': True}},
+    )
+    assert rep['transport_nowcast']['driver_edge'] is True
+    assert 'transport_nowcast' in REQUIRED_KEYS
