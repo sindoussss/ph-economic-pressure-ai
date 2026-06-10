@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QFrame, QScrollArea, QPushButton, QFileDialog,
+    QFrame, QScrollArea, QPushButton, QFileDialog, QStackedWidget,
 )
 from PyQt6.QtCore import Qt
 from matplotlib.figure import Figure
@@ -21,8 +21,9 @@ from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
 
 
 class Stage4ReportPanel(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, interact_panel=None, parent=None):
         super().__init__(parent)
+        self._interact = interact_panel
         self._responses: list = []
         self._consensus: dict = {}
         self._build()
@@ -84,7 +85,7 @@ class Stage4ReportPanel(QWidget):
         self._left = QVBoxLayout()
         self._right = QVBoxLayout()
         top_row.addLayout(self._left, stretch=1)
-        top_row.addLayout(self._right, stretch=1)
+        top_row.addWidget(self._build_right_pane(), stretch=1)
         body_layout.addLayout(top_row)
 
         # Full-width policy recommendations below the columns
@@ -106,6 +107,47 @@ class Stage4ReportPanel(QWidget):
         # Causal chain widget — added to right column, populated via set_chain()
         self._chain_widget = CausalChainWidget()
         self._chain_widget.setMinimumHeight(320)
+
+    def _build_right_pane(self) -> QWidget:
+        container = QWidget()
+        cv = QVBoxLayout(container)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.setSpacing(8)
+
+        toggle = QHBoxLayout()
+        self._btn_outputs = QPushButton('Outputs')
+        self._btn_interact = QPushButton('Interact')
+        for b in (self._btn_outputs, self._btn_interact):
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
+            toggle.addWidget(b)
+        toggle.addStretch()
+        cv.addLayout(toggle)
+
+        self._right_stack = QStackedWidget()
+        outputs_page = QWidget()
+        outputs_page.setLayout(self._right)
+        self._right_stack.addWidget(outputs_page)        # index 0 = Outputs
+        if self._interact is not None:
+            self._right_stack.addWidget(self._interact)  # index 1 = Interact
+        cv.addWidget(self._right_stack, stretch=1)
+
+        self._btn_outputs.clicked.connect(lambda: self._set_right_pane(0))
+        self._btn_interact.clicked.connect(lambda: self._set_right_pane(1))
+        self._btn_interact.setVisible(self._interact is not None)
+        self._set_right_pane(0)
+        return container
+
+    def _set_right_pane(self, idx: int):
+        if idx == 1 and self._interact is None:
+            return
+        self._right_stack.setCurrentIndex(idx)
+        for b, on in ((self._btn_outputs, idx == 0), (self._btn_interact, idx == 1)):
+            b.setStyleSheet(
+                'QPushButton{border:none;border-radius:6px;padding:4px 12px;'
+                'font-family:Consolas,monospace;font-size:10px;'
+                + ('background:#1C1E26;color:#FFFFFF;' if on
+                   else 'background:transparent;color:#9EA3AE;') + '}'
+            )
 
     def set_sector_forecasts(self, gas=None, food=None, elec=None):
         """Render the gas/food/electricity next-month forecasts as a card."""
