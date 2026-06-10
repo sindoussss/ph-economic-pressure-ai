@@ -20,9 +20,13 @@ def test_run_transport_nowcast_wires_through(monkeypatch):
     }, index=idx)
     mom = pd.Series(0.5 * np.r_[0.0, np.diff(gas)] + rng.normal(0, 0.05, n), index=idx)
     monkeypatch.setattr(tn, 'load_transport_mom', lambda: mom)
-    res = tn.run_transport_nowcast(min_train=24, features=feats)
-    assert set(res) >= {'n', 'mom', 'driver_ablation', 'driver_edge'}
+    res = tn.run_transport_nowcast(min_train=24, features=feats, prelim_months=6)
+    assert set(res) >= {'n', 'mom', 'driver_ablation', 'driver_edge',
+                        'robust', 'driver_edge_robust'}
     assert res['n'] > 60
     assert 'verdict' in res['mom'] and 'verdict' in res['driver_ablation']
     assert isinstance(res['driver_edge'], bool)
+    assert isinstance(res['driver_edge_robust'], bool)
+    assert res['robust']['n'] < res['n']                 # trailing window dropped
+    assert 'driver_edge' in res['robust']
     assert 'panel' not in res['mom']
