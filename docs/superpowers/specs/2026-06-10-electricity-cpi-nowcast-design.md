@@ -119,10 +119,28 @@ Yahoo Brent+natgas+FX ─► build_electricity_features ─► data/electricity_
 6. Tests per §7; full suite green.
 7. Reproducible via refresh + `python -m ph_economic_ai.benchmark.run`.
 
-## 9. The contribution — to be filled from the real run
-- **Result:** on n = [n] months, Electricity MoM nowcast is [verdict] (best [m], skill [x], DM p [p]); driver-only edge full-sample = [bool]; **robust** (drop [k] preliminary months, n = [nr]) `driver_edge_robust` = [bool].
-- **Interpretation:** [if robust True] within-month energy prices significantly nowcast PH electricity inflation — a genuine edge despite regulatory smoothing. [if efficient/not robust] electricity inflation is efficient at this horizon and/or the apparent edge does not survive the preliminary-data check — consistent with the predictability map and the regulated, deferred pass-through of PH retail electricity.
-- **Honesty notes:** a *nowcast* (information timing); PH electricity is regulated/smoothed and Henry Hub gas is an imperfect proxy; gold is official PSA data; recent PSA prints are preliminary (the robustness window); the 2007-based overlap spans multiple regimes.
+## 9. The contribution — measured result (a robust positive)
+
+Run on the committed PSA gold + energy panel (`artifacts/electricity_nowcast_table.json`), **n = 151** backtest months (2007–2026).
+
+| Test | Verdict | best | skill vs best naive | DM p |
+|---|---|---|---|---|
+| Full nowcast (drivers + own-lag) | beats_best_naive | Ridge | +26.6% | 0.0005 |
+| Driver-only ablation, full (n = 151) | **beats_best_naive** | Ridge | **+28.3%** | **0.0011** |
+| Driver-only ablation, robust (drop 6 preliminary, n = 145) | **beats_best_naive** | Ridge | **+28.4%** | **0.0012** |
+
+**Sub-sample stability (additional robustness, beyond the trailing-window check):**
+
+| Window | driver_edge | skill | DM p |
+|---|---|---|---|
+| ≤ 2023-12 (n = 129) | True | +26.3% | 0.006 |
+| First half (~2007–2016, n = 63) | True | +29.9% | 0.020 |
+| Second half (~2016–2026, n = 64) | True | +28.7% | 0.035 |
+
+- **Result: a genuine, robust positive.** Within-month energy prices (Brent, natural gas, FX) **significantly nowcast PH electricity inflation** — Ridge beats the strongest naive baseline by ~28% (DM p ≈ 0.001). The edge is the **first driver edge in the audit that survives every stress test**: it holds after dropping the preliminary tail (`driver_edge_robust = True`), in *both* halves of the sample, and at earlier cutoffs — it is not period-specific and not a preliminary-data artifact.
+- **Why (the prior was wrong, honestly):** the design expected regulation to *smooth away* the within-month signal. In fact the Meralco generation charge is a **formulaic, near-deterministic pass-through of fuel costs**, observable within the month before the PSA print — so regulation makes electricity *more* nowcastable, not less. This is a legitimate information-timing nowcast, not market-beating.
+- **Place in the map:** electricity is the **second genuinely useful nowcast** (alongside headline MoM inflation) and the **only sector with a robustly-significant within-month *driver* edge** — contrasting cleanly with transport (a spurious edge, caught) and food (a clean null). The driver question now has a confirmed positive, a rejected false positive, and a confirmed null.
+- **Honesty notes:** a *nowcast* (information timing), not market-beating; Henry Hub `NG=F` is an imperfect proxy for PH (Malampaya/LNG) gas, yet the edge is strong and stable; gold is official PSA data (2018 mean = 100.0); recent PSA prints are preliminary (the trailing robustness window); the 2007-based overlap spans the GFC, 2014 oil crash, and COVID.
 
 ## 10. Sources / references
 - PSA OpenSTAT PX-Web: `DB/2M/PI/CPI/2018NEW/{0012M4ACP28,0012M4ACP22}.px`, commodity group `04.5.1 - Electricity`.
