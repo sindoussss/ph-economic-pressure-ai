@@ -20,6 +20,7 @@ REQUIRED_KEYS = (
     'mom_longsample',
     'transport_nowcast',
     'food_nowcast',
+    'electricity_nowcast',
 )
 
 _LIMITATIONS = [
@@ -33,7 +34,8 @@ def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
                  calibration, proxy, data_hash, ablation=None, selected_variant=None,
                  efficiency=None, passthrough=None, audit=None, nowcast=None,
                  nowcast_mom=None, mom_driver_ablation=None, mom_longsample=None,
-                 transport_nowcast=None, food_nowcast=None) -> dict:
+                 transport_nowcast=None, food_nowcast=None,
+                 electricity_nowcast=None) -> dict:
     conformal_widths = {str(r['nominal']): r['qhat'] for r in calibration}
     return {
         'generated_at': datetime.now(timezone.utc).isoformat(),
@@ -59,6 +61,7 @@ def build_report(date_range, n_months, model_metrics, baseline_metrics, skill,
         'mom_longsample': mom_longsample if mom_longsample is not None else {},
         'transport_nowcast': transport_nowcast if transport_nowcast is not None else {},
         'food_nowcast': food_nowcast if food_nowcast is not None else {},
+        'electricity_nowcast': electricity_nowcast if electricity_nowcast is not None else {},
         'limitations': _LIMITATIONS,
     }
 
