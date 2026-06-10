@@ -60,6 +60,15 @@ class Stage4ReportPanel(QWidget):
         self._bsp_banner = BSPAlertBanner()
         root.addWidget(self._bsp_banner)
 
+        # Persistent three-sector forecast card (populated via set_sector_forecasts)
+        self._sector_holder = QWidget()
+        self._sector_holder.setStyleSheet('background:#FFFFFF;border-bottom:1px solid #EAECF0;')
+        self._sector_holder_layout = QVBoxLayout(self._sector_holder)
+        self._sector_holder_layout.setContentsMargins(20, 8, 20, 8)
+        self._sector_holder_layout.setSpacing(2)
+        self._sector_holder.setVisible(False)
+        root.addWidget(self._sector_holder)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -97,6 +106,32 @@ class Stage4ReportPanel(QWidget):
         # Causal chain widget — added to right column, populated via set_chain()
         self._chain_widget = CausalChainWidget()
         self._chain_widget.setMinimumHeight(320)
+
+    def set_sector_forecasts(self, gas=None, food=None, elec=None):
+        """Render the gas/food/electricity next-month forecasts as a card."""
+        from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
+        try:
+            while self._sector_holder_layout.count():
+                it = self._sector_holder_layout.takeAt(0)
+                w = it.widget()
+                if w is not None:
+                    w.deleteLater()
+            title = QLabel('NEXT-MONTH SECTOR FORECAST')
+            title.setStyleSheet('font-size:10px;font-weight:700;letter-spacing:1px;'
+                                'color:#6B7280;')
+            self._sector_holder_layout.addWidget(title)
+            sub = QLabel('exploratory — not validated')
+            sub.setStyleSheet('font-size:9px;color:#9EA3AE;')
+            self._sector_holder_layout.addWidget(sub)
+            arrows = {'up': '▲', 'down': '▼', 'flat': '■', 'na': '·'}
+            colors = {'up': '#EF4444', 'down': '#16A34A', 'flat': '#6B7280', 'na': '#9EA3AE'}
+            for r in sector_forecast_rows(gas, food, elec):
+                lbl = QLabel(f"{r['label']}:  {arrows[r['direction']]}  {r['value_str']}")
+                lbl.setStyleSheet(f"font-size:12px;font-weight:600;color:{colors[r['direction']]};")
+                self._sector_holder_layout.addWidget(lbl)
+            self._sector_holder.setVisible(True)
+        except Exception:
+            pass
 
     def populate(self, responses: list, consensus: dict,
                  regressor, df, cv_rmse: float, scenario: dict):
