@@ -185,6 +185,9 @@ class SimMainWindow(QMainWindow):
         self._gas_verdict: str = ''
         self._food_verdict: str = ''
         self._elec_verdict: str = ''
+        self._gas_estimate = None
+        self._food_estimate = None
+        self._elec_estimate = None
         self._live_brief: LiveDataBrief | None = None
         self._last_scenario_obj = None   # Scenario dataclass saved for _on_brief_ready
         self._debates_started: bool = False
@@ -314,6 +317,9 @@ class SimMainWindow(QMainWindow):
         self._gas_verdict = ''
         self._food_verdict = ''
         self._elec_verdict = ''
+        self._gas_estimate = None
+        self._food_estimate = None
+        self._elec_estimate = None
         self._live_brief = None
 
         # Fetch live PH retail gas price (fast, sync OK)
@@ -457,10 +463,18 @@ class SimMainWindow(QMainWindow):
             self._stage3_swarm.connect_food_thread(self._food_thread)
             self._stage3_swarm.connect_elec_thread(self._elec_thread)
 
+    def _push_sector_forecasts(self):
+        try:
+            self._stage4.set_sector_forecasts(
+                self._gas_estimate, self._food_estimate, self._elec_estimate)
+        except Exception:
+            pass
+
     def _on_food_complete(self, responses):
         if responses and self._food_engine:
             c = self._food_engine.consensus()
             avg = c.get('weighted_avg')
+            self._food_estimate = avg
             conf = c.get('confidence_pct', 0)
             avg_str = f'{avg:+.2f}%' if avg is not None else 'N/A'
             self._food_verdict = (
@@ -481,12 +495,14 @@ class SimMainWindow(QMainWindow):
         else:
             self._food_verdict = '(Food sector debate unavailable.)'
         self._stage5.update_food_verdict(self._food_verdict)
+        self._push_sector_forecasts()
         self._run_synthesizer_if_ready()
 
     def _on_elec_complete(self, responses):
         if responses and self._elec_engine:
             c = self._elec_engine.consensus()
             avg = c.get('weighted_avg')
+            self._elec_estimate = avg
             conf = c.get('confidence_pct', 0)
             avg_str = f'+₱{avg:.4f}/kWh' if avg is not None else 'N/A'
             self._elec_verdict = (
@@ -505,6 +521,7 @@ class SimMainWindow(QMainWindow):
         else:
             self._elec_verdict = '(Electricity sector debate unavailable.)'
         self._stage5.update_elec_verdict(self._elec_verdict)
+        self._push_sector_forecasts()
         self._run_synthesizer_if_ready()
 
     def _on_simulation_complete(self, responses):
@@ -588,6 +605,8 @@ class SimMainWindow(QMainWindow):
             for agent_name, sc in scores.items():
                 self._store.update_trust(agent_name, internal_score=sc['overall'])
         self._gas_verdict = str(master_verdict)
+        self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
+        self._push_sector_forecasts()
         self._stage4.populate_swarm(
             master_verdict, self._regressor, self._df, self._cv_rmse,
             self._last_scenario,

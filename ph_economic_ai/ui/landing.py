@@ -431,7 +431,7 @@ class LandingPanel(QWidget):
         cl.setContentsMargins(60, 18, 60, 18)
         cl.setSpacing(10)
 
-        head = QLabel('RECENT WORK')
+        head = QLabel('RECENT FUEL FORECASTS')
         head.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
             f'color:{TEXT_3};letter-spacing:2px;'
