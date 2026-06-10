@@ -779,6 +779,14 @@ class LandingPanel(QWidget):
         return tile
 
     # ── External setters ─────────────────────────────────────────────────────
+    def refresh_recent(self) -> None:
+        """Re-read the store and repopulate the recent/latest forecasts.
+
+        Public hook so the main window can refresh once the food/electricity
+        sector debates finish (their estimates are written after the gas run is
+        saved, so the post-gas refresh would otherwise show them as '—')."""
+        self._refresh_recent_runs()
+
     def showEvent(self, event):
         super().showEvent(event)
         self._refresh_recent_runs()
