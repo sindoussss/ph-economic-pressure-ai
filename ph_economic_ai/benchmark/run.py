@@ -145,7 +145,7 @@ def main():
         _tm = transport_res['mom']
         print(f"Transport nowcast (n={transport_res['n']}): mom={_tm['verdict']} "
               f"best={_tm.get('best_method')} skill={_tm.get('best_skill_vs_naive')} "
-              f"DM p={_tm.get('dm_p')} | driver_edge={transport_res['driver_edge']}")
+              f"DM p={_tm.get('dm_p')} | driver_edge_robust={transport_res['driver_edge_robust']}")
     except FileNotFoundError:
         transport_res = {'verdict': 'not_run', 'reason': 'transport gold missing'}
         print('Transport nowcast: not_run (psa_transport_cpi_monthly.csv missing)')
