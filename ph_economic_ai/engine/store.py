@@ -65,6 +65,13 @@ class AgentTrustStore:
         ''')
         self._conn.commit()
 
+        # Sector estimates added after initial release — add to existing DBs.
+        existing = {r['name'] for r in cur.execute('PRAGMA table_info(runs)').fetchall()}
+        for col in ('food_estimate', 'electricity_estimate'):
+            if col not in existing:
+                cur.execute(f'ALTER TABLE runs ADD COLUMN {col} REAL')
+        self._conn.commit()
+
     # ── Run persistence ───────────────────────────────────────────────────────
 
     def save_run(self, scenario: dict, final_estimate: Optional[float],
@@ -84,6 +91,15 @@ class AgentTrustStore:
             self._conn.execute(
                 'UPDATE runs SET internal_quality=? WHERE run_id=?',
                 (internal_quality, run_id),
+            )
+            self._conn.commit()
+
+    def update_run_sectors(self, run_id: int, food_estimate: Optional[float],
+                           electricity_estimate: Optional[float]) -> None:
+        with self._lock:
+            self._conn.execute(
+                'UPDATE runs SET food_estimate=?, electricity_estimate=? WHERE run_id=?',
+                (food_estimate, electricity_estimate, run_id),
             )
             self._conn.commit()
 
