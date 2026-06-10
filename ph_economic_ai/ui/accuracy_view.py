@@ -105,6 +105,11 @@ class AccuracyView(QWidget):
                 fnl = QLabel('<b>Food-CPI nowcast (food commodities→inflation)</b><br>' + _fn)
                 fnl.setWordWrap(True)
                 col.addWidget(fnl)
+            _en = self.electricity_nowcast_summary()
+            if _en:
+                enl = QLabel('<b>Electricity-CPI nowcast (energy→inflation)</b><br>' + _en)
+                enl.setWordWrap(True)
+                col.addWidget(enl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -236,6 +241,23 @@ class AccuracyView(QWidget):
             caveat = ' (full-sample edge was a preliminary-data artifact)'
         return (f"Food-CPI nowcast (n={F.get('n')}): MoM {mom.get('verdict')} "
                 f"(best {mom.get('best_method')}, own-dynamics); "
+                f"{driver_txt} (driver_edge_robust={robust}){caveat}.")
+
+    def electricity_nowcast_summary(self) -> str:
+        if not self._report:
+            return ''
+        E = self._report.get('electricity_nowcast') or {}
+        if not E or E.get('verdict') == 'not_run':
+            return ''
+        mom = E.get('mom') or {}
+        robust = bool(E.get('driver_edge_robust'))
+        driver_txt = ('significant energy driver edge' if robust
+                      else 'no robust energy driver edge')
+        caveat = ''
+        if E.get('driver_edge') and not robust:
+            caveat = ' (full-sample edge was a preliminary-data artifact)'
+        return (f"Electricity-CPI nowcast (n={E.get('n')}): MoM {mom.get('verdict')} "
+                f"(best {mom.get('best_method')}); "
                 f"{driver_txt} (driver_edge_robust={robust}){caveat}.")
 
     def ablation_summary(self) -> str:
