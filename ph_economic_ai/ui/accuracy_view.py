@@ -100,6 +100,11 @@ class AccuracyView(QWidget):
                 tnl = QLabel('<b>Transport-CPI nowcast (fuel→inflation)</b><br>' + _tn)
                 tnl.setWordWrap(True)
                 col.addWidget(tnl)
+            _fn = self.food_nowcast_summary()
+            if _fn:
+                fnl = QLabel('<b>Food-CPI nowcast (food commodities→inflation)</b><br>' + _fn)
+                fnl.setWordWrap(True)
+                col.addWidget(fnl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -215,6 +220,23 @@ class AccuracyView(QWidget):
                       f"dropping them → not significant)")
         return (f"Transport-CPI nowcast (n={T.get('n')}): {verdict}; "
                 f"driver_edge_robust={robust}{caveat}.")
+
+    def food_nowcast_summary(self) -> str:
+        if not self._report:
+            return ''
+        F = self._report.get('food_nowcast') or {}
+        if not F or F.get('verdict') == 'not_run':
+            return ''
+        mom = F.get('mom') or {}
+        robust = bool(F.get('driver_edge_robust'))
+        driver_txt = ('significant food-commodity driver edge' if robust
+                      else 'no robust food-commodity driver edge')
+        caveat = ''
+        if F.get('driver_edge') and not robust:
+            caveat = ' (full-sample edge was a preliminary-data artifact)'
+        return (f"Food-CPI nowcast (n={F.get('n')}): MoM {mom.get('verdict')} "
+                f"(best {mom.get('best_method')}, own-dynamics); "
+                f"{driver_txt} (driver_edge_robust={robust}){caveat}.")
 
     def ablation_summary(self) -> str:
         if not self._report:
