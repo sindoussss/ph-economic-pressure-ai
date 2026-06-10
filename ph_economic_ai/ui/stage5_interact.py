@@ -99,21 +99,31 @@ class Stage5InteractPanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        h = QLabel('Stage 5 — Deep Interaction')
-        h.setStyleSheet('font-size:18px;font-weight:700;color:#1C1E26;padding:20px 24px 0 24px;')
-        root.addWidget(h)
+        self._title_label = QLabel('Stage 5 — Deep Interaction')
+        self._title_label.setStyleSheet(
+            'font-size:18px;font-weight:700;color:#1C1E26;padding:20px 24px 0 24px;')
+        root.addWidget(self._title_label)
 
-        tabs = QTabWidget()
-        tabs.setDocumentMode(True)
-        tabs.setStyleSheet(
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.setStyleSheet(
             'QTabBar::tab{padding:8px 16px;font-size:10px;font-weight:600;color:#9EA3AE;'
             'border:none;background:transparent;}'
             'QTabBar::tab:selected{color:#1C1E26;border-bottom:2px solid #1C1E26;}'
         )
-        tabs.addTab(self._build_adjust_tab(), 'Adjust & Re-run')
-        tabs.addTab(self._build_ask_tab(), 'Ask an Agent')
-        tabs.addTab(self._build_toggle_tab(), 'Toggle Sources')
-        root.addWidget(tabs, stretch=1)
+        # Ask-an-Agent first — it is the natural "Interact" content. (Tab labels
+        # avoid '&', which Qt would render as a mnemonic underline.)
+        self._tabs.addTab(self._build_ask_tab(), 'Ask an Agent')
+        self._tabs.addTab(self._build_adjust_tab(), 'Adjust inputs')
+        self._tabs.addTab(self._build_toggle_tab(), 'Toggle sources')
+        root.addWidget(self._tabs, stretch=1)
+
+    def set_embedded(self) -> None:
+        """Trim chrome when embedded in the Report workbench's Interact pane:
+        hide the standalone title (the 'Interact' toggle already labels it) and
+        open on the Ask-an-Agent chat."""
+        self._title_label.setVisible(False)
+        self._tabs.setCurrentIndex(0)
 
     def _build_adjust_tab(self) -> QWidget:
         w = QWidget()
@@ -132,17 +142,30 @@ class Stage5InteractPanel(QWidget):
             ('BSP rate %',      'bsp_rate',     6.5,    3.0, 10.0,  0.25),
             ('Demand index',    'demand_index', 72.0,  50.0, 100.0,  1.0),
         ]
+        _slider_css = (
+            'QSlider::groove:horizontal{height:4px;background:#E5E7EB;border-radius:2px;}'
+            'QSlider::sub-page:horizontal{background:#1C1E26;border-radius:2px;}'
+            'QSlider::handle:horizontal{background:#1C1E26;width:14px;height:14px;'
+            'margin:-5px 0;border-radius:7px;}'
+        )
         for label, key, default, mn, mx, step in configs:
             row = QHBoxLayout()
-            row.addWidget(QLabel(label))
+            name = QLabel(label)
+            name.setFixedWidth(120)
+            name.setStyleSheet('font-size:10px;font-weight:600;color:#374151;')
+            row.addWidget(name)
             slider = QSlider(Qt.Orientation.Horizontal)
             slider.setRange(int(mn / step), int(mx / step))
             slider.setValue(int(default / step))
+            slider.setMaximumWidth(280)
+            slider.setStyleSheet(_slider_css)
             val_lbl = QLabel(f'{default:.1f}')
-            val_lbl.setFixedWidth(40)
+            val_lbl.setFixedWidth(44)
+            val_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
             slider.valueChanged.connect(lambda v, lbl=val_lbl, s=step: lbl.setText(f'{v * s:.1f}'))
-            row.addWidget(slider, stretch=1)
+            row.addWidget(slider)
             row.addWidget(val_lbl)
+            row.addStretch()
             layout.addLayout(row)
             self._adjust_pills.append((key, slider, val_lbl, step, mn, mx))
 
