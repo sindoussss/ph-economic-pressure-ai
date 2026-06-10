@@ -175,3 +175,24 @@ def test_report_includes_transport_nowcast():
     )
     assert rep['transport_nowcast']['driver_edge'] is True
     assert 'transport_nowcast' in REQUIRED_KEYS
+
+
+def test_report_includes_food_nowcast():
+    rep = build_report(
+        date_range=('2000-11', '2025-05'), n_months=280,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 280},
+        data_hash='abc123',
+        food_nowcast={'n': 270, 'driver_edge': False, 'driver_edge_robust': False,
+                      'mom': {'verdict': 'no_better_than_naive'},
+                      'driver_ablation': {'verdict': 'no_better_than_naive',
+                                          'driver_edge': False},
+                      'robust': {'prelim_months_dropped': 6, 'n': 264,
+                                 'driver_edge': False,
+                                 'driver_ablation': {'verdict': 'no_better_than_naive'}}},
+    )
+    assert rep['food_nowcast']['n'] == 270
+    assert 'food_nowcast' in REQUIRED_KEYS
