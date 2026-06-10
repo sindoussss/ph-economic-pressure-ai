@@ -8,7 +8,7 @@
 
 ## Abstract
 
-Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, a seven-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk, reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. The single genuine positive is a **nowcast of month-on-month inflation**: using within-month observable oil, FX, and fuel data plus the previous print, an ARIMA model beats the strongest naive baseline by 16.2% (Diebold–Mariano p = 0.032, n = 61), a result that strengthens to 16.3% (p = 0.001, n = 143) on a longer 2007–2026 sample spanning the global financial crisis and COVID. A driver-only ablation shows this edge comes from inflation's own short-run dynamics, not a statistically significant contemporaneous-driver signal. The contribution is methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and that bounds its one positive finding rather than overstating it.
+Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, a seven-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk, reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. The single genuine positive is a **nowcast of month-on-month inflation**: using within-month observable oil, FX, and fuel data plus the previous print, an ARIMA model beats the strongest naive baseline by 16.2% (Diebold–Mariano p = 0.032, n = 61), a result that strengthens to 16.3% (p = 0.001, n = 143) on a longer 2007–2026 sample spanning the global financial crisis and COVID. A driver-only ablation shows this edge comes from inflation's own short-run dynamics, not a statistically significant contemporaneous-driver signal. A separate test of transport inflation illustrates the protocol working in reverse: an apparently significant fuel-driven nowcast (+14.8%, p = 0.021) proves to be an artifact of three preliminary data points and is rejected by the robustness check — the same discipline that confirms the one true positive also discards a false one. The contribution is methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and that bounds its one positive finding rather than overstating it.
 
 ---
 
@@ -187,7 +187,22 @@ Rebuilding features on the 2007–2026 window (n = 143, spanning the GFC, the 20
 
 The MoM win **holds and strengthens** (p tightens from 0.032 to 0.001) across ~2.3× the data and a far more heterogeneous regime mix — robust, not fragile. The driver edge remains directional (driver-only Ridge 0.374 vs RW 0.413, −9.5%) but never significant: the earlier underpowered signal resolves into an honest negative rather than a confirmation.
 
-### 5.5 The predictability map (synthesis)
+### 5.5 A spurious positive caught: the Transport-CPI nowcast
+
+If any series should yield a significant within-month *driver* edge, it is **Transport** CPI — mechanically driven by fuel, which is observable before the official release. Using the official PSA Transport-CPI series (OpenSTAT, by commodity group, 2018 = 100, 1994–present) as a fresh gold target and the same free fuel/FX predictors, the nowcast was re-run (n = 151 backtest months).
+
+On the **full sample**, the driver-only model looked like the sought-after positive: fuel-only Ridge beat the best naive baseline by **+14.8%** (DM p = 0.021). Taken at face value, this would license the headline "the fuel-driven component of inflation is nowcastable ahead of the official figure."
+
+A robustness re-test dissolved it. PSA's three most recent prints are **preliminary** and anomalous — Transport CPI 130 → 142 → 156 → 148 for early 2026 (i.e. +9.5%, +10.0%, −5.0% MoM), values the agency revises in later vintages. Dropping the trailing six preliminary months collapses the skill from +14.8% to **zero**:
+
+| Test | Verdict | skill vs best naive | DM p |
+|---|---|---|---|
+| Driver-only, full sample (n = 151) | beats_best_naive | +14.8% | 0.021 |
+| Driver-only, robust (drop 6 preliminary months, n = 145) | no_better_than_naive | 0.0 | — |
+
+The entire "edge" rested on roughly three unreliable observations. The **canonical verdict is therefore that Transport MoM inflation is also efficient** — no robust within-month fuel edge — consistent with the rest of the map. More importantly, this is a worked example of the audit doing its job: it caught a positive that a naive analysis would have published, traced it to preliminary real-time data, and reported the robust null. The robustness re-test (`driver_edge_robust`) is baked into the pipeline, so the check is permanent and reproducible.
+
+### 5.6 The predictability map (synthesis)
 
 | Target | Setup | Verdict |
 |---|---|---|
@@ -195,6 +210,7 @@ The MoM win **holds and strengthens** (p tightens from 0.032 to 0.001) across ~2
 | YoY inflation | nowcast (pre-release) | no better than naive |
 | **MoM inflation** | **nowcast (pre-release)** | **predictable — ARIMA +16%, robust (p = 0.001, n = 143)** |
 | MoM inflation | nowcast, driver-only | edge suggestive (−9 to −12%) but not significant |
+| Transport-CPI MoM | nowcast, driver-only | apparent +14.8% edge **not robust** (preliminary-data artifact) → efficient |
 
 ---
 
@@ -208,6 +224,8 @@ Finding FX and inflation efficient at one month reproduces Meese–Rogoff and At
 
 ### 6.3 Honesty as method
 Three design choices each prevented a specific overclaim: removing the fabricated 90% confidence (replaced by measured conformal coverage); requiring a beat over the *strongest* baseline (the hollow-win guard); and the driver-only ablation (which stopped "MoM is predictable" from silently becoming "the drivers predict inflation"). The longer-sample re-test then asked whether the one positive survived more and more varied data. This is the discipline that separates a credible finding from a dashboard number.
+
+The Transport-CPI nowcast (§5.5) is the sharpest illustration. A full-sample run produced an apparently significant fuel edge (+14.8%, p = 0.021) — precisely the bold "AI nowcasts fuel-driven inflation" headline one might want to claim. A real-time-data robustness check showed it rested on three preliminary, not-yet-revised PSA observations and vanished once they were removed. The same discipline that confirmed the one true positive (headline MoM) here *rejected* a false one. A method that only ever confirms is not doing robustness; a method that rejects its own most attractive result when the data do not support it is.
 
 ### 6.4 What the MoM result is and is not
 It is a robust, significant ability to nowcast month-on-month inflation slightly ahead of publication, driven by the series' own dynamics. It is *not* evidence that contemporaneous drivers significantly improve the nowcast, and *not* a claim to forecast levels months ahead. The honest interval, not a point estimate, is the deliverable.
@@ -224,7 +242,7 @@ Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88
 
 This thesis replaces the assertion "AI predicts the economy" with a measured map of what is and is not predictable in Philippine macro data. One-month forecasts of fuel, FX, and year-on-year inflation are informationally efficient; the lone genuine positive is a month-on-month inflation nowcast that beats the strongest naive baseline by ~16% and survives a 2.3× larger, regime-varied sample (DM p = 0.001), attributable to the series' own dynamics rather than a significant driver edge. The contribution is a reproducible, honestly-bounded audit protocol for a data-poor economy.
 
-**Future work.** (i) Confirm or upgrade the within-month driver edge with weekly resolution and true MOPS data, where more observations could resolve the currently-underpowered signal. (ii) Accumulate a live, hash-chained track record of matured nowcasts. (iii) Extend the audit to additional targets and horizons. (iv) A real-time DOE bulletin parser for daily/weekly fuel ground truth.
+**Future work.** (i) Confirm or upgrade the within-month driver edge with weekly resolution and true MOPS data, where more observations could resolve the currently-underpowered signal. (ii) Accumulate a live, hash-chained track record of matured nowcasts. (iii) Extend the audit to additional CPI components (e.g. food) using the same free PSA OpenSTAT commodity-group source, re-testing each against the preliminary-data robustness check that exposed the Transport result. (iv) Re-evaluate the Transport-CPI edge once the 2026 prints are finalized, since the present null is partly a consequence of using preliminary vintages. (v) A real-time DOE bulletin parser for daily/weekly fuel ground truth.
 
 ---
 
