@@ -2,7 +2,7 @@
 
 **Author:** Sindous
 **Draft:** 2026-06-10 · grounded in the frozen `ph_economic_ai/benchmark/artifacts/accuracy_report.json` and companion tables.
-**Status:** Working draft for review. `[expand]` marks places needing the author's institutional/contextual detail; all empirical values are taken verbatim from committed artifacts.
+**Status:** Working draft for review. All empirical values are taken verbatim from committed artifacts; contextual figures in §1.1 (the 2022–2025 macro episode) are from general knowledge and flagged for verification against PSA/BSP sources.
 
 ---
 
@@ -15,7 +15,11 @@ Claims that machine learning or multi-agent AI systems can "predict the economy"
 ## 1. Introduction
 
 ### 1.1 Motivation
-Fuel and food prices and the inflation they feed dominate Philippine household budgets and monetary-policy debate. Weekly fuel price changes are front-page news; the monthly inflation print from the Philippine Statistics Authority (PSA) moves expectations and frames the central bank's target. A credible ability to anticipate next month's fuel price or inflation rate would be valuable to households, firms, and policymakers. `[expand: local policy context — excise schedule, OPSF history, BSP target band.]`
+Fuel and food prices, and the inflation they feed, dominate Philippine household budgets and monetary-policy debate — never more visibly than during the 2022–2025 period that motivates this study. The Russian invasion of Ukraine in February 2022 drove world crude and refined-product prices to multi-year highs, and because Philippine pump prices have been market-determined since the Downstream Oil Industry Deregulation Act of 1998 (Republic Act 8479) — adjusted on a near-weekly cycle that tracks Mean of Platts Singapore quotations — the shock passed quickly to the pump, lifting gasoline and diesel to record levels by mid-2022 and prompting targeted fuel subsidies for the transport sector (e.g. the *Pantawid Pasada* programme). Excise taxes on petroleum products, raised in tranches under the 2018 TRAIN Law (Republic Act 10963), kept retail prices structurally elevated; proposals to suspend them during the 2022 spike were debated but not enacted.
+
+The pass-through to consumer prices was rapid. Headline CPI inflation climbed through 2022 to a fourteen-year high of roughly 8.7% year-on-year in January 2023 — well above the Bangko Sentral ng Pilipinas (BSP) target band of 2–4% — with fuel-intensive components, transport in particular, among the largest contributors. The BSP responded by raising its policy rate from 2.0% to 6.5% between mid-2022 and late 2023, after which inflation eased back toward the upper end of target through 2024–2025. Throughout, the monthly inflation print released by the Philippine Statistics Authority (PSA) was a closely watched signal that moved expectations and framed each BSP decision.
+
+In that environment, a credible ability to anticipate next month's fuel price or inflation rate — even by the short interval between the close of within-month data and the official PSA release — would be valuable to households, firms, and the central bank. This is the practical question the thesis makes precise and tests. *(The figures cited here — the ≈8.7% January-2023 peak, the 2–4% target band, and the 2.0%→6.5% policy-rate path — are from general knowledge of the 2022–2025 episode and should be verified against PSA and BSP releases before submission.)*
 
 ### 1.2 The gap
 A wave of applications — including multi-agent "swarm" and large-language-model systems — claim to forecast prices or "the economy," but almost none report a like-for-like comparison against the simplest defensible benchmark: assuming next month looks like this month. Without that comparison, an impressive-looking forecast says nothing. The prior question is therefore not "how good is the model?" but "is this series forecastable at all, relative to naive persistence — and how would anyone know?"
