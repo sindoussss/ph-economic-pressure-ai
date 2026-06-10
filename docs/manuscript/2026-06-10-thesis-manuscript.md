@@ -8,7 +8,7 @@
 
 ## Abstract
 
-Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, a seven-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk, reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. The single genuine positive is a **nowcast of month-on-month inflation**: using within-month observable oil, FX, and fuel data plus the previous print, an ARIMA model beats the strongest naive baseline by 16.2% (Diebold–Mariano p = 0.032, n = 61), a result that strengthens to 16.3% (p = 0.001, n = 143) on a longer 2007–2026 sample spanning the global financial crisis and COVID. A driver-only ablation shows this edge comes from inflation's own short-run dynamics, not a statistically significant contemporaneous-driver signal. Component-level tests bracket the driver question from both sides: a transport-inflation nowcast shows an apparently significant fuel-driven edge (+14.8%, p = 0.021) that proves to be an artifact of three preliminary data points and is rejected by the robustness check, while a food-inflation nowcast yields a clean null on its commodity drivers yet independently reproduces the own-dynamics positive (ARIMA +16%, p = 0.005). The same discipline that confirms the true positive discards a false one and confirms a null — convergent evidence that the contemporaneous driver channel adds no robust edge for any component. The contribution is methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and that bounds its one positive finding rather than overstating it.
+Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, a seven-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk, reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. The single genuine positive is a **nowcast of month-on-month inflation**: using within-month observable oil, FX, and fuel data plus the previous print, an ARIMA model beats the strongest naive baseline by 16.2% (Diebold–Mariano p = 0.032, n = 61), a result that strengthens to 16.3% (p = 0.001, n = 143) on a longer 2007–2026 sample spanning the global financial crisis and COVID. A driver-only ablation shows this edge comes from inflation's own short-run dynamics, not a statistically significant contemporaneous-driver signal. Component-level tests then probe the within-month *driver* channel from three directions. A transport nowcast shows an apparently significant fuel edge (+14.8%, p = 0.021) that the robustness check exposes as an artifact of three preliminary data points and rejects. A food nowcast yields a clean, stable null on its commodity drivers (while independently reproducing the own-dynamics positive, ARIMA +16%, p = 0.005). An electricity nowcast yields a **robustly significant driver edge** (Ridge +28%, DM p ≈ 0.001, stable across both sample halves and earlier cutoffs) — because the regulated Meralco generation charge is a formulaic, within-month-observable fuel pass-through. The same protocol thus *rejects* a false positive, *confirms* a null, and *confirms* a true positive: the within-month driver channel is exploitable precisely where the pass-through is mechanical (electricity), and not where prices are locally determined (food) or the apparent signal is fragile (transport). The contribution is methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and that bounds its one positive finding rather than overstating it.
 
 ---
 
@@ -222,19 +222,33 @@ Two results emerge, and they sharpen the central finding rather than extend it:
 
 First, **food MoM inflation is predictable** — ARIMA beats the strongest naive baseline by ~16% (DM p = 0.0046) — but, exactly as for headline inflation, the gain comes from the series' **own short-run dynamics**, not from the contemporaneous drivers. This is a *second, independent confirmation* of the own-dynamics nowcast result.
 
-Second, and in instructive contrast to Transport, the food-commodity **driver edge is a clean null**: dropping the own-lag, the global agri/oil/FX predictors do not significantly beat naive (Ridge 0.727 vs random-walk 0.790, −8%, not significant), and the verdict is **stable** — `driver_edge_robust = False` at both n = 151 and n = 145. Where Transport produced a spurious full-sample edge that the robustness check had to dissolve, Food produces no edge to begin with. Global commodity prices simply carry no robust within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). The two components thus bracket the driver question from both sides — a false positive caught (Transport) and a true null confirmed (Food) — and converge on the same conclusion.
+Second, and in instructive contrast to Transport, the food-commodity **driver edge is a clean null**: dropping the own-lag, the global agri/oil/FX predictors do not significantly beat naive (Ridge 0.727 vs random-walk 0.790, −8%, not significant), and the verdict is **stable** — `driver_edge_robust = False` at both n = 151 and n = 145. Where Transport produced a spurious full-sample edge that the robustness check had to dissolve, Food produces no edge to begin with. Global commodity prices simply carry no robust within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). Transport and Food bracket the driver question from two sides — a false positive caught and a true null confirmed — and Electricity (§5.7) supplies the third: a *confirmed* positive.
 
-### 5.7 The predictability map (synthesis)
+### 5.7 Electricity: a robust within-month driver edge
+
+Electricity completes the driver question, and overturns the design's prior expectation. The hypothesis was that retail electricity, being regulated and smoothed, would show *no* within-month signal. Using the PSA `04.5.1 - Electricity` gold and free energy predictors (Brent, natural gas, FX), the nowcast (n = 151) instead yields the audit's first robustly-significant driver edge:
+
+| Test | Verdict | best | skill vs best naive | DM p |
+|---|---|---|---|---|
+| Full nowcast (drivers + own-lag) | beats_best_naive | Ridge | +26.6% | 0.0005 |
+| Driver-only ablation, full (n = 151) | **beats_best_naive** | Ridge | **+28.3%** | **0.0011** |
+| Driver-only, robust (drop 6 preliminary, n = 145) | **beats_best_naive** | Ridge | **+28.4%** | **0.0012** |
+
+Unlike Transport, the edge is no artifact: it survives the trailing-preliminary check (`driver_edge_robust = True`) and is stable across sub-samples — ≤2023-12 (+26%, p = 0.006), the first half 2007–2016 (+30%, p = 0.020), and the second half 2016–2026 (+29%, p = 0.035). It is not period-specific.
+
+The mechanism reconciles the surprise. The Meralco generation charge is a **formulaic, near-deterministic pass-through of fuel costs** (gas and oil) that is observable within the month and published before the PSA CPI print. Regulation here does not smooth the signal away — it *codifies* it, making electricity the most nowcastable component of all. This is an information-timing edge (the rate change is largely already determined from observable fuel), not a claim to beat a market. Electricity is therefore the second genuinely useful nowcast in this thesis, alongside headline MoM inflation, and the only one driven by *contemporaneous observables* rather than own-dynamics.
+
+### 5.8 The predictability map (synthesis)
 
 | Target | Setup | Verdict |
 |---|---|---|
 | Fuel / FX / YoY inflation | 1-month forecast | efficient (no method beats RW) |
 | YoY inflation | nowcast (pre-release) | no better than naive |
-| **MoM inflation (headline)** | **nowcast (pre-release)** | **predictable — ARIMA +16%, robust (p = 0.001, n = 143)** |
-| MoM inflation (headline) | nowcast, driver-only | edge suggestive (−9 to −12%) but not significant |
-| **MoM inflation (food)** | **nowcast (pre-release)** | **predictable — ARIMA +16% (p = 0.005), own-dynamics** |
-| Food-CPI MoM | nowcast, driver-only | clean null — `driver_edge_robust = False` (n = 151 and 145) |
+| **MoM inflation (headline)** | **nowcast (pre-release)** | **predictable — ARIMA +16%, robust (p = 0.001, n = 143)**; own-dynamics |
+| **MoM inflation (food)** | **nowcast (pre-release)** | **predictable — ARIMA +16% (p = 0.005)**; own-dynamics |
+| Food-CPI MoM | nowcast, driver-only | clean null — `driver_edge_robust = False` |
 | Transport-CPI MoM | nowcast, driver-only | apparent +14.8% edge **not robust** (preliminary-data artifact) → efficient |
+| **Electricity-CPI MoM** | **nowcast, driver-only** | **robust driver edge — Ridge +28%, p ≈ 0.001, `driver_edge_robust = True`** |
 
 ---
 
@@ -251,13 +265,13 @@ Three design choices each prevented a specific overclaim: removing the fabricate
 
 The Transport-CPI nowcast (§5.5) is the sharpest illustration. A full-sample run produced an apparently significant fuel edge (+14.8%, p = 0.021) — precisely the bold "AI nowcasts fuel-driven inflation" headline one might want to claim. A real-time-data robustness check showed it rested on three preliminary, not-yet-revised PSA observations and vanished once they were removed. The same discipline that confirmed the one true positive (headline MoM) here *rejected* a false one. A method that only ever confirms is not doing robustness; a method that rejects its own most attractive result when the data do not support it is.
 
-The Food-CPI nowcast (§5.6) completes the picture from the other direction. There the driver edge is a *clean* null — not significant at either window, with no spurious full-sample result to explain away. Together the two components bracket the driver question: a false positive caught (Transport) and a true null confirmed (Food), converging on the same conclusion — the contemporaneous within-month driver channel adds no robust predictive power for any tested component, while the own-dynamics MoM result reproduces independently for both headline and food inflation. Convergent evidence from a confirmed positive, a rejected false positive, and a clean null is stronger than any single test.
+The Food-CPI nowcast (§5.6) and the Electricity-CPI nowcast (§5.7) complete the picture from the remaining two directions. Food's driver edge is a *clean* null — not significant at either window, with no spurious result to explain away. Electricity's, by contrast, is a *robust* positive that survives every check the same protocol applied to Transport. So the three components answer the driver question from all three sides at once: a **rejected false positive** (Transport), a **confirmed null** (Food), and a **confirmed true positive** (Electricity). The lesson is not that drivers never help — it is that the within-month driver channel is exploitable *exactly where the pass-through is mechanical and observable*: electricity's regulated generation charge is a formulaic fuel pass-through, whereas food is locally determined and transport's apparent edge was a fragile data artifact. A protocol that can produce, and correctly distinguish, all three outcomes — rather than only ever confirming — is what earns trust in the positives it reports. (The own-dynamics MoM result, meanwhile, reproduces independently for both headline and food inflation, a separate and equally robust finding.)
 
 ### 6.4 What the MoM result is and is not
-It is a robust, significant ability to nowcast month-on-month inflation slightly ahead of publication, driven by the series' own dynamics. It is *not* evidence that contemporaneous drivers significantly improve the nowcast, and *not* a claim to forecast levels months ahead. The honest interval, not a point estimate, is the deliverable.
+It is a robust, significant ability to nowcast month-on-month inflation slightly ahead of publication, driven by the series' *own dynamics*. For **headline and food** inflation it is *not* evidence that contemporaneous drivers significantly improve the nowcast (electricity is the exception — §5.7), and it is *not* a claim to forecast levels months ahead. The honest interval, not a point estimate, is the deliverable.
 
 ### 6.5 Practical relevance
-For fuel/FX/YoY inflation, the defensible product is a calibrated interval around the naive forecast — and the honest statement that no model beats it. For MoM inflation, a pre-release nowcast with its interval is genuinely useful. Effort is best spent where predictability exists.
+For fuel/FX/YoY inflation, the defensible product is a calibrated interval around the naive forecast — and the honest statement that no model beats it. Two pre-release nowcasts are genuinely useful: **headline MoM inflation** (own-dynamics) and, most usefully, **electricity inflation**, where observable fuel prices nowcast the regulated rate change with a robust ~28% gain — an actionable, mechanism-backed signal a household or analyst could use ahead of the official figure. Effort is best spent where predictability exists, and the audit says precisely where that is.
 
 ### 6.6 Limitations
 Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88/L); modest samples (n = 38–143); conformal coverage that is approximate at small n (and here conservative); and a CPI series via IMF/DBnomics rather than the PSA microdata. The application's LLM/agent "swarm" is an interface and explanation layer, not a validated predictor — its agent-agreement numbers are labelled as such, distinct from the calibrated intervals.
@@ -266,9 +280,9 @@ Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88
 
 ## 7. Conclusion and Future Work
 
-This thesis replaces the assertion "AI predicts the economy" with a measured map of what is and is not predictable in Philippine macro data. One-month forecasts of fuel, FX, and year-on-year inflation are informationally efficient; the lone genuine positive is a month-on-month inflation nowcast that beats the strongest naive baseline by ~16% and survives a 2.3× larger, regime-varied sample (DM p = 0.001), attributable to the series' own dynamics rather than a significant driver edge. The contribution is a reproducible, honestly-bounded audit protocol for a data-poor economy.
+This thesis replaces the assertion "AI predicts the economy" with a measured map of what is and is not predictable in Philippine macro data. One-month forecasts of fuel, FX, and year-on-year inflation are informationally efficient. Two genuine nowcast positives emerge: **month-on-month inflation** (headline and food), which beats the strongest naive baseline by ~16% via the series' *own short-run dynamics* (headline robust to DM p = 0.001 over a 2.3× larger, regime-varied sample); and **electricity inflation**, the one component where a *within-month driver edge* is robustly significant (~28%, DM p ≈ 0.001, stable across sub-samples), because its regulated generation charge is a formulaic, observable fuel pass-through. The within-month driver question is thereby answered from all three sides — a rejected false positive (transport), a confirmed null (food), and a confirmed true positive (electricity). The contribution is a reproducible, honestly-bounded audit protocol for a data-poor economy that can produce, and correctly distinguish, all three outcomes.
 
-**Future work.** (i) Confirm or upgrade the within-month driver edge with weekly resolution and true MOPS data, where more observations could resolve the currently-underpowered signal. (ii) Accumulate a live, hash-chained track record of matured nowcasts. (iii) Extend the audit to the remaining CPI components (housing, utilities, services) via the same free PSA OpenSTAT commodity-group source and robustness check — the Transport and Food components are done. (iv) Re-evaluate the Transport-CPI edge once the 2026 prints are finalized, since that null is partly a consequence of using preliminary vintages. (v) A real-time DOE bulletin parser for daily/weekly fuel ground truth.
+**Future work.** (i) Productise the two useful nowcasts — especially the electricity driver-edge signal — with live, dated, hash-chained track records of matured predictions. (ii) Sharpen the electricity result with true PH gas/coal generation-fuel series in place of the Henry Hub `NG=F` proxy, and probe the lead–lag structure of the generation-charge pass-through. (iii) Extend the audit to the remaining CPI components (housing, water, services) via the same free PSA OpenSTAT commodity-group source and robustness check — fuel, transport, food, and electricity are done. (iv) Confirm the headline within-month driver edge at weekly resolution with true MOPS data. (v) Re-evaluate the Transport-CPI null once the 2026 prints are finalised, since it is partly a consequence of preliminary vintages.
 
 ---
 
@@ -398,6 +412,21 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 | Ridge | 0.7020 | 0.7274 | 0.7029 |
 | HGB | 0.7386 | 0.7878 | 0.7554 |
 | **Verdict** | beats_best_naive (ARIMA +16.0%, DM p = 0.0046) | no_better_than_naive | no_better_than_naive (`driver_edge_robust` = False) |
+
+**B.8 Electricity-CPI MoM nowcast** (n = 151; best naive = random_walk). The driver-only edge is robustly significant at both windows.
+
+| Method | Full nowcast RMSE | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
+|---|---|---|---|
+| random_walk | 3.3399 | 3.3399 | 3.3957 |
+| drift | 3.3746 | 3.3746 | 3.4311 |
+| seasonal_naive | 3.5010 | 3.5010 | 3.4681 |
+| ARIMA | 2.4925 | — | — |
+| ETS | 2.5308 | — | — |
+| **Ridge** | **2.4520** | **2.3936** | **2.4317** |
+| HGB | 2.9348 | 2.8522 | 2.8944 |
+| **Verdict** | beats_best_naive (Ridge +26.6%, DM p = 0.0005) | beats_best_naive (+28.3%, p = 0.0011) | beats_best_naive (+28.4%, p = 0.0012; `driver_edge_robust` = True) |
+
+*Sub-sample stability (driver-only): ≤2023-12 +26.3% (p = 0.006); first half +29.9% (p = 0.020); second half +28.7% (p = 0.035) — the edge is not period-specific.*
 
 ### Appendix C — Calibration and pass-through
 
