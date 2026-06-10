@@ -650,6 +650,13 @@ class SimMainWindow(QMainWindow):
         """Launch Economy Synthesizer + Causal Chain once all three sector verdicts are in."""
         if not self._gas_verdict or not self._food_verdict or not self._elec_verdict:
             return
+        # All three sectors are in (food/electricity estimates now written to the
+        # store) — refresh the landing so its latest-forecast card shows them
+        # (the post-gas refresh fired before these debates had even started).
+        try:
+            self._landing.refresh_recent()
+        except Exception:
+            pass
         self._synth_thread = SynthesizerThread(
             gas_verdict=self._gas_verdict,
             food_verdict=self._food_verdict,
