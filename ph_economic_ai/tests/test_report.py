@@ -196,3 +196,24 @@ def test_report_includes_food_nowcast():
     )
     assert rep['food_nowcast']['n'] == 270
     assert 'food_nowcast' in REQUIRED_KEYS
+
+
+def test_report_includes_electricity_nowcast():
+    rep = build_report(
+        date_range=('2007-08', '2025-05'), n_months=200,
+        model_metrics={'mae': 1.2, 'rmse': 1.7, 'mape': 2.5, 'mase': 0.9},
+        baseline_metrics={'random_walk': {'rmse': 1.9}},
+        skill={'vs_random_walk': -0.01},
+        calibration=[{'nominal': 0.9, 'qhat': 2.8, 'measured': 0.91}],
+        proxy={'pearson_r': 0.97, 'bias_mean': 0.4, 'mae': 1.1, 'n': 200},
+        data_hash='abc123',
+        electricity_nowcast={'n': 170, 'driver_edge': False, 'driver_edge_robust': False,
+                             'mom': {'verdict': 'no_better_than_naive'},
+                             'driver_ablation': {'verdict': 'no_better_than_naive',
+                                                 'driver_edge': False},
+                             'robust': {'prelim_months_dropped': 6, 'n': 164,
+                                        'driver_edge': False,
+                                        'driver_ablation': {'verdict': 'no_better_than_naive'}}},
+    )
+    assert rep['electricity_nowcast']['n'] == 170
+    assert 'electricity_nowcast' in REQUIRED_KEYS
