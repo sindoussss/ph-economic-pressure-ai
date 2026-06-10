@@ -95,6 +95,11 @@ class AccuracyView(QWidget):
                 lsl = QLabel('<b>MoM longer-sample confirmation</b><br>' + _ls)
                 lsl.setWordWrap(True)
                 col.addWidget(lsl)
+            _tn = self.transport_nowcast_summary()
+            if _tn:
+                tnl = QLabel('<b>Transport-CPI nowcast (fuel→inflation)</b><br>' + _tn)
+                tnl.setWordWrap(True)
+                col.addWidget(tnl)
             col.addWidget(self._limitations_label())
 
         col.addStretch(1)
@@ -192,6 +197,24 @@ class AccuracyView(QWidget):
         return (f"Longer sample (n={L.get('n_long')}): MoM {mom.get('verdict')} "
                 f"(best {mom.get('best_method')}, skill {mom.get('best_skill_vs_naive')}, "
                 f"DM p={mom.get('dm_p')}); driver_edge={abl.get('driver_edge')}.")
+
+    def transport_nowcast_summary(self) -> str:
+        if not self._report:
+            return ''
+        T = self._report.get('transport_nowcast') or {}
+        if not T or T.get('verdict') == 'not_run':
+            return ''
+        robust = bool(T.get('driver_edge_robust'))
+        rob = T.get('robust') or {}
+        verdict = ('robust fuel driver edge — significant' if robust
+                   else 'efficient — no robust fuel driver edge')
+        caveat = ''
+        if T.get('driver_edge') and not robust:
+            caveat = (f" (full-sample driver_edge=True is an artifact of "
+                      f"{rob.get('prelim_months_dropped')} preliminary recent months; "
+                      f"dropping them → not significant)")
+        return (f"Transport-CPI nowcast (n={T.get('n')}): {verdict}; "
+                f"driver_edge_robust={robust}{caveat}.")
 
     def ablation_summary(self) -> str:
         if not self._report:

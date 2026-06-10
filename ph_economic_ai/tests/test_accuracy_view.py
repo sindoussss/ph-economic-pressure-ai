@@ -51,10 +51,25 @@ def _report(tmp_path):
                                    'best_skill_vs_naive': 0.16, 'dm_p': 0.001},
                            'driver_ablation': {'verdict': 'no_better_than_naive',
                                                'driver_edge': False}},
+        'transport_nowcast': {'n': 151, 'driver_edge': True, 'driver_edge_robust': False,
+                              'mom': {'verdict': 'no_better_than_naive'},
+                              'driver_ablation': {'verdict': 'beats_best_naive',
+                                                  'driver_edge': True},
+                              'robust': {'prelim_months_dropped': 6, 'n': 145,
+                                         'driver_edge': False,
+                                         'driver_ablation': {'verdict': 'no_better_than_naive'}}},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
     return p
+
+
+def test_view_shows_transport_nowcast_robust(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.transport_nowcast_summary()
+    assert '151' in s
+    assert 'driver_edge_robust=False' in s
+    assert 'artifact' in s.lower()          # the full-sample True is flagged
 
 
 def test_view_builds_and_shows_headline(tmp_path):
