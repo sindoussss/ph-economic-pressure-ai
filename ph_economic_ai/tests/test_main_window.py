@@ -41,7 +41,9 @@ def test_on_run_requested_accepts_4_args(window):
     # Should not raise with swarm_mode=False
     from ph_economic_ai.engine.debate import DEFAULT_AGENTS
     window._on_run_requested(scenario, list(DEFAULT_AGENTS), False, 4)
-    assert window._stack.currentIndex() == 3  # Economy Overview at 0 shifted simulation to 3
+    # Running a simulation navigates to the Simulation page. Per the current
+    # nav order (Home=0, Overview=1, Simulation=2, ...), that is stack index 2.
+    assert window._stack.currentIndex() == 2
 
 
 def test_stage5_has_set_swarm_context(window):
