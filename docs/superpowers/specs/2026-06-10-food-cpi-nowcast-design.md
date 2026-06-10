@@ -122,10 +122,20 @@ Yahoo agri+oil+FX ─► build_food_features ─► data/food_features_monthly.c
 6. Tests per §7; transport gold unchanged after the refactor.
 7. Reproducible via refresh + `python -m ph_economic_ai.benchmark.run`.
 
-## 9. The contribution — to be filled from the real run
-- **Result:** on n = [n] months, Food MoM nowcast is [verdict] (best [m], skill [x], DM p [p]); driver-only edge full-sample = [bool] ([skill]/p [p]); **robust** (drop [k] preliminary months, n = [nr]) `driver_edge_robust` = [bool].
-- **Interpretation:** [if robust True] global food-commodity prices significantly nowcast PH food inflation ahead of the official figure — a genuine within-month edge. [if efficient/not robust] PH food inflation is efficient at this horizon and/or the apparent edge does not survive the preliminary-data check — consistent with the predictability map and the strongly-local nature of PH food prices.
-- **Honesty notes:** a *nowcast* (information timing); global grains are an imperfect proxy for local PH food prices; gold is official PSA data faithfully loaded; recent PSA prints are preliminary (the robustness window); 1994/2000-based history spans multiple regimes.
+## 9. The contribution — measured result
+
+Run on the committed PSA Food gold + agri-futures panel (`artifacts/food_nowcast_table.json`), **n = 151** backtest months (2007–2026 overlap).
+
+| Test | Verdict | best | skill vs best naive | DM p |
+|---|---|---|---|---|
+| Full nowcast (drivers + own-lag) | **beats_best_naive** | ARIMA | **+16.0%** | **0.0046** |
+| Driver-only ablation, full sample (n=151) | no_better_than_naive | random_walk | 0.0 (Ridge −8%, n.s.) | — |
+| Driver-only ablation, robust (drop 6 prelim, n=145) | no_better_than_naive | random_walk | 0.0 | — |
+
+- **A second own-dynamics positive.** Food MoM inflation **is predictable** — ARIMA beats the best naive baseline by ~16% (DM p = 0.0046) — but, exactly as for headline MoM, the win comes from the series' **own short-run dynamics**, not the contemporaneous drivers.
+- **The food-commodity driver edge is null — and cleanly so.** Dropping the own-lag, the global agri/oil/FX predictors do **not** significantly beat naive (driver-only Ridge 0.727 vs random-walk 0.790, −8%, not DM-significant), and the verdict is **stable**: `driver_edge_robust = False` at both n = 151 and n = 145. Unlike the Transport result, there is no spurious full-sample edge to dissolve — global food commodities simply carry no robust within-month signal for PH food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice).
+- **Contribution:** a clean, robust null on the driver channel plus a second confirmation of the own-dynamics MoM result — sharpening the central finding (MoM inflation is predictable via its own dynamics; contemporaneous drivers add no robust edge for any tested component).
+- **Honesty notes:** a *nowcast* (information timing); global grains are an imperfect proxy for local PH food prices; gold is official PSA data faithfully loaded (2018 mean = 100.0); recent PSA prints are preliminary (the robustness window); the 2007-based overlap (set by Brent history) spans the GFC, 2014 oil crash, and COVID.
 
 ## 10. Sources / references
 - PSA OpenSTAT PX-Web: `DB/2M/PI/CPI/2018NEW/{0012M4ACP28,0012M4ACP22}.px`, commodity group `01 - FOOD AND NON-ALCOHOLIC BEVERAGES`.
