@@ -289,11 +289,104 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 - Committed artifacts: `accuracy_report.json`, `ablation_table.json`, `audit_table.json`, `nowcast_table.json`, `nowcast_mom_table.json`, `mom_driver_ablation_table.json`, `mom_longsample_table.json`, `backtest_predictions.csv`, `figures/*.png`.
 
 ### Appendix B — Full panels
-The seven-method efficiency panel (§5.1), the MoM nowcast panel (§5.3), and the audit table (§5.1) are reproduced verbatim from the artifacts above. `[expand: paste full JSON-derived tables as formatted appendix tables.]`
+All values are reproduced verbatim from the committed `accuracy_report.json` (regenerate with `python -m ph_economic_ai.benchmark.run`). DM p-values are vs the random-walk baseline (HLN-corrected); skill = 1 − RMSE/RMSE_baseline.
+
+**B.1 Fuel one-month forecast — seven-method efficiency panel** (RON95, n = 52). Skill and DM p are vs random walk.
+
+| Method | RMSE | MAE | Skill vs RW | DM p vs RW |
+|---|---|---|---|---|
+| random_walk | 4.0685 | 3.0762 | 0.0000 | — |
+| drift | 4.1101 | 3.1114 | −0.0102 | 0.5043 |
+| seasonal_naive | 11.4971 | 8.8848 | −1.8259 | 0.0001 (worse) |
+| ARIMA(1,1,1) | 4.3834 | 3.2829 | −0.0774 | 0.0368 (worse) |
+| ETS | 4.1828 | 3.1603 | −0.0281 | 0.2753 |
+| Ridge | 4.1046 | 3.1473 | −0.0089 | 0.8813 |
+| HGB | 4.0991 | 3.0029 | −0.0075 | 0.9209 |
+
+*No method significantly beats the random walk; the ML methods (Ridge, HGB) are statistically indistinguishable from it (DM p ≈ 0.88–0.92), while ARIMA and seasonal-naive are significantly worse.*
+
+**B.2 Predictability audit — one-month forecast verdicts.**
+
+| Target | n | Best method | Best skill | Verdict |
+|---|---|---|---|---|
+| Fuel (RON95) | 52 | random_walk | 0.0 | efficient |
+| USD/PHP | 38 | random_walk | 0.0 | efficient |
+| Inflation (YoY) | 59 | random_walk | 0.0 | efficient |
+
+**B.3 Headline MoM inflation nowcast — panel RMSE** (best naive = random_walk).
+
+| Method | RMSE (n = 61) | RMSE (long, n = 143) |
+|---|---|---|
+| random_walk | 0.4532 | 0.4130 |
+| drift | 0.4578 | 0.4159 |
+| seasonal_naive | 0.5343 | 0.4761 |
+| **ARIMA** | **0.3799** | **0.3458** |
+| ETS | 0.4135 | 0.3735 |
+| Ridge | 0.3980 | 0.3604 |
+| HGB | 0.4574 | 0.4297 |
+| **Verdict** | beats_best_naive (+16.2%, DM p = 0.032) | beats_best_naive (+16.3%, DM p = 0.001) |
+
+**B.4 Headline MoM driver-only ablation** (own-lag dropped; candidates = Ridge, HGB).
+
+| Method | RMSE (n = 61) | RMSE (long, n = 143) |
+|---|---|---|
+| random_walk | 0.4532 | 0.4130 |
+| drift | 0.4578 | 0.4159 |
+| seasonal_naive | 0.5343 | 0.4761 |
+| Ridge (driver-only) | 0.3993 | 0.3739 |
+| HGB (driver-only) | 0.4431 | 0.4272 |
+| **driver_edge** | False (not DM-significant) | False (not DM-significant) |
+
+**B.5 Transport-CPI MoM nowcast — full sample vs robust** (best naive = seasonal_naive full / random_walk robust). Full-sample driver-only edge vanishes after dropping the 6 preliminary PSA months.
+
+| Method | Full nowcast RMSE (n = 151) | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
+|---|---|---|---|
+| random_walk | 2.0355 | 2.0355 | 1.4159 |
+| drift | 2.0435 | 2.0435 | 1.4235 |
+| seasonal_naive | 1.8463 | 1.8463 | 1.6412 |
+| ARIMA | 1.6200 | — | — |
+| ETS | 1.6328 | — | — |
+| Ridge | 1.6116 | 1.5740 | 1.3138 |
+| HGB | 1.7342 | 1.7375 | 1.4131 |
+| **Verdict** | no_better_than_naive | beats_best_naive (+14.8%, DM p = 0.021) | no_better_than_naive (driver_edge_robust = False) |
+
+**B.6 Phase-2 gated feature ablation** (fuel forecast, n = 52). `band90` = 90% conformal half-width (₱/L). Selected variant: `passthrough_lags`.
+
+| Variant | RMSE | MAE | Skill vs RW | 90% band (₱/L) |
+|---|---|---|---|---|
+| baseline | 4.6043 | 3.4402 | −0.1317 | 17.859 |
+| drop_demand | 4.4139 | 3.3901 | −0.0849 | 16.826 |
+| **passthrough_lags** (selected) | **4.0991** | **3.0029** | **−0.0075** | **14.457** |
+| finished_gas | 4.9940 | 3.8109 | −0.2275 | 18.569 |
+| structural_hybrid | 5.5500 | 3.9363 | −0.3642 | 19.692 |
+
+*No variant beats the random walk, but `passthrough_lags` closes the gap (−0.13 → −0.007) and tightens the 90% band by ~19%.*
 
 ### Appendix C — Calibration and pass-through
-- Fuel forecast conformal calibration: nominal vs measured coverage at 50/80/90/95% (§5.1).
-- Pass-through regression (§5.2): n = 77, β₀ = 0.31, β₁ = 0.24, β_total = 0.56, R² = 0.33, driver ACF₁ = 0.16, with HAC standard errors. `[expand: full coefficient table with SEs.]`
+
+**C.1 Fuel one-month forecast — split-conformal calibration** (n = 79). `qhat` = interval half-width (₱/L); measured = empirical coverage of that interval over the backtest.
+
+| Nominal | qhat (₱/L) | Measured coverage |
+|---|---|---|
+| 0.50 | 2.5569 | 0.5769 |
+| 0.80 | 5.8805 | 0.8846 |
+| 0.90 | 10.4194 | 1.0000 |
+| 0.95 | 11.8630 | 1.0000 |
+
+*The 90% and 95% intervals over-cover (conservative) at this sample size; the 50%/80% are close to nominal. Coverage is reported, not tuned.*
+
+**C.2 Pass-through regression** (Δ RON95 on contemporaneous + lagged Δ driver, n = 77; HAC errors).
+
+| Quantity | Value |
+|---|---|
+| α (intercept) | 0.1328 |
+| β₀ (contemporaneous) | 0.3132 |
+| β₁ (one-month lag) | 0.2438 |
+| **β_total = β₀ + β₁** | **0.5570** |
+| R² | 0.3323 |
+| driver Δ autocorrelation (ACF₁) | 0.1577 |
+
+*Partial, lagged pass-through (β ≈ 0.56) of a near-random-walk driver (ACF₁ ≈ 0.16) — the mechanism behind the fuel series' efficiency.*
 
 ### Appendix D — Software architecture
 The `benchmark/` package: `backtest.py` (causal walk-forward), `forecasters.py` (panel), `significance.py` (DM/HLN), `conformal.py` (intervals + calibration), `efficiency.py` (panel + pass-through), `nowcast.py` (YoY/MoM + ablation), `longsample.py` (robustness), `audit.py` (`Target` registry + verdicts), `report.py` / `figures.py` / `run.py` (assembly). The PyQt application renders the frozen report; it does not recompute it.
