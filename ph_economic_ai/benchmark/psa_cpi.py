@@ -229,3 +229,42 @@ def load_food_cpi(csv_path: Path = FOOD_CSV) -> pd.Series:
 def load_food_mom(csv_path: Path = FOOD_CSV) -> pd.Series:
     """Month-over-month Food inflation % from the committed gold."""
     return cpi_to_mom(load_food_cpi(csv_path))
+
+
+# ---------------------------------------------------------------------------
+# Electricity CPI (COICOP 04.5.1) — monthly index (2018=100)
+# ---------------------------------------------------------------------------
+
+ELECTRICITY_CSV = HERE / 'data' / 'psa_electricity_cpi_monthly.csv'
+
+
+def fetch_electricity_cpi(out_csv: Path = ELECTRICITY_CSV) -> None:
+    """Fetch monthly Electricity (COICOP 04.5.1) CPI from PSA OpenSTAT -> CSV."""
+    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='04.5.1')
+    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='04.5.1')
+
+    # Merge; current table takes precedence for any overlap (2018 overlap)
+    combined = {**series_back, **series_curr}
+
+    if len(combined) < 50:
+        raise ValueError(f'electricity CPI series too short ({len(combined)} rows)')
+
+    df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'electricity_cpi'])
+          .sort_values('date'))
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(out_csv, index=False)
+    print(f'Wrote psa_electricity_cpi_monthly.csv ({len(df)} rows, '
+          f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+
+
+def load_electricity_cpi(csv_path: Path = ELECTRICITY_CSV) -> pd.Series:
+    """Monthly Electricity CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['electricity_cpi'].astype(float).values,
+                  index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_electricity_mom(csv_path: Path = ELECTRICITY_CSV) -> pd.Series:
+    """Month-over-month Electricity inflation % from the committed gold."""
+    return cpi_to_mom(load_electricity_cpi(csv_path))
