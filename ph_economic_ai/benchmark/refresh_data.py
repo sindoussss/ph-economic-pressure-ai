@@ -224,6 +224,23 @@ def build_long_features(rng: str = 'max') -> None:
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
 
+FOOD_FEATURES_OUT = HERE / 'data' / 'food_features_monthly.csv'
+
+
+def build_food_features(rng: str = 'max') -> None:
+    """Free global food-commodity predictor panel for the Food-CPI nowcast:
+    Yahoo agri futures + oil + USD/PHP -> data/food_features_monthly.csv."""
+    cols = {'ZR=F': 'rice', 'ZW=F': 'wheat', 'ZC=F': 'corn', 'ZS=F': 'soybean',
+            'BZ=F': 'oil_price', 'PHP=X': 'usd_php'}
+    parts = [_yahoo_monthly(t, rng).rename(name) for t, name in cols.items()]
+    base = pd.concat(parts, axis=1).dropna().reset_index().rename(columns={'index': 'date'})
+    base = base.sort_values('date')
+    FOOD_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
+    base.to_csv(FOOD_FEATURES_OUT, index=False)
+    print(f'Wrote food_features_monthly.csv ({len(base)} rows, '
+          f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
+
+
 def main():
     build_world_bank_csv()
     build_features_csv()
