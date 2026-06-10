@@ -33,5 +33,27 @@
     },
     "driver_edge": true
   },
-  "driver_edge": true
+  "driver_edge": true,
+  "robust": {
+    "prelim_months_dropped": 6,
+    "n": 145,
+    "driver_ablation": {
+      "verdict": "no_better_than_naive",
+      "best_method": "random_walk",
+      "best_naive": "random_walk",
+      "best_skill_vs_naive": 0.0,
+      "dm_p": null,
+      "n": 145,
+      "rmse_by_method": {
+        "random_walk": 1.4159,
+        "seasonal_naive": 1.6412,
+        "drift": 1.4235,
+        "ridge": 1.3138,
+        "hgb": 1.4131
+      },
+      "driver_edge": false
+    },
+    "driver_edge": false
+  },
+  "driver_edge_robust": false
 }
