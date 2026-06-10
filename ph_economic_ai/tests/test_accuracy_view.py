@@ -58,6 +58,13 @@ def _report(tmp_path):
                               'robust': {'prelim_months_dropped': 6, 'n': 145,
                                          'driver_edge': False,
                                          'driver_ablation': {'verdict': 'no_better_than_naive'}}},
+        'food_nowcast': {'n': 151, 'driver_edge': False, 'driver_edge_robust': False,
+                         'mom': {'verdict': 'beats_best_naive', 'best_method': 'arima'},
+                         'driver_ablation': {'verdict': 'no_better_than_naive',
+                                             'driver_edge': False},
+                         'robust': {'prelim_months_dropped': 6, 'n': 145,
+                                    'driver_edge': False,
+                                    'driver_ablation': {'verdict': 'no_better_than_naive'}}},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -70,6 +77,14 @@ def test_view_shows_transport_nowcast_robust(tmp_path):
     assert '151' in s
     assert 'driver_edge_robust=False' in s
     assert 'artifact' in s.lower()          # the full-sample True is flagged
+
+
+def test_view_shows_food_nowcast(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.food_nowcast_summary()
+    assert '151' in s
+    assert 'beats_best_naive' in s          # MoM positive surfaced
+    assert 'driver_edge_robust=False' in s  # but driver edge null
 
 
 def test_view_builds_and_shows_headline(tmp_path):
