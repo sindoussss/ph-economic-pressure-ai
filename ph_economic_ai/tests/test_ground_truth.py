@@ -46,8 +46,11 @@ def test_find_and_grade_runs_skips_recent(store_with_run):
 
 def test_find_and_grade_runs_grades_old_run(store_with_run):
     store, run_id = store_with_run
-    # Grade with min_age_days=0 to bypass age check in tests
-    graded = find_and_grade_runs(store, current_price=100.22, min_age_days=0.0)
+    # min_age_days=-1.0 reliably includes the just-created run. (min_age_days=0.0
+    # is boundary-fragile: julianday('now') - julianday(timestamp) for an age of a
+    # few microseconds is the difference of two near-equal doubles and can round
+    # slightly negative, intermittently excluding the run.)
+    graded = find_and_grade_runs(store, current_price=100.22, min_age_days=-1.0)
     assert graded == 1
     # Confirm run is now graded
     ungraded = store.get_ungraded_runs(min_age_days=0.0)
@@ -55,10 +58,14 @@ def test_find_and_grade_runs_grades_old_run(store_with_run):
 
 
 def test_trust_improves_after_accurate_grade(store_with_run):
-    store, _ = store_with_run
+    store, run_id = store_with_run
     trust_before = store.get_trust('Market Analyst')
-    # actual_change = 100.22 - 98.82 = 1.40, estimate was 1.42, error ≈ ₱0.02
-    find_and_grade_runs(store, current_price=100.22, min_age_days=0.0)
+    # actual_change = 100.22 - 98.82 = 1.40, estimate was 1.42, error ≈ ₱0.02.
+    # Grade the run directly — this isolates "accurate grade -> trust rises" and
+    # removes the wall-clock age filter (the source of the past intermittent
+    # failure; see test_find_and_grade_runs_grades_old_run). find_and_grade_runs'
+    # age behaviour is covered by the skips_recent / grades_old_run tests.
+    store.apply_ground_truth_grade(run_id, actual_change=100.22 - 98.82)
     trust_after = store.get_trust('Market Analyst')
     assert trust_after > trust_before
 
