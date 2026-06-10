@@ -39,3 +39,22 @@ def test_landing_empty_store_no_crash(app):
     panel._refresh_recent_runs()  # must not raise
     texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
     assert 'No simulations on record yet.' in texts
+
+
+def test_refresh_recent_picks_up_late_sector_data(app):
+    # Reproduces the bug: gas saves first; food/electricity arrive later.
+    # A public refresh must re-read the store and show the now-complete sectors.
+    from ph_economic_ai.ui.landing import LandingPanel
+    run = {'run_id': 6, 'timestamp': '2026-06-10T00:00:00+00:00',
+           'final_estimate': -1.8, 'confidence_pct': 72,
+           'food_estimate': None, 'electricity_estimate': None,
+           'actual_price_change': None}
+    panel = LandingPanel(store=_FakeStore([run]))
+    panel.refresh_recent()                       # initial: sectors None -> em dash
+    # sector debates finish later and write the row:
+    run['food_estimate'] = -2.6
+    run['electricity_estimate'] = 0.18
+    panel.refresh_recent()                       # must re-read and show them
+    texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert '2.60' in texts and '%' in texts       # food now shown
+    assert '0.1800' in texts and 'kWh' in texts   # electricity now shown
