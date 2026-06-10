@@ -65,6 +65,13 @@ def _report(tmp_path):
                          'robust': {'prelim_months_dropped': 6, 'n': 145,
                                     'driver_edge': False,
                                     'driver_ablation': {'verdict': 'no_better_than_naive'}}},
+        'electricity_nowcast': {'n': 151, 'driver_edge': True, 'driver_edge_robust': True,
+                                'mom': {'verdict': 'beats_best_naive', 'best_method': 'ridge'},
+                                'driver_ablation': {'verdict': 'beats_best_naive',
+                                                    'driver_edge': True},
+                                'robust': {'prelim_months_dropped': 6, 'n': 145,
+                                           'driver_edge': True,
+                                           'driver_ablation': {'verdict': 'beats_best_naive'}}},
     }
     p = tmp_path / 'accuracy_report.json'
     p.write_text(json.dumps(rep), encoding='utf-8')
@@ -151,3 +158,11 @@ def test_view_shows_mom_longsample(tmp_path):
     s = view.mom_longsample_summary()
     assert '143' in s
     assert 'arima' in s
+
+
+def test_view_shows_electricity_nowcast(tmp_path):
+    view = AccuracyView(report_path=_report(tmp_path))
+    s = view.electricity_nowcast_summary()
+    assert '151' in s
+    assert 'driver_edge_robust=True' in s
+    assert 'energy' in s.lower()
