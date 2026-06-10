@@ -75,7 +75,16 @@ class Stage4ReportPanel(QWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         body = QWidget()
         body.setStyleSheet('background:#F7F8FA;')
-        body_layout = QVBoxLayout(body)
+        # Centre the content in a max-width column so it doesn't sprawl edge to
+        # edge on a wide / maximised window (matches the landing's editorial column).
+        outer = QHBoxLayout(body)
+        outer.setContentsMargins(0, 0, 0, 0)
+        inner = QWidget()
+        inner.setMaximumWidth(1280)
+        outer.addStretch()
+        outer.addWidget(inner, stretch=1)
+        outer.addStretch()
+        body_layout = QVBoxLayout(inner)
         body_layout.setContentsMargins(20, 20, 20, 20)
         body_layout.setSpacing(14)
 
@@ -128,6 +137,8 @@ class Stage4ReportPanel(QWidget):
         outputs_page.setLayout(self._right)
         self._right_stack.addWidget(outputs_page)        # index 0 = Outputs
         if self._interact is not None:
+            if hasattr(self._interact, 'set_embedded'):
+                self._interact.set_embedded()            # trim title, default to chat
             self._right_stack.addWidget(self._interact)  # index 1 = Interact
         cv.addWidget(self._right_stack, stretch=1)
 
