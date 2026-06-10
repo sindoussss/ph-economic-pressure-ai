@@ -496,6 +496,12 @@ class SimMainWindow(QMainWindow):
             self._food_verdict = '(Food sector debate unavailable.)'
         self._stage5.update_food_verdict(self._food_verdict)
         self._push_sector_forecasts()
+        if self._store is not None and self._current_run_id is not None:
+            try:
+                self._store.update_run_sectors(
+                    self._current_run_id, self._food_estimate, self._elec_estimate)
+            except Exception:
+                pass
         self._run_synthesizer_if_ready()
 
     def _on_elec_complete(self, responses):
@@ -522,6 +528,12 @@ class SimMainWindow(QMainWindow):
             self._elec_verdict = '(Electricity sector debate unavailable.)'
         self._stage5.update_elec_verdict(self._elec_verdict)
         self._push_sector_forecasts()
+        if self._store is not None and self._current_run_id is not None:
+            try:
+                self._store.update_run_sectors(
+                    self._current_run_id, self._food_estimate, self._elec_estimate)
+            except Exception:
+                pass
         self._run_synthesizer_if_ready()
 
     def _on_simulation_complete(self, responses):
