@@ -431,17 +431,17 @@ class LandingPanel(QWidget):
         cl.setContentsMargins(60, 18, 60, 18)
         cl.setSpacing(10)
 
-        latest_head = QLabel('LATEST FORECAST  ·  exploratory')
-        latest_head.setStyleSheet(
+        self._latest_head = QLabel('LATEST FORECAST  ·  exploratory')
+        self._latest_head.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
             f'color:{TEXT_3};letter-spacing:2px;'
         )
-        cl.addWidget(latest_head)
+        cl.addWidget(self._latest_head)
         self._latest_row = QHBoxLayout()
         self._latest_row.setSpacing(28)
         cl.addLayout(self._latest_row)
 
-        head = QLabel('RECENT FUEL FORECASTS')
+        head = QLabel('FUEL TRACK RECORD')
         head.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
             f'color:{TEXT_3};letter-spacing:2px;'
@@ -693,6 +693,16 @@ class LandingPanel(QWidget):
                 self._latest_row.addWidget(self._build_sector_tile(r))
         self._latest_row.addStretch()
 
+        if runs and runs[0].get('confidence_pct') is not None:
+            self._latest_head.setText(
+                f"LATEST FORECAST  ·  {self._fmt_date(runs[0].get('timestamp'))}"
+                f"  ·  {runs[0]['confidence_pct']}% agreement  ·  exploratory")
+        elif runs:
+            self._latest_head.setText(
+                f"LATEST FORECAST  ·  {self._fmt_date(runs[0].get('timestamp'))}  ·  exploratory")
+        else:
+            self._latest_head.setText('LATEST FORECAST  ·  exploratory')
+
         # Clear existing
         while self._runs_row.count():
             item = self._runs_row.takeAt(0)
@@ -700,14 +710,15 @@ class LandingPanel(QWidget):
             if w is not None:
                 w.deleteLater()
 
-        if not runs:
+        prior = runs[1:4]
+        if not prior:
             empty = QLabel('No simulations on record yet.')
             empty.setStyleSheet(f'color:{TEXT_3};font-size:12px;')
             self._runs_row.addWidget(empty)
             self._runs_row.addStretch()
             return
 
-        for r in runs:
+        for r in prior:
             self._runs_row.addWidget(self._build_run_tile(r))
         self._runs_row.addStretch()
 
@@ -730,6 +741,14 @@ class LandingPanel(QWidget):
         val.setStyleSheet(f'font-size:15px;font-weight:700;color:{color};')
         v.addWidget(val)
         return tile
+
+    @staticmethod
+    def _fmt_date(ts: str) -> str:
+        ts = ts or ''
+        try:
+            return datetime.fromisoformat(ts).strftime('%b %d')
+        except Exception:
+            return ts[:10]
 
     def _build_run_tile(self, run: dict) -> QWidget:
         tile = QWidget()
@@ -767,7 +786,7 @@ class LandingPanel(QWidget):
 
         sub_parts = []
         if conf is not None:
-            sub_parts.append(f'{conf}% confidence')
+            sub_parts.append(f'{conf}% agreement')
         actual = run.get('actual_price_change')
         if actual is not None:
             sub_parts.append('graded ✓')
