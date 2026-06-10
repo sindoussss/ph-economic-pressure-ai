@@ -116,10 +116,21 @@ features_monthly_long.csv ──┐                     ▼
 5. Tests for the parser, MoM transform, and nowcast wiring.
 6. Reproducible via refresh (fetch gold) + `python -m ph_economic_ai.benchmark.run`.
 
-## 9. The contribution — to be filled from the real run
-- **Result:** on n = [n] months, Transport MoM nowcast is [beats_best_naive / no better than naive] (best method [m], skill [x], DM p [p]); the **driver-only** model is [significant / not] (`driver_edge` = [bool], best driver RMSE [r] vs naive [rb]).
-- **Interpretation:** [if driver_edge True] Strata nowcasts the **fuel-driven component of inflation** ahead of the official figure — a genuine, significant within-month information edge, contrasting with the headline result where the driver edge was underpowered. [if efficient] Transport MoM is also efficient at this horizon — an honest negative that still sharpens the predictability map.
-- **Honesty notes:** this is a *nowcast* (information-timing), not a claim to beat a market; the gold is official PSA data; the 1994-based window spans multiple regimes (caveat).
+## 9. The contribution — measured result (and why the robustness check mattered)
+
+Run on the committed PSA gold (source: `artifacts/transport_nowcast_table.json`), **n = 151** backtest months (overlap of Transport CPI with the long feature panel, 2007–2026).
+
+| Test | Verdict | best | skill vs best naive | DM p |
+|---|---|---|---|---|
+| Full nowcast (drivers + own-lag) | no_better_than_naive | seasonal_naive | 0.0 | — |
+| Driver-only ablation, **full sample** | beats_best_naive | ridge | **+14.8%** | **0.021** |
+| Driver-only ablation, **robust** (drop 6 preliminary months, n=145) | no_better_than_naive | random_walk | 0.0 | — |
+
+- **Headline (full sample):** the driver-only model looked like a genuine win — observable fuel significantly nowcasting transport inflation (Ridge +14.8%, DM p = 0.021).
+- **Robustness re-test killed it.** The PSA series' three most recent months are **preliminary** and anomalous (Transport CPI 130 → 142 → 156 → 148, i.e. +9.5%, +10.0%, −5.0% MoM for 2026-03/04/05 — values PSA will revise). Dropping the trailing 6 preliminary months collapses the skill from +14.8% to **0** (`driver_edge_robust = False`). The entire "edge" was driven by ~3 unreliable points.
+- **Canonical verdict:** `driver_edge_robust = False` → **Transport MoM inflation is also efficient** — no robust within-month fuel edge. Consistent with the rest of the predictability map (fuel/FX/headline-YoY all efficient).
+- **Why this is a contribution, not a failure:** the methodology *caught a spurious positive that a naive analysis would have trumpeted* as "AI predicts fuel-driven inflation." Finding it, attributing it to preliminary data, and reporting the robust negative is precisely the discipline that makes the thesis credible. It is a clean worked example of robustness/real-time-data hygiene in nowcasting.
+- **Honesty notes:** a *nowcast* (information-timing), not market-beating; gold is official PSA data faithfully loaded (2018 mean = 100.0); recent PSA prints are preliminary and revised (the reason the robustness window exists); the 1994-based history spans multiple regimes.
 
 ## 10. Sources / references
 - PSA OpenSTAT PX-Web: `DB/2M/PI/CPI/2018NEW/0012M4ACP28.px` (CPI by commodity group, 2018=100, 1994–present).
