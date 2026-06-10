@@ -162,6 +162,18 @@ def main():
         food_res = {'verdict': 'not_run', 'reason': 'food gold/features missing'}
         print('Food nowcast: not_run (gold or features CSV missing)')
 
+    # -- MoM Electricity-CPI nowcast (energy pass-through) --
+    try:
+        from ph_economic_ai.benchmark import electricity_nowcast as elec_mod
+        elec_res = elec_mod.run_electricity_nowcast(MIN_TRAIN)
+        _em = elec_res['mom']
+        print(f"Electricity nowcast (n={elec_res['n']}): mom={_em['verdict']} "
+              f"best={_em.get('best_method')} skill={_em.get('best_skill_vs_naive')} "
+              f"DM p={_em.get('dm_p')} | driver_edge_robust={elec_res['driver_edge_robust']}")
+    except FileNotFoundError:
+        elec_res = {'verdict': 'not_run', 'reason': 'electricity gold/features missing'}
+        print('Electricity nowcast: not_run (gold or features CSV missing)')
+
     rep = report.build_report(
         date_range=(dates[0], dates[-1]), n_months=len(df),
         model_metrics={'mae': round(mae(yt, yp), 4), 'rmse': round(rmse_model, 4),
@@ -180,6 +192,7 @@ def main():
         mom_longsample=mom_long,
         transport_nowcast=transport_res,
         food_nowcast=food_res,
+        electricity_nowcast=elec_res,
     )
     report.write_report(rep)
 
@@ -242,6 +255,10 @@ def main():
     import json as _json8
     (report.ARTIFACTS / 'food_nowcast_table.json').write_text(
         _json8.dumps(food_res, indent=2), encoding='utf-8')
+
+    import json as _json9
+    (report.ARTIFACTS / 'electricity_nowcast_table.json').write_text(
+        _json9.dumps(elec_res, indent=2), encoding='utf-8')
 
     if mom_res['verdict'] != 'insufficient_data':
         _mf = nowcast_mod.build_nowcast_frame(
