@@ -1,0 +1,14 @@
+# Strata — runtime dependencies (Python 3.10)
+PyQt6
+pandas
+numpy
+scipy
+scikit-learn
+matplotlib
+statsmodels
+requests
+beautifulsoup4
+ollama
+
+# Dev / test only:
+# pytest
