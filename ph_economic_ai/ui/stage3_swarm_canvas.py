@@ -2117,16 +2117,11 @@ class Stage3SwarmPanel(QWidget):
             _kg_live.seed_skeleton(self._kg_builder, self._agent_meta.values(), self._scenario)
         except Exception:
             pass
-        self._canvas.setVisible(False)
-        self._kg_canvas.setVisible(True)
-        try:
-            self._kg_canvas.node_clicked.connect(self._on_node_clicked)
-        except Exception:
-            pass
+        # Keep the OLD structured arena as the live view (the labelled "line vibe"
+        # the user wants); the bare force-graph is not shown live.
+        self._canvas.setVisible(True)
+        self._kg_canvas.setVisible(False)
         self._view_report_btn.setVisible(False)
-        self._flush_kg()
-        if not self._kg_refresh.isActive():
-            self._kg_refresh.start()
 
     def _flush_kg(self):
         try:
