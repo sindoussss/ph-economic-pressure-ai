@@ -200,8 +200,8 @@ class Stage5InteractPanel(QWidget):
             btn.setChecked(agent.name == self._selected_agent)
             btn.clicked.connect(lambda _, name=agent.name: self._select_agent(name))
             btn.setStyleSheet(
-                'QPushButton{border:1px solid #EAECF0;border-radius:8px;'
-                'padding:5px 10px;font-size:9px;font-weight:600;color:#6B7280;background:#F7F8FA;}'
+                'QPushButton{border:1px solid #E5E7EB;border-radius:8px;'
+                'padding:5px 10px;font-size:9px;font-weight:600;color:#6B7280;background:#FBFBFA;}'
                 'QPushButton:checked{background:#1C1E26;color:#FFFFFF;border-color:#1C1E26;}'
             )
             self._agent_chips.append(btn)
@@ -224,7 +224,7 @@ class Stage5InteractPanel(QWidget):
         self._chat_input = QLineEdit()
         self._chat_input.setPlaceholderText('Ask a follow-up question...')
         self._chat_input.setStyleSheet(
-            'QLineEdit{border:1px solid #EAECF0;border-radius:8px;padding:7px 10px;font-size:10px;}'
+            'QLineEdit{border:1px solid #E5E7EB;border-radius:8px;padding:7px 10px;font-size:10px;}'
         )
         self._chat_input.returnPressed.connect(self._on_ask)
         send_btn = QPushButton('Send')
@@ -256,8 +256,8 @@ class Stage5InteractPanel(QWidget):
             toggle.setChecked(True)
             toggle.clicked.connect(lambda checked, s=src: self._on_toggle(s, checked))
             toggle.setStyleSheet(
-                'QPushButton{border:1px solid #EAECF0;border-radius:8px;'
-                'padding:6px 12px;font-size:10px;font-weight:600;background:#F7F8FA;color:#1C1E26;}'
+                'QPushButton{border:1px solid #E5E7EB;border-radius:8px;'
+                'padding:6px 12px;font-size:10px;font-weight:600;background:#FBFBFA;color:#1C1E26;}'
                 'QPushButton:checked{background:#1C1E26;color:#FFFFFF;border-color:#1C1E26;}'
             )
             self._toggle_buttons[src] = toggle
@@ -350,7 +350,7 @@ class Stage5InteractPanel(QWidget):
             'font-size:9px;padding:7px 9px;border-radius:8px;line-height:1.4;'
             + ('background:#1C1E26;color:#FFFFFF;margin-left:20px;'
                if user else
-               'background:#F7F8FA;border:1px solid #EAECF0;color:#374151;margin-right:20px;')
+               'background:#FBFBFA;border:1px solid #E5E7EB;color:#374151;margin-right:20px;')
         )
         self._chat_layout.insertWidget(self._chat_layout.count() - 1, lbl)
         return lbl
