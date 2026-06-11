@@ -511,26 +511,42 @@ class Stage4ReportPanel(QWidget):
         # 6-month forecast chart with actual future month names
         if forecast_prices is not None and len(forecast_prices) > 0:
             try:
+                import numpy as _np
                 now = datetime.now()
-                n = len(forecast_prices)
+                fp = _np.asarray(forecast_prices, dtype=float)
+                n = len(fp)
                 month_labels = [
                     calendar.month_abbr[(now.month - 1 + i) % 12 + 1]
                     for i in range(1, n + 1)
                 ]
-                fig = Figure(figsize=(5, 2.2), facecolor='#F7F8FA')
+                hist = (df['gas_price'].dropna().tail(6).tolist()
+                        if 'gas_price' in getattr(df, 'columns', []) else [])
+                kh = len(hist)
+                fig = Figure(figsize=(5, 2.4), facecolor='#FBFBFA')
                 ax = fig.add_subplot(111)
-                xs = list(range(1, n + 1))
-                ax.plot(xs, forecast_prices, color='#1C1E26', linewidth=2)
+                ax.set_facecolor('#FBFBFA')
+                fx = list(range(kh, kh + n))
+                if kh:
+                    ax.plot(range(kh), hist, color='#9AA1AC', linewidth=1.6)
+                    ax.plot([kh - 1, kh], [hist[-1], fp[0]], color='#1C1E26', linewidth=2)
+                    ax.axvline(kh - 0.5, color='#D1D5DB', linewidth=1.0, linestyle='--')
+                ax.plot(fx, fp, color='#1C1E26', linewidth=2)
                 _band = _hs.conformal_halfwidth(_report) or cv_rmse
-                ax.fill_between(xs, forecast_prices - _band, forecast_prices + _band,
-                                alpha=0.15, color='#1C1E26')
-                ax.set_facecolor('#F7F8FA')
-                ax.set_xticks(xs)
-                ax.set_xticklabels(month_labels, fontsize=7)
-                ax.tick_params(axis='y', labelsize=7)
+                ax.fill_between(fx, fp - _band, fp + _band, alpha=0.28,
+                                color='#1C1E26', linewidth=0)
+                ax.axvspan((kh - 0.5) if kh else 0, kh + n - 1, color='#1C1E26', alpha=0.03)
+                for _sp in ('top', 'right'):
+                    ax.spines[_sp].set_visible(False)
+                for _sp in ('left', 'bottom'):
+                    ax.spines[_sp].set_color('#E5E7EB')
+                ax.grid(axis='y', color='#EEEEEE', linewidth=0.6)
+                ax.set_axisbelow(True)
+                ax.set_xticks(fx)
+                ax.set_xticklabels(month_labels, fontsize=7, color='#9AA1AC')
+                ax.tick_params(axis='y', labelsize=7, colors='#9AA1AC')
                 fig.tight_layout(pad=1.0)
                 canvas = FigureCanvasQTAgg(fig)
-                canvas.setFixedHeight(200)
+                canvas.setFixedHeight(210)
                 cl.addWidget(canvas)
                 _bcap = self._muted('90% calibrated interval (conformal)'
                                     if _hs.conformal_halfwidth(_report) is not None
@@ -549,8 +565,15 @@ class Stage4ReportPanel(QWidget):
                 names = list(fi.keys())[:6]
                 vals = [fi[k] for k in names]
                 fi_ax.barh(names, vals, color='#1C1E26')
-                fi_ax.set_facecolor('#F7F8FA')
-                fi_ax.tick_params(labelsize=7)
+                fi_fig.set_facecolor('#FBFBFA')
+                fi_ax.set_facecolor('#FBFBFA')
+                for _sp in ('top', 'right'):
+                    fi_ax.spines[_sp].set_visible(False)
+                for _sp in ('left', 'bottom'):
+                    fi_ax.spines[_sp].set_color('#E5E7EB')
+                fi_ax.tick_params(labelsize=7, colors='#6B7280')
+                fi_ax.grid(axis='x', color='#EEEEEE', linewidth=0.6)
+                fi_ax.set_axisbelow(True)
                 fi_fig.tight_layout(pad=1.0)
                 fi_canvas = FigureCanvasQTAgg(fi_fig)
                 fi_canvas.setFixedHeight(200)
