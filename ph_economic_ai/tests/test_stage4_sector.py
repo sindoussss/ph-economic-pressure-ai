@@ -21,3 +21,13 @@ def test_set_sector_forecasts_renders_card(app):
     assert 'Food' in texts and '%' in texts
     assert 'Electricity' in texts and 'kWh' in texts
     assert 'exploratory' in texts.lower()
+
+
+def test_sector_card_renders_bars(app):
+    from PyQt6.QtWidgets import QFrame, QLabel
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    p = Stage4ReportPanel()
+    p.set_sector_forecasts(-1.8, -2.6, 0.18)
+    texts = ' || '.join(l.text() for l in p.findChildren(QLabel))
+    assert '1.80' in texts and '2.60' in texts and '0.1800' in texts
+    assert len(p._sector_holder.findChildren(QFrame)) >= 3   # a bar track per sector
