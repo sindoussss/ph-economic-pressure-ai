@@ -645,6 +645,17 @@ class SimMainWindow(QMainWindow):
         self._start_sector_debates(self._last_scenario)
         self._run_synthesizer_if_ready()
 
+        # Build the MiroFish knowledge graph from the finished run (post-run, safe).
+        try:
+            from ph_economic_ai.engine.kg_swarm_adapter import build_graph
+            price = self._last_scenario.get('current_price', 0.0)
+            agents = build_swarm_agents(price)
+            kg = build_graph(master_verdict, agents, self._last_scenario, self._rag)
+            self._stage3_swarm.show_knowledge_graph(kg)
+        except Exception as exc:
+            import logging
+            logging.warning('knowledge graph build failed: %s', exc)
+
     def _run_synthesizer_if_ready(self):
         """Launch Economy Synthesizer + Causal Chain once all three sector verdicts are in."""
         if not self._gas_verdict or not self._food_verdict or not self._elec_verdict:

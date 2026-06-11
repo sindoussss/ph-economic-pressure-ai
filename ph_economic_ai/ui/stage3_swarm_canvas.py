@@ -32,6 +32,7 @@ from PyQt6.QtGui import (
 )
 
 from ph_economic_ai.engine.swarm import REGIONS, build_swarm_agents, _ROLE_RAG
+from ph_economic_ai.ui.kg_canvas import KnowledgeGraphCanvas
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1837,6 +1838,11 @@ class Stage3SwarmPanel(QWidget):
         self._canvas.node_clicked.connect(self._on_node_clicked)
         row.addWidget(self._canvas, stretch=1)
 
+        # Knowledge-graph canvas — shown after swarm completes, hidden initially
+        self._kg_canvas = KnowledgeGraphCanvas()
+        self._kg_canvas.setVisible(False)
+        row.addWidget(self._kg_canvas, stretch=1)
+
         # Right sidebar — verdicts
         right = self._build_verdict_sidebar()
         row.addWidget(right)
@@ -2005,6 +2011,30 @@ class Stage3SwarmPanel(QWidget):
 
     # ── Click handling ────────────────────────────────────────────────────────
     def _on_node_clicked(self, info: dict):
+        # Knowledge-graph nodes carry 'payload' instead of 'type'
+        if 'payload' in info:
+            kind = info.get('kind', '')
+            pl = info.get('payload', {})
+            label = info.get('label', info.get('id', ''))
+            if kind == 'evidence':
+                detail = f"{pl.get('source', '')}: {pl.get('text', '')[:300]}"
+                self._details_card.show_agent(
+                    label, 'Evidence', 0, pl.get('source', ''),
+                    'ready', '#3B6FD4', message=detail)
+            elif kind == 'entity':
+                prov = (pl.get('provenance') or [{}])[0]
+                detail = (f"{label} ({pl.get('type', '')}) "
+                          f"— from {prov.get('source', '')}")
+                self._details_card.show_agent(
+                    label, pl.get('type', 'Entity'), 0, prov.get('source', ''),
+                    'ready', '#15A150', message=detail)
+            else:
+                detail = info.get('label', '')
+                self._details_card.show_agent(
+                    label, kind or 'node', 0, '', 'ready', '#9CA3AF',
+                    message=detail)
+            self._position_details_card()
+            return
         ntype = info.get('type')
         if ntype == 'agent':
             self._details_card.show_agent(
@@ -2029,6 +2059,30 @@ class Stage3SwarmPanel(QWidget):
         elif ntype == 'rag':
             self._details_card.show_rag(info['source'])
         self._position_details_card()
+
+    # ── Knowledge-graph integration ───────────────────────────────────────────
+    def show_knowledge_graph(self, builder):
+        """Swap the live arena for the MiroFish knowledge graph + start enrichment."""
+        from ph_economic_ai.ui.kg_extract_worker import EntityExtractWorker
+        self._kg_builder = builder
+        nodes, edges = builder.snapshot()
+        self._kg_canvas.set_snapshot(nodes, edges)
+        self._canvas.setVisible(False)
+        self._kg_canvas.setVisible(True)
+        try:
+            self._kg_canvas.node_clicked.connect(self._on_node_clicked)
+        except Exception:
+            pass
+        self._log(
+            f'KNOWLEDGE GRAPH  {len(nodes)} nodes  {len(edges)} edges',
+            color='#3B6FD4',
+        )
+        self._kg_worker = EntityExtractWorker(builder)
+        self._kg_worker.progress.connect(
+            lambda _i: self._kg_canvas.set_snapshot(*builder.snapshot()))
+        self._kg_worker.done.connect(
+            lambda: self._log('entity extraction complete', color='#15A150'))
+        self._kg_worker.start()
 
     # ── Console ───────────────────────────────────────────────────────────────
     def _log(self, text: str, color: str = '#D1D5DB'):
