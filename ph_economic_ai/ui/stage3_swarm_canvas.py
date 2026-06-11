@@ -2112,8 +2112,9 @@ class Stage3SwarmPanel(QWidget):
         self._rag, self._scenario, self._agent_meta = rag, scenario or {}, agent_meta or {}
         self._kg_builder = KnowledgeGraphBuilder()
         try:
-            srcs = list(getattr(rag, 'all_source_names', []) or [])
-            _kg_live.seed(self._kg_builder, srcs, self._scenario)
+            # Seed the FULL connected skeleton (agents + judges + master + data) so the
+            # graph is rich and cohesive from t=0 instead of a few scattered dots.
+            _kg_live.seed_skeleton(self._kg_builder, self._agent_meta.values(), self._scenario)
         except Exception:
             pass
         self._canvas.setVisible(False)
