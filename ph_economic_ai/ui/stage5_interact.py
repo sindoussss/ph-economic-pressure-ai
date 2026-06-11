@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import Agent, DebateEngine, AgentResponse
+from ph_economic_ai.ui import honesty as _honesty
 
 
 class _AskThread(QThread):
@@ -184,6 +185,11 @@ class Stage5InteractPanel(QWidget):
         layout = QVBoxLayout(w)
         layout.setContentsMargins(24, 16, 24, 16)
         layout.setSpacing(10)
+
+        _cap = QLabel(_honesty.interact_caption())
+        _cap.setWordWrap(True)
+        _cap.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
+        layout.addWidget(_cap)
 
         selector_row = QHBoxLayout()
         self._agent_chips: list[QPushButton] = []
