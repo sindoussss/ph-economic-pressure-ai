@@ -558,9 +558,12 @@ class _RagNode(QGraphicsObject):
 #  EvidenceNode — tiny faint satellite dot = one real retrieved RAG chunk
 # ════════════════════════════════════════════════════════════════════════════
 class _EvidenceNode(QGraphicsObject):
-    """A tiny faint dot = one real retrieved RAG chunk. Click -> source + text."""
+    """A small soft-blue dot = one real retrieved RAG chunk. Hover grows it
+    (animated, like the other nodes); click -> source + text."""
     clicked = pyqtSignal(str, str)            # (source, text)
-    _R = 3.0
+    _R = 4.0
+    _FILL = '#93A4C4'                          # soft slate-blue = "evidence"
+    _RING = '#5C6E94'                          # slightly darker edge for definition
 
     def __init__(self, source: str, text: str, parent=None):
         super().__init__(parent)
@@ -570,16 +573,34 @@ class _EvidenceNode(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(f'{self._source}: {self._text[:80]}')
+        # animated hover scale (matches the grow-on-hover of the other nodes)
+        self._scale_anim = QPropertyAnimation(self, b'scale')
+        self._scale_anim.setDuration(140)
+        self._scale_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     def boundingRect(self) -> QRectF:
-        r = self._R + 1.0
+        r = self._R + 1.5
         return QRectF(-r, -r, 2 * r, 2 * r)
 
     def paint(self, p: QPainter, *_):
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(QColor('#C7CBD1')))          # faint background texture
+        p.setPen(QPen(QColor(self._RING), 0.8))
+        p.setBrush(QBrush(QColor(self._FILL)))
         p.drawEllipse(QRectF(-self._R, -self._R, 2 * self._R, 2 * self._R))
+
+    def _animate_scale(self, target: float):
+        self._scale_anim.stop()
+        self._scale_anim.setStartValue(self.scale())
+        self._scale_anim.setEndValue(target)
+        self._scale_anim.start()
+
+    def hoverEnterEvent(self, event):
+        self._animate_scale(1.9)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._animate_scale(1.0)
+        super().hoverLeaveEvent(event)
 
     def mousePressEvent(self, ev):
         self.clicked.emit(self._source, self._text)
