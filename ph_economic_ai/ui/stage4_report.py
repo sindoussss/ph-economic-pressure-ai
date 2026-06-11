@@ -127,11 +127,6 @@ class Stage4ReportPanel(QWidget):
         self._chain_widget = CausalChainWidget()
         self._chain_widget.setMinimumHeight(320)
 
-        # Ensure child-widget visibility flags work correctly when the panel is
-        # used standalone (e.g. in tests).  When embedded in a parent window the
-        # parent's show() call governs final on-screen visibility.
-        self.show()
-
     def _build_right_pane(self) -> QWidget:
         container = QWidget()
         cv = QVBoxLayout(container)
