@@ -263,6 +263,7 @@ class SimMainWindow(QMainWindow):
         # Wire signals
         self._stage3.simulation_complete.connect(self._on_simulation_complete)
         self._stage3_swarm.swarm_complete.connect(self._on_swarm_complete)
+        self._stage3_swarm.view_report_requested.connect(self._goto_report)
         self._stage5.rerun_requested.connect(self._on_rerun_requested)
         # Landing page: one-click auto run with live data
         self._landing.run_requested.connect(self._on_landing_run)
@@ -627,9 +628,9 @@ class SimMainWindow(QMainWindow):
         self._stage5.set_swarm_context(master_verdict, self._last_scenario)
         self._stage5.update_gas_verdict(self._gas_verdict)
         # Sidebar indices: 2=Simulation, 3=Report
+        # Unlock Report tab so it is clickable, but do NOT auto-jump to it.
+        # The user navigates there via "View report →" button.
         self._sidebar.unlock_stages([2, 3])
-        self._sidebar.set_active(3)
-        self._stack.setCurrentIndex(3)
         self._landing.set_busy(False)
         # Update gas sector card on Economy Overview
         avg = master_verdict.final_estimate or 0.0
@@ -645,16 +646,24 @@ class SimMainWindow(QMainWindow):
         self._start_sector_debates(self._last_scenario)
         self._run_synthesizer_if_ready()
 
-        # Build the MiroFish knowledge graph from the finished run (post-run, safe).
+        # Guarded fallback: only build a post-run graph when the panel has no
+        # live graph (i.e. the live-wiring path produced nothing).
         try:
             from ph_economic_ai.engine.kg_swarm_adapter import build_graph
-            price = self._last_scenario.get('current_price', 0.0)
-            agents = build_swarm_agents(price)
-            kg = build_graph(master_verdict, agents, self._last_scenario, self._rag)
-            self._stage3_swarm.show_knowledge_graph(kg)
+            if not self._stage3_swarm.has_live_graph():
+                price = self._last_scenario.get('current_price', 0.0)
+                agents = build_swarm_agents(price)
+                kg = build_graph(master_verdict, agents, self._last_scenario, self._rag)
+                self._stage3_swarm.show_knowledge_graph(kg)
         except Exception as exc:
             import logging
-            logging.warning('knowledge graph build failed: %s', exc)
+            logging.warning('knowledge graph fallback failed: %s', exc)
+
+    def _goto_report(self):
+        """Navigate to the Report panel. Called by the 'View report →' button."""
+        self._sidebar.unlock_stages([2, 3])
+        self._sidebar.set_active(3)
+        self._stack.setCurrentIndex(3)
 
     def _run_synthesizer_if_ready(self):
         """Launch Economy Synthesizer + Causal Chain once all three sector verdicts are in."""
