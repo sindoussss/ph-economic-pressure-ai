@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QFrame, QGridLayout, QHBoxLayout, QLabel,
     QSizePolicy, QVBoxLayout, QWidget,
 )
+from ph_economic_ai.ui import theme as _theme
 
 
 # ── Palette ───────────────────────────────────────────────────────────────────
@@ -15,8 +16,8 @@ _STABLE   = '#27AE60'
 _RISING   = '#E0A84A'
 _HIGH     = '#E74C3C'
 _CARD_BG  = '#FFFFFF'
-_PAGE_BG  = '#F7F8FA'
-_BORDER   = '#EAEAEA'
+_PAGE_BG  = _theme.SURFACE
+_BORDER   = _theme.HAIRLINE
 _TEXT_DIM = '#999999'
 _TEXT_HI  = '#1A1A2E'
 
@@ -163,7 +164,7 @@ class _WeatherPanel(QFrame):
         self._ax.axis('off')
         if len(rainfall_history) >= 2:
             xs = list(range(len(rainfall_history)))
-            self._ax.bar(xs, rainfall_history, color='#4A90E2', alpha=0.7, width=0.8)
+            self._ax.bar(xs, rainfall_history, color=_theme.NEUTRAL, alpha=0.7, width=0.8)
         self._canvas.draw()
 
 
@@ -201,7 +202,7 @@ class _InfluencePanel(QFrame):
         self._ax.clear()
         labels = ['Transport', 'Rainfall']
         values = [transport, rainfall]
-        colors = [_RISING, '#4A90E2']
+        colors = [_RISING, _theme.NEUTRAL]
         bars = self._ax.barh(labels, values, color=colors, height=0.5)
         self._ax.axvline(0, color=_TEXT_DIM, linewidth=0.8)
         self._ax.axis('off')
@@ -253,7 +254,7 @@ class EconomyOverviewWidget(QWidget):
         cards_row = QHBoxLayout()
         cards_row.setSpacing(14)
 
-        self._gas_card  = SectorCard('Gas',                  '₱/L',   '#4A90E2')
+        self._gas_card  = SectorCard('Gas',                  '₱/L',   _theme.NEUTRAL)
         self._food_card = SectorCard('Food Index (derived)', 'pts',   '#27AE60')
         self._elec_card = SectorCard('Electricity (derived)', '₱/kWh', '#E0A84A')
 
