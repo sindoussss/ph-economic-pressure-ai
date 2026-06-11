@@ -38,7 +38,7 @@ class PolicyRecoWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(
-            'QFrame#recoRoot{background:#FFFFFF;border:1px solid #EAECF0;border-radius:12px;}'
+            'QFrame#recoRoot{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;}'
         )
         self.setObjectName('recoRoot')
 
@@ -99,7 +99,7 @@ class PolicyRecoWidget(QFrame):
     def _make_card(self, reco, idx: int) -> QFrame:
         card = QFrame()
         card.setStyleSheet(
-            'QFrame{background:#F8F9FB;border:1px solid #EAECF0;border-radius:10px;}'
+            'QFrame{background:#F8F9FB;border:1px solid #E5E7EB;border-radius:10px;}'
         )
         cl = QVBoxLayout(card)
         cl.setContentsMargins(12, 10, 12, 10)
