@@ -1,0 +1,44 @@
+.worktrees/
+__pycache__/
+*.pyc
+*.pyo
+.idea/
+.venv/
+
+# Large model / binary toolkits
+kaldi/
+llama.cpp/
+unsloth_compiled_cache/
+vosk-model-tl-ph-generic-0.6/
+
+# Model & database files
+*.pkl
+*.db
+*.bz2
+
+# Logs & output
+*.log
+gpu_probe_out.txt
+
+# Runtime / cache data
+.rag_cache/
+bantay_cache.json
+response_cache.json
+maria_sessions.json
+maria_metrics.json
+maria_artifacts.json
+maria_attachments/
+
+# --- Personal / unrelated working-tree items: never publish (repo is public) ---
+/Personal/
+/Character AI/
+/Project_Maria/
+/Writes/
+/AFP/
+/.claude/
+/.superpowers/
+/.mirofish_refs/
+_ohms_final.py
+launch_and_run_swarm.py
+navigate_swarm.py
+ph_economic_ai/cache/
