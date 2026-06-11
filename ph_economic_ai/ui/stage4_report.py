@@ -27,6 +27,7 @@ class Stage4ReportPanel(QWidget):
         self._interact = interact_panel
         self._responses: list = []
         self._consensus: dict = {}
+        self._df = None
         self._build()
 
     def _build(self):
@@ -97,6 +98,14 @@ class Stage4ReportPanel(QWidget):
         top_row.addLayout(self._left, stretch=1)
         top_row.addWidget(self._build_right_pane(), stretch=1)
         body_layout.addLayout(top_row)
+
+        # Recent sector trajectories (small multiples) — populated by set_sector_forecasts
+        self._trajectory_holder = QWidget()
+        self._trajectory_holder_layout = QVBoxLayout(self._trajectory_holder)
+        self._trajectory_holder_layout.setContentsMargins(0, 0, 0, 0)
+        self._trajectory_holder_layout.setSpacing(6)
+        self._trajectory_holder.setVisible(False)
+        body_layout.addWidget(self._trajectory_holder)
 
         # Full-width policy recommendations below the columns
         self._reco_widget = PolicyRecoWidget()
@@ -208,6 +217,7 @@ class Stage4ReportPanel(QWidget):
 
     def populate(self, responses: list, consensus: dict,
                  regressor, df, cv_rmse: float, scenario: dict):
+        self._df = df
         self._responses = responses
         self._consensus = consensus
 
@@ -235,6 +245,7 @@ class Stage4ReportPanel(QWidget):
         scenario: dict,
     ):
         """Populate the report from a MasterVerdict (swarm mode)."""
+        self._df = df
         from ph_economic_ai.engine.swarm import MasterVerdict as _MV  # noqa: F401
 
         # Clear existing content
