@@ -48,3 +48,10 @@ def test_on_run_requested_accepts_4_args(window):
 
 def test_stage5_has_set_swarm_context(window):
     assert hasattr(window._stage5, 'set_swarm_context')
+
+
+def test_completion_stays_on_simulation_then_button_navigates(window):
+    # the Report stack index is 3 (the workbench)
+    window._stack.setCurrentIndex(2)               # on Simulation
+    window._stage3_swarm.view_report_requested.emit()
+    assert window._stack.currentIndex() == 3        # navigated to Report on demand
