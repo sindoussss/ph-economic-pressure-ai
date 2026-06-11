@@ -17,7 +17,8 @@ def test_trajectories_built_with_markers(app):
     p = Stage4ReportPanel()
     p._df = pd.DataFrame({'gas_price': [58., 59., 60., 61., 60.5, 60.]})
     p.set_sector_forecasts(-1.8, -2.6, 0.18)
-    assert p._trajectory_holder.isVisible()
+    # not isVisible() — that needs a shown parent chain; setVisible(True) clears isHidden()
+    assert not p._trajectory_holder.isHidden()
     canvases = p._trajectory_holder.findChildren(FigureCanvasQTAgg)
     assert len(canvases) >= 1                       # >=1 (3 when gold present)
     texts = ' || '.join(l.text() for l in p._trajectory_holder.findChildren(QLabel))
@@ -29,4 +30,4 @@ def test_trajectories_graceful_without_df(app):
     p = Stage4ReportPanel()
     p._df = None
     p.set_sector_forecasts(-1.8, -2.6, 0.18)        # must not raise
-    assert p._sector_holder.isVisible()              # bar card still renders
+    assert not p._sector_holder.isHidden()           # bar card still renders
