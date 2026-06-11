@@ -2487,6 +2487,11 @@ class Stage3SwarmPanel(QWidget):
         thread.group_survivor.connect(self._on_group_survivor)
         thread.regional_done.connect(self._on_regional_done)
         thread.swarm_complete.connect(self._on_swarm_complete)
+        try:
+            self._canvas.add_evidence_layer(getattr(thread, '_rag', None),
+                                            getattr(thread, '_scenario', {}))
+        except Exception:
+            pass
 
     # ── Reset ─────────────────────────────────────────────────────────────────
     def reset(self):
