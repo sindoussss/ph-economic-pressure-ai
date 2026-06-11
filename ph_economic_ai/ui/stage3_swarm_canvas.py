@@ -555,6 +555,38 @@ class _RagNode(QGraphicsObject):
 
 
 # ════════════════════════════════════════════════════════════════════════════
+#  EvidenceNode — tiny faint satellite dot = one real retrieved RAG chunk
+# ════════════════════════════════════════════════════════════════════════════
+class _EvidenceNode(QGraphicsObject):
+    """A tiny faint dot = one real retrieved RAG chunk. Click -> source + text."""
+    clicked = pyqtSignal(str, str)            # (source, text)
+    _R = 3.0
+
+    def __init__(self, source: str, text: str, parent=None):
+        super().__init__(parent)
+        self._source = source or '?'
+        self._text = text or ''
+        self.setZValue(1)                     # below agents (z=5), above edges
+        self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(f'{self._source}: {self._text[:80]}')
+
+    def boundingRect(self) -> QRectF:
+        r = self._R + 1.0
+        return QRectF(-r, -r, 2 * r, 2 * r)
+
+    def paint(self, p: QPainter, *_):
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor('#C7CBD1')))          # faint background texture
+        p.drawEllipse(QRectF(-self._R, -self._R, 2 * self._R, 2 * self._R))
+
+    def mousePressEvent(self, ev):
+        self.clicked.emit(self._source, self._text)
+        ev.accept()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 #  SectorAgentNode — dot for food/electricity agents
 # ════════════════════════════════════════════════════════════════════════════
 _SECTOR_ROLE_ABBREV = {
@@ -1168,6 +1200,57 @@ class _SwarmCanvas(QGraphicsView):
             'type': 'rag',
             'source': source,
         })
+
+    def _emit_evidence_click(self, source: str, text: str):
+        self.node_clicked.emit({
+            'kind': 'evidence',
+            'label': source,
+            'payload': {'source': source, 'text': text},
+        })
+
+    def add_evidence_layer(self, rag, scenario: dict, top_k: int = 3):
+        """Hang each agent's REAL retrieved chunks off it as satellite dots.
+        Re-callable: clears any prior evidence first. Guarded — never raises."""
+        from ph_economic_ai.engine.kg_swarm_adapter import _scenario_text
+        # clear prior evidence (idempotent)
+        for it in getattr(self, '_evidence_items', []):
+            try:
+                self._scene.removeItem(it)
+            except Exception:
+                pass
+        self._evidence_items = []
+        if rag is None:
+            return
+        try:
+            text = _scenario_text(scenario or {})
+        except Exception:
+            text = ''
+        for node in list(self._agents.values()):
+            try:
+                chunks = rag.query(text, top_k=top_k,
+                                   sources=getattr(node, '_rag_sources', None)) or []
+            except Exception:
+                continue
+            ax, ay = node.pos().x(), node.pos().y()
+            seen = set()
+            n = len(chunks)
+            for i, c in enumerate(chunks):
+                src, txt = c.get('source', '?'), c.get('text', '')
+                if (src, txt) in seen:
+                    continue
+                seen.add((src, txt))
+                ang = (2 * math.pi * i / max(n, 1)) - math.pi / 2
+                ex, ey = ax + 26.0 * math.cos(ang), ay + 26.0 * math.sin(ang)
+                edge = _Edge()
+                edge.set_path_between(ax, ay, ex, ey)
+                edge.set_state('dead')                 # faint dotted line
+                self._scene.addItem(edge)
+                self._evidence_items.append(edge)
+                ev = _EvidenceNode(src, txt)
+                ev.setPos(ex, ey)
+                ev.clicked.connect(self._emit_evidence_click)
+                self._scene.addItem(ev)
+                self._evidence_items.append(ev)
 
     def _emit_sector_agent_click(self, name: str):
         node = self._sector_agents.get(name)
