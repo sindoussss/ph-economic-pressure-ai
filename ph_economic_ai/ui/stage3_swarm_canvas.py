@@ -33,6 +33,8 @@ from PyQt6.QtGui import (
 
 from ph_economic_ai.engine.swarm import REGIONS, build_swarm_agents, _ROLE_RAG
 from ph_economic_ai.ui.kg_canvas import KnowledgeGraphCanvas
+from ph_economic_ai.ui import kg_live as _kg_live
+from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1709,6 +1711,7 @@ class _NodeDetailsCard(QFrame):
 # ════════════════════════════════════════════════════════════════════════════
 class Stage3SwarmPanel(QWidget):
     swarm_complete = pyqtSignal(object)
+    view_report_requested = pyqtSignal()
 
     def __init__(self, store=None, parent=None):
         super().__init__(parent)
@@ -1741,6 +1744,25 @@ class Stage3SwarmPanel(QWidget):
         outer.addWidget(self._build_header())
         outer.addLayout(self._build_main_row(), stretch=1)
         outer.addWidget(self._build_console())
+
+        # "View report →" button — shown only after swarm completes
+        self._view_report_btn = QPushButton('View report →')
+        self._view_report_btn.setStyleSheet(
+            'QPushButton{background:#1C1E26;color:#FFFFFF;border:none;border-radius:8px;'
+            'padding:8px 16px;font-family:Consolas,monospace;font-size:11px;font-weight:700;}')
+        self._view_report_btn.setVisible(False)
+        self._view_report_btn.clicked.connect(self.view_report_requested.emit)
+        outer.addWidget(self._view_report_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Live KG state
+        self._kg_builder = KnowledgeGraphBuilder()
+        self._agent_meta = {}
+        self._rag = None
+        self._scenario = {}
+        self._kg_dirty = False
+        self._kg_refresh = QTimer(self)
+        self._kg_refresh.setInterval(1500)
+        self._kg_refresh.timeout.connect(self._flush_kg)
 
         # Node details card — floats over canvas
         self._details_card = _NodeDetailsCard(self)
@@ -2084,6 +2106,40 @@ class Stage3SwarmPanel(QWidget):
             lambda: self._log('entity extraction complete', color='#15A150'))
         self._kg_worker.start()
 
+    # ── Live knowledge-graph helpers ──────────────────────────────────────────
+    def _begin_live_graph(self, rag, scenario, agent_meta):
+        """Start a fresh live knowledge graph: seed it and show the KG canvas."""
+        self._rag, self._scenario, self._agent_meta = rag, scenario or {}, agent_meta or {}
+        self._kg_builder = KnowledgeGraphBuilder()
+        try:
+            srcs = list(getattr(rag, 'all_source_names', []) or [])
+            _kg_live.seed(self._kg_builder, srcs, self._scenario)
+        except Exception:
+            pass
+        self._canvas.setVisible(False)
+        self._kg_canvas.setVisible(True)
+        try:
+            self._kg_canvas.node_clicked.connect(self._on_node_clicked)
+        except Exception:
+            pass
+        self._view_report_btn.setVisible(False)
+        self._flush_kg()
+        if not self._kg_refresh.isActive():
+            self._kg_refresh.start()
+
+    def _flush_kg(self):
+        try:
+            self._kg_canvas.set_snapshot(*self._kg_builder.snapshot())
+        except Exception:
+            pass
+        self._kg_dirty = False
+
+    def has_live_graph(self) -> bool:
+        try:
+            return len(self._kg_builder.snapshot()[0]) > 3
+        except Exception:
+            return False
+
     # ── Console ───────────────────────────────────────────────────────────────
     def _log(self, text: str, color: str = '#D1D5DB'):
         self._console_count += 1
@@ -2149,6 +2205,12 @@ class Stage3SwarmPanel(QWidget):
         for resp in responses:
             self._canvas.store_response(resp.agent_name, resp.statement)
             self._details_card.update_message(resp.agent_name, resp.statement)
+        try:
+            _kg_live.add_round(self._kg_builder, responses, self._agent_meta,
+                               self._rag, self._scenario)
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_group_eliminated(self, group_id: int, agent_name: str,
                              score: float, round_num: int):
@@ -2180,6 +2242,12 @@ class Stage3SwarmPanel(QWidget):
         if self._regional_done_count >= 2:
             self._set_phase(3, 'Master verdict')
             self._status_badge.setText('● MASTER')
+        try:
+            _kg_live.add_regional(self._kg_builder, getattr(verdict, 'region_pair', ()),
+                                  getattr(verdict, 'estimate', None), self._agent_meta)
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_swarm_complete(self, master_verdict):
         self._canvas.mark_master_done()
@@ -2205,6 +2273,18 @@ class Stage3SwarmPanel(QWidget):
         self._log(f'MASTER  gas={est}  conf={master_verdict.confidence_pct}%',
                   color='#34D399')
         self._apply_trust_badges()
+        try:
+            _kg_live.add_master(self._kg_builder, getattr(master_verdict, 'final_estimate', None))
+            self._flush_kg()
+            from ph_economic_ai.ui.kg_extract_worker import EntityExtractWorker
+            self._kg_worker = EntityExtractWorker(self._kg_builder)
+            self._kg_worker.progress.connect(
+                lambda _i: self._kg_canvas.set_snapshot(*self._kg_builder.snapshot()))
+            self._kg_worker.start()
+            self._kg_refresh.stop()
+            self._view_report_btn.setVisible(True)
+        except Exception:
+            pass
         self.swarm_complete.emit(master_verdict)
 
     # ── Trust badges ──────────────────────────────────────────────────────────
@@ -2242,6 +2322,12 @@ class Stage3SwarmPanel(QWidget):
         self._active_agents = max(0, self._active_agents - 1)
         self._active_val.setText(str(self._active_agents))
         self._log(f'FOOD    {resp.agent_name.split()[0]}  {est_str}', color='#86EFAC')
+        try:
+            _kg_live.add_sector_agent(self._kg_builder, resp.agent_name, 'food',
+                                      resp.price_estimate, getattr(resp, 'statement', ''))
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_food_canvas_complete(self, responses):
         estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -2281,6 +2367,12 @@ class Stage3SwarmPanel(QWidget):
         self._active_agents = max(0, self._active_agents - 1)
         self._active_val.setText(str(self._active_agents))
         self._log(f'ELEC    {resp.agent_name.split()[0]}  {est_str}', color='#FBBF24')
+        try:
+            _kg_live.add_sector_agent(self._kg_builder, resp.agent_name, 'elec',
+                                      resp.price_estimate, getattr(resp, 'statement', ''))
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_elec_canvas_complete(self, responses):
         estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -2301,6 +2393,14 @@ class Stage3SwarmPanel(QWidget):
 
     # ── Thread wiring ─────────────────────────────────────────────────────────
     def connect_thread(self, thread):
+        meta = {}
+        try:
+            price = (getattr(thread, '_scenario', {}) or {}).get('current_price', 0.0)
+            meta = {a.name: a for a in build_swarm_agents(price)}
+        except Exception:
+            pass
+        self._begin_live_graph(getattr(thread, '_rag', None),
+                               getattr(thread, '_scenario', {}), meta)
         thread.agent_typing.connect(self._on_agent_typing)
         thread.agent_done_typing.connect(self._on_agent_done_typing)
         thread.group_round_done.connect(self._on_group_round_done)
@@ -2351,3 +2451,8 @@ class Stage3SwarmPanel(QWidget):
         self._console.clear()
         self._console_count = 0
         self._details_card.hide()
+        self._kg_builder = KnowledgeGraphBuilder()
+        self._kg_dirty = False
+        self._kg_refresh.stop()
+        if hasattr(self, '_view_report_btn'):
+            self._view_report_btn.setVisible(False)
