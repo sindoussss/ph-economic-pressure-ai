@@ -19,6 +19,7 @@ from ph_economic_ai.ui.causal_chain_widget import CausalChainWidget, BSPAlertBan
 from ph_economic_ai.ui.regional_map import RegionalMapWidget
 from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
 from ph_economic_ai.ui import honesty as _honesty
+from ph_economic_ai.ui import theme as _theme
 
 
 class Stage4ReportPanel(QWidget):
@@ -36,7 +37,7 @@ class Stage4ReportPanel(QWidget):
         root.setSpacing(0)
 
         bar = QFrame()
-        bar.setStyleSheet('background:#FFFFFF;border-bottom:1px solid #EAECF0;')
+        bar.setStyleSheet(f'background:#FFFFFF;border-bottom:1px solid {_theme.HAIRLINE};')
         bar_layout = QHBoxLayout(bar)
         bar_layout.setContentsMargins(20, 10, 20, 10)
 
@@ -65,7 +66,7 @@ class Stage4ReportPanel(QWidget):
 
         # Persistent three-sector forecast card (populated via set_sector_forecasts)
         self._sector_holder = QWidget()
-        self._sector_holder.setStyleSheet('background:#FFFFFF;border-bottom:1px solid #EAECF0;')
+        self._sector_holder.setStyleSheet(f'background:#FFFFFF;border-bottom:1px solid {_theme.HAIRLINE};')
         self._sector_holder_layout = QVBoxLayout(self._sector_holder)
         self._sector_holder_layout.setContentsMargins(20, 8, 20, 8)
         self._sector_holder_layout.setSpacing(2)
@@ -76,7 +77,7 @@ class Stage4ReportPanel(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         body = QWidget()
-        body.setStyleSheet('background:#F7F8FA;')
+        body.setStyleSheet(f'background:{_theme.SURFACE};')
         # Centre the content in a max-width column so it doesn't sprawl edge to
         # edge on a wide / maximised window (matches the landing's editorial column).
         outer = QHBoxLayout(body)
@@ -364,14 +365,14 @@ class Stage4ReportPanel(QWidget):
 
         consensus_frame = QFrame()
         consensus_frame.setStyleSheet(
-            'background:#F7F8FA;border-radius:10px;border:1px solid #EAECF0;'
+            f'background:{_theme.SURFACE};border-radius:10px;border:1px solid {_theme.HAIRLINE};'
         )
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
         val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
-        val_lbl = QLabel(val_str)
-        val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
+        _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
+        val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
         sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
@@ -396,6 +397,7 @@ class Stage4ReportPanel(QWidget):
         _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
         cf_layout.addWidget(_note)
         cf_layout.addLayout(range_row)
+        cf_layout.addWidget(_theme.hairline())
         _cal = _hs.calibrated_interval_line(_report)
         if _cal:
             _cal_lbl = QLabel(_cal)
@@ -415,7 +417,7 @@ class Stage4ReportPanel(QWidget):
         rv_card, rvcl = self._card('Regional Verdicts')
         for rv in master_verdict.regional_verdicts:
             rvf = QFrame()
-            rvf.setStyleSheet('background:#F7F8FA;border-radius:8px;border:1px solid #EAECF0;')
+            rvf.setStyleSheet(f'background:{_theme.SURFACE};border-radius:8px;border:1px solid {_theme.HAIRLINE};')
             rvfl = QVBoxLayout(rvf)
             rvfl.setContentsMargins(10, 8, 10, 8)
             rvfl.setSpacing(3)
@@ -443,22 +445,10 @@ class Stage4ReportPanel(QWidget):
         self._left.addStretch()
 
     def _card(self, title: str):
-        frame = QFrame()
-        frame.setStyleSheet(
-            'QFrame{background:#FFFFFF;border:1px solid #EAECF0;border-radius:12px;}'
-        )
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(8)
-        lbl = QLabel(title)
-        lbl.setStyleSheet('font-size:11px;font-weight:700;color:#1C1E26;')
-        layout.addWidget(lbl)
-        return frame, layout
+        return _theme.card(title)
 
     def _muted(self, text: str) -> QLabel:
-        lbl = QLabel(text)
-        lbl.setStyleSheet('font-size:8px;color:#9EA3AE;text-transform:uppercase;')
-        return lbl
+        return _theme.muted(text, size=8, color=_theme.FAINT, upper=True)
 
     def _build_left(self, consensus: dict, responses: list):
         card, cl = self._card('Debate Summary')
@@ -472,13 +462,14 @@ class Stage4ReportPanel(QWidget):
 
         consensus_frame = QFrame()
         consensus_frame.setStyleSheet(
-            'background:#F7F8FA;border-radius:10px;border:1px solid #EAECF0;'
+            f'background:{_theme.SURFACE};border-radius:10px;border:1px solid {_theme.HAIRLINE};'
         )
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
-        val_lbl = QLabel(f'+₱{avg:.2f}/L' if avg is not None else 'No consensus')
-        val_lbl.setStyleSheet('font-size:24px;font-weight:700;color:#1C1E26;')
+        val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
+        _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
+        val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
         sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
@@ -503,6 +494,7 @@ class Stage4ReportPanel(QWidget):
         _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
         cf_layout.addWidget(_note)
         cf_layout.addLayout(range_row)
+        cf_layout.addWidget(_theme.hairline())
         _cal = _hs.calibrated_interval_line(_report)
         if _cal:
             _cal_lbl = QLabel(_cal)
@@ -515,7 +507,7 @@ class Stage4ReportPanel(QWidget):
         final = [r for r in responses if r.round_num == final_round]
         for resp in final:
             vf = QFrame()
-            vf.setStyleSheet('background:#F7F8FA;border-radius:8px;border:1px solid #EAECF0;')
+            vf.setStyleSheet(f'background:{_theme.SURFACE};border-radius:8px;border:1px solid {_theme.HAIRLINE};')
             vfl = QVBoxLayout(vf)
             vfl.setContentsMargins(10, 8, 10, 8)
             vfl.setSpacing(4)
@@ -580,7 +572,7 @@ class Stage4ReportPanel(QWidget):
         grid = QHBoxLayout()
         for label, value in metrics:
             mf = QFrame()
-            mf.setStyleSheet('background:#F7F8FA;border:1px solid #EAECF0;border-radius:9px;')
+            mf.setStyleSheet(f'background:{_theme.SURFACE};border:1px solid {_theme.HAIRLINE};border-radius:9px;')
             mf_layout = QVBoxLayout(mf)
             mf_layout.setContentsMargins(10, 8, 10, 8)
             mf_layout.addWidget(self._muted(label))
