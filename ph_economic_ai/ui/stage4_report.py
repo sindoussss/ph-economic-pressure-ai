@@ -27,6 +27,7 @@ class Stage4ReportPanel(QWidget):
         self._interact = interact_panel
         self._responses: list = []
         self._consensus: dict = {}
+        self._df = None
         self._build()
 
     def _build(self):
@@ -97,6 +98,14 @@ class Stage4ReportPanel(QWidget):
         top_row.addLayout(self._left, stretch=1)
         top_row.addWidget(self._build_right_pane(), stretch=1)
         body_layout.addLayout(top_row)
+
+        # Recent sector trajectories (small multiples) — populated by set_sector_forecasts
+        self._trajectory_holder = QWidget()
+        self._trajectory_holder_layout = QVBoxLayout(self._trajectory_holder)
+        self._trajectory_holder_layout.setContentsMargins(0, 0, 0, 0)
+        self._trajectory_holder_layout.setSpacing(6)
+        self._trajectory_holder.setVisible(False)
+        body_layout.addWidget(self._trajectory_holder)
 
         # Full-width policy recommendations below the columns
         self._reco_widget = PolicyRecoWidget()
@@ -203,11 +212,83 @@ class Stage4ReportPanel(QWidget):
                 rl.addStretch()
                 self._sector_holder_layout.addWidget(row)
             self._sector_holder.setVisible(True)
+            self._build_sector_trajectories(gas, food, elec)
+        except Exception:
+            pass
+
+    def _add_trajectory_chart(self, title: str, hist: list, forecast, color: str) -> bool:
+        try:
+            n = len(hist)
+            fig = Figure(figsize=(4.6, 1.3), facecolor='#FBFBFA')
+            ax = fig.add_subplot(111)
+            ax.set_facecolor('#FBFBFA')
+            ax.plot(range(n), hist, color=color, linewidth=1.6)
+            if forecast is not None:
+                ax.plot([n - 1, n], [hist[-1], forecast], color=color,
+                        linewidth=1.4, linestyle=':')
+                ax.plot(n, forecast, 'o', color=color, markersize=5)
+            for _sp in ('top', 'right'):
+                ax.spines[_sp].set_visible(False)
+            for _sp in ('left', 'bottom'):
+                ax.spines[_sp].set_color('#E5E7EB')
+            ax.grid(axis='y', color='#EEEEEE', linewidth=0.6)
+            ax.set_axisbelow(True)
+            ax.tick_params(labelsize=6, colors='#9AA1AC')
+            ax.set_title(title, fontsize=8, color='#6B7280', loc='left', pad=2)
+            fig.tight_layout(pad=0.6)
+            canvas = FigureCanvasQTAgg(fig)
+            canvas.setFixedHeight(120)
+            self._trajectory_holder_layout.addWidget(canvas)
+            return True
+        except Exception:
+            return False
+
+    def _build_sector_trajectories(self, gas, food, elec):
+        """Small-multiples of recent real history: gas ₱/L (df) + forecast marker,
+        food/elec CPI MoM % (PSA gold); marker only where the unit aligns."""
+        try:
+            while self._trajectory_holder_layout.count():
+                it = self._trajectory_holder_layout.takeAt(0)
+                w = it.widget()
+                if w is not None:
+                    w.deleteLater()
+            title = QLabel('RECENT SECTOR TRAJECTORIES')
+            title.setStyleSheet('font-size:10px;font-weight:700;letter-spacing:1px;'
+                                'color:#6B7280;')
+            self._trajectory_holder_layout.addWidget(title)
+
+            built = 0
+            df = getattr(self, '_df', None)
+            if df is not None and 'gas_price' in getattr(df, 'columns', []):
+                hist = df['gas_price'].dropna().tail(12).tolist()
+                if hist:
+                    fc = (hist[-1] + gas) if gas is not None else None
+                    if self._add_trajectory_chart('GAS · ₱/L', hist, fc, '#1C1E26'):
+                        built += 1
+            try:
+                from ph_economic_ai.benchmark.psa_cpi import load_food_mom
+                fh = load_food_mom().dropna().tail(12).tolist()
+                if fh and self._add_trajectory_chart('FOOD · CPI MoM %', fh, food, '#B45309'):
+                    built += 1
+            except Exception:
+                pass
+            try:
+                from ph_economic_ai.benchmark.psa_cpi import load_electricity_mom
+                eh = load_electricity_mom().dropna().tail(12).tolist()
+                if eh and self._add_trajectory_chart('ELECTRICITY · CPI MoM %', eh, None, '#15803D'):
+                    note = QLabel('next-month forecast in ₱/kWh — see card above')
+                    note.setStyleSheet('font-size:8px;color:#9EA3AE;font-style:italic;')
+                    self._trajectory_holder_layout.addWidget(note)
+                    built += 1
+            except Exception:
+                pass
+            self._trajectory_holder.setVisible(built > 0)
         except Exception:
             pass
 
     def populate(self, responses: list, consensus: dict,
                  regressor, df, cv_rmse: float, scenario: dict):
+        self._df = df
         self._responses = responses
         self._consensus = consensus
 
@@ -235,6 +316,7 @@ class Stage4ReportPanel(QWidget):
         scenario: dict,
     ):
         """Populate the report from a MasterVerdict (swarm mode)."""
+        self._df = df
         from ph_economic_ai.engine.swarm import MasterVerdict as _MV  # noqa: F401
 
         # Clear existing content
