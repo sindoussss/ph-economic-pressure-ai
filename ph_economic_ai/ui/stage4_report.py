@@ -18,6 +18,7 @@ from ph_economic_ai import model as ml
 from ph_economic_ai.ui.causal_chain_widget import CausalChainWidget, BSPAlertBanner
 from ph_economic_ai.ui.regional_map import RegionalMapWidget
 from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
+from ph_economic_ai.ui import honesty as _honesty
 
 
 class Stage4ReportPanel(QWidget):
@@ -289,6 +290,10 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        _note = QLabel(_honesty.consensus_note())
+        _note.setWordWrap(True)
+        _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
+        cf_layout.addWidget(_note)
         cf_layout.addLayout(range_row)
         _cal = _hs.calibrated_interval_line(_report)
         if _cal:
@@ -392,6 +397,10 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        _note = QLabel(_honesty.consensus_note())
+        _note.setWordWrap(True)
+        _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
+        cf_layout.addWidget(_note)
         cf_layout.addLayout(range_row)
         _cal = _hs.calibrated_interval_line(_report)
         if _cal:
