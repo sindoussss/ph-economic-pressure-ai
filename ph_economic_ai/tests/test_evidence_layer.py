@@ -31,6 +31,15 @@ def test_add_evidence_layer_populates(app):
     assert len(ev2) == n_agents * 3
 
 
+def test_evidence_hover_animates_scale(app):
+    from ph_economic_ai.ui.stage3_swarm_canvas import _EvidenceNode
+    n = _EvidenceNode('DOE', 'diesel eases')
+    n.hoverEnterEvent(None)                              # grows on hover
+    assert n._scale_anim.endValue() > 1.0
+    n.hoverLeaveEvent(None)                              # shrinks back
+    assert n._scale_anim.endValue() == 1.0
+
+
 def test_evidence_click_emits_provenance(app):
     from ph_economic_ai.ui.stage3_swarm_canvas import _SwarmCanvas
     c = _SwarmCanvas()
