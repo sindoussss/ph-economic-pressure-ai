@@ -35,6 +35,21 @@ def test_live_build_sequence():
     assert len([n for n in nodes if n.kind == 'evidence']) == 1
 
 
+def test_seed_skeleton_is_connected():
+    from ph_economic_ai.engine.swarm import build_swarm_agents
+    b = KnowledgeGraphBuilder()
+    agents = build_swarm_agents(60.0)
+    kg_live.seed_skeleton(b, agents, {'oil_price': 82.0})
+    nodes, edges = b.snapshot()
+    kinds = [n.kind for n in nodes]
+    assert kinds.count('agent') == len(agents)        # all agents present at t=0
+    assert 'judge' in kinds and 'master' in kinds
+    assert len(edges) >= len(agents)                  # connected, not scattered
+    for n in nodes:                                   # no isolated agent nodes
+        if n.kind == 'agent':
+            assert b.edges_of(n.id)
+
+
 def test_sector_agent():
     b = KnowledgeGraphBuilder()
     kg_live.add_sector_agent(b, 'AGRI', 'food', -2.6, 'rice eases')

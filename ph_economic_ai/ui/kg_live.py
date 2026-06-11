@@ -14,6 +14,30 @@ def seed(builder, sources, scenario: dict) -> None:
             builder.add_data_input(k, v)
 
 
+def seed_skeleton(builder, agents, scenario: dict) -> None:
+    """At run start: the FULL connected skeleton so the graph is rich + cohesive
+    immediately (master -> region judges -> agents, + data inputs wired to master).
+    Sources attach via their evidence as agents retrieve (see add_round) — so nothing
+    floats. This is what keeps the live canvas from looking empty/scattered at t=0."""
+    master = builder.add_master(None)
+    for k in _DATA_KEYS:
+        v = (scenario or {}).get(k)
+        if v is not None:
+            builder.add_edge(master, builder.add_data_input(k, v), 'references')
+    for ag in (agents or []):
+        name = getattr(ag, 'name', None)
+        if not name:
+            continue
+        region = getattr(ag, 'region_name', '') or ''
+        aid = builder.add_agent(name, getattr(ag, 'role', '') or '', region, None)
+        if region:
+            jid = builder.add_judge(region, None)
+            builder.add_edge(master, jid, 'aggregates')
+            builder.add_edge(jid, aid, 'aggregates')
+        else:
+            builder.add_edge(master, aid, 'aggregates')
+
+
 def add_round(builder, responses, agent_meta, rag, scenario, top_k: int = 3) -> None:
     """A group round: each agent + its claim + its retrieved evidence (live rag)."""
     text = _scenario_text(scenario or {})
@@ -38,14 +62,14 @@ def add_round(builder, responses, agent_meta, rag, scenario, top_k: int = 3) -> 
 
 
 def add_regional(builder, region_pair, estimate, agent_meta) -> None:
-    """A regional judge: judge node + master->judge + judge->its agents."""
-    pair = tuple(region_pair or ())
-    key = pair[0] if pair else 'region'
-    jid = builder.add_judge(key, estimate)
-    builder.add_edge('master', jid, 'aggregates')
-    for name, meta in (agent_meta or {}).items():
-        if getattr(meta, 'region_name', None) in pair:
-            builder.add_edge(jid, f'agent:{name}', 'aggregates')
+    """Attach/update the regional judges (keyed by region_name, matching the
+    skeleton) with their estimate + their agents."""
+    for region in (region_pair or ()):
+        jid = builder.add_judge(region, estimate)
+        builder.add_edge('master', jid, 'aggregates')
+        for name, meta in (agent_meta or {}).items():
+            if getattr(meta, 'region_name', None) == region:
+                builder.add_edge(jid, f'agent:{name}', 'aggregates')
 
 
 def add_master(builder, final_estimate) -> None:
