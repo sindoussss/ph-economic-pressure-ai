@@ -98,3 +98,72 @@ def plot_nowcast(dates, actual, nowcast, naive):
     ax.set_ylabel('YoY inflation (%)'); ax.legend(); ax.tick_params(axis='x', rotation=45)
     ax.set_title('CPI nowcast vs actual vs naive')
     fig.tight_layout(); fig.savefig(FIG_DIR / 'nowcast.png', dpi=120); plt.close(fig)
+
+
+# ── Publication-grade headline benchmark (the "what can/can't we forecast" chart) ──
+
+_PMAP_COLORS = {'predictable': '#15803D', 'efficient': '#C0C4CC', 'rejected': '#B3261E'}
+
+
+def plot_predictability_map(rows, out_paths):
+    """Headline benchmark bar chart: skill-vs-naive per target, coloured by verdict.
+
+    rows: list of dicts {label, skill (float fraction, e.g. 0.28), verdict in
+          'predictable'|'efficient'|'rejected', note (short annotation)}.
+    out_paths: iterable of Path — the same PNG is saved to each (e.g. artifacts + docs/img).
+    Editorial / AI-release style: off-white, serif title, value labels, 0 = naive baseline,
+    rejected bars hatched. Honest by design — shows the efficient/rejected bars too.
+    """
+    from matplotlib.patches import Patch
+    rows = sorted(rows, key=lambda r: r['skill'])              # best ends up on top (barh)
+    labels = [r['label'] for r in rows]
+    skills = [r['skill'] * 100.0 for r in rows]
+    colors = [_PMAP_COLORS.get(r['verdict'], '#C0C4CC') for r in rows]
+
+    fig, ax = plt.subplots(figsize=(8.8, 5.0), facecolor='#FBFBFA')
+    ax.set_facecolor('#FBFBFA')
+    bars = ax.barh(labels, skills, color=colors, height=0.62, zorder=3)
+    for r, b in zip(rows, bars):
+        if r['verdict'] == 'rejected':
+            b.set_hatch('////'); b.set_edgecolor('#FFFFFF')
+
+    ax.axvline(0, color='#1C1E26', linewidth=1.2, zorder=4)
+    for i, r in enumerate(rows):
+        s = r['skill'] * 100.0
+        ax.text(s + (0.9 if s >= 0 else -0.9), i, f'{s:+.0f}%', va='center',
+                ha='left' if s >= 0 else 'right', fontsize=11, fontweight='bold',
+                color='#1C1E26', zorder=5)
+        if r.get('note'):
+            ax.text(s + (7.0 if s >= 0 else 3.0), i, r['note'], va='center', ha='left',
+                    fontsize=7.5, color='#9AA0AA', zorder=5)
+
+    for sp in ('top', 'right'):
+        ax.spines[sp].set_visible(False)
+    for sp in ('left', 'bottom'):
+        ax.spines[sp].set_color('#E5E7EB')
+    ax.tick_params(axis='y', labelsize=9.5, colors='#1C1E26', length=0)
+    ax.tick_params(axis='x', labelsize=8, colors='#9AA0AA')
+    ax.set_xlabel('Skill vs naive baseline  ·  % RMSE improvement  ·  >0 beats naive',
+                  fontsize=9, color='#6B7280')
+    ax.set_xlim(min(min(skills) - 8, -8), max(skills) + 20)
+    ax.grid(axis='x', color='#EEEEEE', linewidth=0.6, zorder=0); ax.set_axisbelow(True)
+
+    fig.suptitle('What Strata can — and can’t — forecast', x=0.015, ha='left',
+                 fontsize=16, fontweight='bold', color='#1C1E26', family='serif')
+    ax.set_title('Philippine fuel & inflation  ·  strictly-causal walk-forward backtest, DM-tested',
+                 loc='left', fontsize=9.5, color='#9AA0AA', pad=12)
+    leg = [Patch(facecolor=_PMAP_COLORS['predictable'], label='Predictable (beats naive)'),
+           Patch(facecolor=_PMAP_COLORS['efficient'], label='Efficient (no edge)'),
+           Patch(facecolor=_PMAP_COLORS['rejected'], hatch='////', edgecolor='#FFFFFF',
+                 label='Rejected (data artifact)')]
+    ax.legend(handles=leg, loc='lower right', frameon=False, fontsize=8)
+    fig.text(0.015, 0.012,
+             'Skill = % RMSE improvement over the strongest naive baseline (random walk / '
+             'seasonal naive). Rejected = an apparent edge that fails the preliminary-data '
+             'robustness check.', fontsize=6.5, color='#9AA0AA')
+
+    fig.tight_layout(rect=[0, 0.04, 1, 0.92])
+    for p in out_paths:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(p, dpi=200, facecolor='#FBFBFA')
+    plt.close(fig)
