@@ -33,6 +33,8 @@ from PyQt6.QtGui import (
 
 from ph_economic_ai.engine.swarm import REGIONS, build_swarm_agents, _ROLE_RAG
 from ph_economic_ai.ui.kg_canvas import KnowledgeGraphCanvas
+from ph_economic_ai.ui import kg_live as _kg_live
+from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -550,6 +552,59 @@ class _RagNode(QGraphicsObject):
     def mousePressEvent(self, event):
         self.clicked.emit(self._source)
         super().mousePressEvent(event)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  EvidenceNode — tiny faint satellite dot = one real retrieved RAG chunk
+# ════════════════════════════════════════════════════════════════════════════
+class _EvidenceNode(QGraphicsObject):
+    """A small soft-blue dot = one real retrieved RAG chunk. Hover grows it
+    (animated, like the other nodes); click -> source + text."""
+    clicked = pyqtSignal(str, str)            # (source, text)
+    _R = 4.0
+    _FILL = '#93A4C4'                          # soft slate-blue = "evidence"
+    _RING = '#5C6E94'                          # slightly darker edge for definition
+
+    def __init__(self, source: str, text: str, parent=None):
+        super().__init__(parent)
+        self._source = source or '?'
+        self._text = text or ''
+        self.setZValue(1)                     # below agents (z=5), above edges
+        self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(f'{self._source}: {self._text[:80]}')
+        # animated hover scale (matches the grow-on-hover of the other nodes)
+        self._scale_anim = QPropertyAnimation(self, b'scale')
+        self._scale_anim.setDuration(140)
+        self._scale_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def boundingRect(self) -> QRectF:
+        r = self._R + 1.5
+        return QRectF(-r, -r, 2 * r, 2 * r)
+
+    def paint(self, p: QPainter, *_):
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        p.setPen(QPen(QColor(self._RING), 0.8))
+        p.setBrush(QBrush(QColor(self._FILL)))
+        p.drawEllipse(QRectF(-self._R, -self._R, 2 * self._R, 2 * self._R))
+
+    def _animate_scale(self, target: float):
+        self._scale_anim.stop()
+        self._scale_anim.setStartValue(self.scale())
+        self._scale_anim.setEndValue(target)
+        self._scale_anim.start()
+
+    def hoverEnterEvent(self, event):
+        self._animate_scale(1.9)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self._animate_scale(1.0)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, ev):
+        self.clicked.emit(self._source, self._text)
+        ev.accept()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1167,6 +1222,57 @@ class _SwarmCanvas(QGraphicsView):
             'source': source,
         })
 
+    def _emit_evidence_click(self, source: str, text: str):
+        self.node_clicked.emit({
+            'kind': 'evidence',
+            'label': source,
+            'payload': {'source': source, 'text': text},
+        })
+
+    def add_evidence_layer(self, rag, scenario: dict, top_k: int = 3):
+        """Hang each agent's REAL retrieved chunks off it as satellite dots.
+        Re-callable: clears any prior evidence first. Guarded — never raises."""
+        from ph_economic_ai.engine.kg_swarm_adapter import _scenario_text
+        # clear prior evidence (idempotent)
+        for it in getattr(self, '_evidence_items', []):
+            try:
+                self._scene.removeItem(it)
+            except Exception:
+                pass
+        self._evidence_items = []
+        if rag is None:
+            return
+        try:
+            text = _scenario_text(scenario or {})
+        except Exception:
+            text = ''
+        for node in list(self._agents.values()):
+            try:
+                chunks = rag.query(text, top_k=top_k,
+                                   sources=getattr(node, '_rag_sources', None)) or []
+            except Exception:
+                continue
+            ax, ay = node.pos().x(), node.pos().y()
+            seen = set()
+            n = len(chunks)
+            for i, c in enumerate(chunks):
+                src, txt = c.get('source', '?'), c.get('text', '')
+                if (src, txt) in seen:
+                    continue
+                seen.add((src, txt))
+                ang = (2 * math.pi * i / max(n, 1)) - math.pi / 2
+                ex, ey = ax + 26.0 * math.cos(ang), ay + 26.0 * math.sin(ang)
+                edge = _Edge()
+                edge.set_path_between(ax, ay, ex, ey)
+                edge.set_state('dead')                 # faint dotted line
+                self._scene.addItem(edge)
+                self._evidence_items.append(edge)
+                ev = _EvidenceNode(src, txt)
+                ev.setPos(ex, ey)
+                ev.clicked.connect(self._emit_evidence_click)
+                self._scene.addItem(ev)
+                self._evidence_items.append(ev)
+
     def _emit_sector_agent_click(self, name: str):
         node = self._sector_agents.get(name)
         if not node:
@@ -1709,6 +1815,7 @@ class _NodeDetailsCard(QFrame):
 # ════════════════════════════════════════════════════════════════════════════
 class Stage3SwarmPanel(QWidget):
     swarm_complete = pyqtSignal(object)
+    view_report_requested = pyqtSignal()
 
     def __init__(self, store=None, parent=None):
         super().__init__(parent)
@@ -1741,6 +1848,25 @@ class Stage3SwarmPanel(QWidget):
         outer.addWidget(self._build_header())
         outer.addLayout(self._build_main_row(), stretch=1)
         outer.addWidget(self._build_console())
+
+        # "View report →" button — shown only after swarm completes
+        self._view_report_btn = QPushButton('View report →')
+        self._view_report_btn.setStyleSheet(
+            'QPushButton{background:#1C1E26;color:#FFFFFF;border:none;border-radius:8px;'
+            'padding:8px 16px;font-family:Consolas,monospace;font-size:11px;font-weight:700;}')
+        self._view_report_btn.setVisible(False)
+        self._view_report_btn.clicked.connect(self.view_report_requested.emit)
+        outer.addWidget(self._view_report_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        # Live KG state
+        self._kg_builder = KnowledgeGraphBuilder()
+        self._agent_meta = {}
+        self._rag = None
+        self._scenario = {}
+        self._kg_dirty = False
+        self._kg_refresh = QTimer(self)
+        self._kg_refresh.setInterval(1500)
+        self._kg_refresh.timeout.connect(self._flush_kg)
 
         # Node details card — floats over canvas
         self._details_card = _NodeDetailsCard(self)
@@ -2084,6 +2210,36 @@ class Stage3SwarmPanel(QWidget):
             lambda: self._log('entity extraction complete', color='#15A150'))
         self._kg_worker.start()
 
+    # ── Live knowledge-graph helpers ──────────────────────────────────────────
+    def _begin_live_graph(self, rag, scenario, agent_meta):
+        """Start a fresh live knowledge graph: seed it and show the KG canvas."""
+        self._rag, self._scenario, self._agent_meta = rag, scenario or {}, agent_meta or {}
+        self._kg_builder = KnowledgeGraphBuilder()
+        try:
+            # Seed the FULL connected skeleton (agents + judges + master + data) so the
+            # graph is rich and cohesive from t=0 instead of a few scattered dots.
+            _kg_live.seed_skeleton(self._kg_builder, self._agent_meta.values(), self._scenario)
+        except Exception:
+            pass
+        # Keep the OLD structured arena as the live view (the labelled "line vibe"
+        # the user wants); the bare force-graph is not shown live.
+        self._canvas.setVisible(True)
+        self._kg_canvas.setVisible(False)
+        self._view_report_btn.setVisible(False)
+
+    def _flush_kg(self):
+        try:
+            self._kg_canvas.set_snapshot(*self._kg_builder.snapshot())
+        except Exception:
+            pass
+        self._kg_dirty = False
+
+    def has_live_graph(self) -> bool:
+        try:
+            return len(self._kg_builder.snapshot()[0]) > 3
+        except Exception:
+            return False
+
     # ── Console ───────────────────────────────────────────────────────────────
     def _log(self, text: str, color: str = '#D1D5DB'):
         self._console_count += 1
@@ -2149,6 +2305,12 @@ class Stage3SwarmPanel(QWidget):
         for resp in responses:
             self._canvas.store_response(resp.agent_name, resp.statement)
             self._details_card.update_message(resp.agent_name, resp.statement)
+        try:
+            _kg_live.add_round(self._kg_builder, responses, self._agent_meta,
+                               self._rag, self._scenario)
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_group_eliminated(self, group_id: int, agent_name: str,
                              score: float, round_num: int):
@@ -2180,6 +2342,12 @@ class Stage3SwarmPanel(QWidget):
         if self._regional_done_count >= 2:
             self._set_phase(3, 'Master verdict')
             self._status_badge.setText('● MASTER')
+        try:
+            _kg_live.add_regional(self._kg_builder, getattr(verdict, 'region_pair', ()),
+                                  getattr(verdict, 'estimate', None), self._agent_meta)
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_swarm_complete(self, master_verdict):
         self._canvas.mark_master_done()
@@ -2205,6 +2373,18 @@ class Stage3SwarmPanel(QWidget):
         self._log(f'MASTER  gas={est}  conf={master_verdict.confidence_pct}%',
                   color='#34D399')
         self._apply_trust_badges()
+        try:
+            _kg_live.add_master(self._kg_builder, getattr(master_verdict, 'final_estimate', None))
+            self._flush_kg()
+            from ph_economic_ai.ui.kg_extract_worker import EntityExtractWorker
+            self._kg_worker = EntityExtractWorker(self._kg_builder)
+            self._kg_worker.progress.connect(
+                lambda _i: self._kg_canvas.set_snapshot(*self._kg_builder.snapshot()))
+            self._kg_worker.start()
+            self._kg_refresh.stop()
+            self._view_report_btn.setVisible(True)
+        except Exception:
+            pass
         self.swarm_complete.emit(master_verdict)
 
     # ── Trust badges ──────────────────────────────────────────────────────────
@@ -2242,6 +2422,12 @@ class Stage3SwarmPanel(QWidget):
         self._active_agents = max(0, self._active_agents - 1)
         self._active_val.setText(str(self._active_agents))
         self._log(f'FOOD    {resp.agent_name.split()[0]}  {est_str}', color='#86EFAC')
+        try:
+            _kg_live.add_sector_agent(self._kg_builder, resp.agent_name, 'food',
+                                      resp.price_estimate, getattr(resp, 'statement', ''))
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_food_canvas_complete(self, responses):
         estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -2281,6 +2467,12 @@ class Stage3SwarmPanel(QWidget):
         self._active_agents = max(0, self._active_agents - 1)
         self._active_val.setText(str(self._active_agents))
         self._log(f'ELEC    {resp.agent_name.split()[0]}  {est_str}', color='#FBBF24')
+        try:
+            _kg_live.add_sector_agent(self._kg_builder, resp.agent_name, 'elec',
+                                      resp.price_estimate, getattr(resp, 'statement', ''))
+            self._kg_dirty = True
+        except Exception:
+            pass
 
     def _on_elec_canvas_complete(self, responses):
         estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -2301,6 +2493,14 @@ class Stage3SwarmPanel(QWidget):
 
     # ── Thread wiring ─────────────────────────────────────────────────────────
     def connect_thread(self, thread):
+        meta = {}
+        try:
+            price = (getattr(thread, '_scenario', {}) or {}).get('current_price', 0.0)
+            meta = {a.name: a for a in build_swarm_agents(price)}
+        except Exception:
+            pass
+        self._begin_live_graph(getattr(thread, '_rag', None),
+                               getattr(thread, '_scenario', {}), meta)
         thread.agent_typing.connect(self._on_agent_typing)
         thread.agent_done_typing.connect(self._on_agent_done_typing)
         thread.group_round_done.connect(self._on_group_round_done)
@@ -2308,6 +2508,11 @@ class Stage3SwarmPanel(QWidget):
         thread.group_survivor.connect(self._on_group_survivor)
         thread.regional_done.connect(self._on_regional_done)
         thread.swarm_complete.connect(self._on_swarm_complete)
+        try:
+            self._canvas.add_evidence_layer(getattr(thread, '_rag', None),
+                                            getattr(thread, '_scenario', {}))
+        except Exception:
+            pass
 
     # ── Reset ─────────────────────────────────────────────────────────────────
     def reset(self):
@@ -2351,3 +2556,8 @@ class Stage3SwarmPanel(QWidget):
         self._console.clear()
         self._console_count = 0
         self._details_card.hide()
+        self._kg_builder = KnowledgeGraphBuilder()
+        self._kg_dirty = False
+        self._kg_refresh.stop()
+        if hasattr(self, '_view_report_btn'):
+            self._view_report_btn.setVisible(False)
