@@ -180,9 +180,28 @@ class Stage4ReportPanel(QWidget):
             arrows = {'up': '▲', 'down': '▼', 'flat': '■', 'na': '·'}
             colors = {'up': '#EF4444', 'down': '#16A34A', 'flat': '#6B7280', 'na': '#9EA3AE'}
             for r in sector_forecast_rows(gas, food, elec):
-                lbl = QLabel(f"{r['label']}:  {arrows[r['direction']]}  {r['value_str']}")
-                lbl.setStyleSheet(f"font-size:12px;font-weight:600;color:{colors[r['direction']]};")
-                self._sector_holder_layout.addWidget(lbl)
+                color = colors[r['direction']]
+                row = QWidget()
+                rl = QHBoxLayout(row)
+                rl.setContentsMargins(0, 0, 0, 0)
+                rl.setSpacing(8)
+                name = QLabel(f"{arrows[r['direction']]}  {r['label']}")
+                name.setFixedWidth(118)
+                name.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
+                rl.addWidget(name)
+                track = QFrame()
+                track.setFixedSize(120, 8)
+                track.setStyleSheet('background:#EEF0F4;border-radius:4px;')
+                fill = QFrame(track)
+                w = max(2, int(120 * r['bar'])) if r['bar'] > 0 else 0
+                fill.setGeometry(0, 0, w, 8)
+                fill.setStyleSheet(f'background:{color};border-radius:4px;')
+                rl.addWidget(track)
+                val = QLabel(r['value_str'])
+                val.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
+                rl.addWidget(val)
+                rl.addStretch()
+                self._sector_holder_layout.addWidget(row)
             self._sector_holder.setVisible(True)
         except Exception:
             pass
