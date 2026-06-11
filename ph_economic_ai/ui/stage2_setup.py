@@ -54,7 +54,7 @@ class _ScenarioPill(QFrame):
         self._slider.setValue(int(default / step))
         self._slider.setFixedHeight(14)
         self._slider.setStyleSheet(
-            'QSlider::groove:horizontal{height:3px;background:#EAECF0;border-radius:2px;}'
+            'QSlider::groove:horizontal{height:3px;background:#E5E7EB;border-radius:2px;}'
             'QSlider::handle:horizontal{width:10px;height:10px;margin:-4px 0;'
             'border-radius:5px;background:#1C1E26;}'
             'QSlider::sub-page:horizontal{background:#1C1E26;border-radius:2px;}'
@@ -83,7 +83,7 @@ class _AgentCard(QFrame):
         super().__init__(parent)
         self._agent = agent
         self.setStyleSheet(
-            'QFrame{background:#F7F8FA;border:1px solid #EAECF0;border-radius:10px;}'
+            'QFrame{background:#FBFBFA;border:1px solid #E5E7EB;border-radius:10px;}'
         )
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -99,7 +99,7 @@ class _AgentCard(QFrame):
         prompt_lbl.setWordWrap(True)
         prompt_lbl.setStyleSheet(
             'font-size:9px;color:#9EA3AE;font-style:italic;'
-            'background:#FFFFFF;border:1px solid #EAECF0;'
+            'background:#FFFFFF;border:1px solid #E5E7EB;'
             'border-radius:7px;padding:5px 8px;'
         )
 
@@ -186,7 +186,7 @@ class Stage2SetupPanel(QWidget):
         self._parallel_slider.setValue(4)
         self._parallel_slider.setFixedWidth(120)
         self._parallel_slider.setStyleSheet(
-            'QSlider::groove:horizontal{height:3px;background:#EAECF0;border-radius:2px;}'
+            'QSlider::groove:horizontal{height:3px;background:#E5E7EB;border-radius:2px;}'
             'QSlider::handle:horizontal{width:10px;height:10px;margin:-4px 0;'
             'border-radius:5px;background:#1C1E26;}'
             'QSlider::sub-page:horizontal{background:#1C1E26;border-radius:2px;}'
