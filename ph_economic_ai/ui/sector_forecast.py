@@ -13,6 +13,7 @@ _SECTORS = [
     ('food', 'Food',        '{:+.2f} %'),
     ('elec', 'Electricity', '{:+.4f} ₱/kWh'),
 ]
+_BAR_SCALE = {'gas': 5.0, 'food': 5.0, 'elec': 2.0}   # per-sector "full bar" move (display only)
 
 
 def _direction(v: Optional[float]) -> str:
@@ -39,5 +40,6 @@ def sector_forecast_rows(gas: Optional[float] = None, food: Optional[float] = No
             'value': v,
             'value_str': fmt.format(v) if v is not None else '—',
             'direction': _direction(v),
+            'bar': 0.0 if v is None else min(abs(v) / _BAR_SCALE[key], 1.0),
         })
     return rows
