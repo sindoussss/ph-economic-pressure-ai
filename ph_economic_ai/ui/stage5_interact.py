@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import Agent, DebateEngine, AgentResponse
 from ph_economic_ai.ui import honesty as _honesty
-from ph_economic_ai.ui import theme as _theme
 
 
 class _AskThread(QThread):
