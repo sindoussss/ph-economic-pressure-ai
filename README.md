@@ -10,6 +10,8 @@ Most "AI predicts the economy" claims are never tested against a hard baseline. 
 
 ## Findings — the predictability map
 
+![Predictability map — skill vs the naive baseline per target: electricity inflation +28% and month-on-month inflation +16% are predictable, transport's apparent edge is rejected as a data artifact, and 1-month fuel/FX/YoY inflation are informationally efficient.](docs/img/predictability_map.png)
+
 | Target | Setup | Verdict |
 |---|---|---|
 | RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **efficient** — no method beats a random walk (skill ≈ −0.01 vs RW) |
