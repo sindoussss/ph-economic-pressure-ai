@@ -40,7 +40,7 @@ def test_live_graph_grows_and_view_report(app):
         all_source_names = ['DOE']
         def query(self, t, top_k=3, sources=None): return [{'source': 'DOE', 'text': 'x'}]
     p._begin_live_graph(_Rag(), {'current_price': 60.0}, {})
-    assert not p._kg_canvas.isHidden()                     # KG is the live view
+    assert not p._canvas.isHidden()                        # old structured arena is the live view
     p._on_group_round_done(0, 1, [NS(agent_name='FCST', statement='s', price_estimate=-1.8)])
     p._flush_kg()
     assert p._kg_canvas.node_item_count() > 0              # graph grew
