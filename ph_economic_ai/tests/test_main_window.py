@@ -55,3 +55,16 @@ def test_completion_stays_on_simulation_then_button_navigates(window):
     window._stack.setCurrentIndex(2)               # on Simulation
     window._stage3_swarm.view_report_requested.emit()
     assert window._stack.currentIndex() == 3        # navigated to Report on demand
+
+
+def test_learning_tab_present_and_refreshes(window):
+    from ph_economic_ai.ui.main_window import _TopNavBar
+    from ph_economic_ai.ui.learning_view import LearningView
+    labels = [lbl for _idx, lbl, _lk in _TopNavBar._ITEMS]
+    assert 'Learning' in labels                                  # nav tab exists
+    # its stack page is a LearningView and is reachable
+    learn_idx = next(i for i, lbl, _ in _TopNavBar._ITEMS if lbl == 'Learning')
+    window._stack.setCurrentIndex(learn_idx)
+    assert isinstance(window._stack.widget(learn_idx), LearningView)
+    window._learning.refresh(None)                              # no crash, empty-states
+    assert '0 runs logged' in window._learning._track_lbl.text() or 'runs logged' in window._learning._track_lbl.text()
