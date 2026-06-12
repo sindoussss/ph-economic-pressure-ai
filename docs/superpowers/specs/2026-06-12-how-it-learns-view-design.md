@@ -27,7 +27,7 @@ The app has real learning (within-run debate revisions; outcome-graded trust →
 - The `kg_live.py` dead-code cleanup (separate tidy-up).
 
 ### Non-negotiables
-- **Honest by construction:** the explainer states the model is frozen + the ~5-day grading lag; every data block has a truthful empty/sparse state; the "chain-verified" cue is real (`track_record.verify_chain()`), shown only when it actually verifies.
+- **Honest by construction:** the explainer states the model is frozen + the ~5-day grading lag; every data block has a truthful empty/sparse state; we surface ONLY data that is actually populated by live runs (the store) — no cue (e.g. "chain-verified") that isn't backed by real live data.
 - **Read-only + robust:** all store/track-record reads are wrapped; missing/empty data → honest placeholder, never a crash.
 - **Reuse, don't duplicate:** the trust-ladder block embeds the existing `AgentPerformancePanel` rather than re-implementing the ladder.
 
@@ -50,11 +50,15 @@ From `store.get_agent_responses(run_id)` (rows: `agent_name, round_num, estimate
 **Block 3 — Trust ladder**
 Embed an `AgentPerformancePanel(self._store)` instance (it already renders `get_all_trust_rows()` with tiers). A one-line honest caption above it: *"Agents rise/fall as real outcomes grade their past calls."* When `total_runs() < _COLD_START_RUNS` or trust is near 0.5, the caption adds: *"— near baseline; evolution activates after 3 runs."*
 
-**Block 4 — Track record**
-From `track_record.scorecard()` → `{n_matured, mae, coverage_90}` + `store.total_runs()`. Render a status line: *"`total_runs` logged · `n_matured` graded · evolution active"* (or *"activates at 3"* if cold). When `verify_chain()` is True, show a small **"✓ chain-verified"** integrity chip. Empty-state (`n_matured == 0`): *"No graded outcomes yet — grading waits ~5 days for real DOE pump prices."*
+**Block 4 — Track record** *(store-derived — the real, live-populated data)*
+The hash-chained `TrackRecord` jsonl is **not wired into live runs** (only tests touch it), so it is NOT used here — surfacing its (empty) `verify_chain()` as "✓ chain-verified" would be a fake honesty cue, which violates §2. Instead derive the scorecard from the **store's `runs` table**, which `apply_ground_truth_grade` actually populates:
+- `logged = store.total_runs()`
+- `graded = count of store.get_recent_runs(limit=200) where r['actual_price_change'] is not None`
+- `mae = mean of r['accuracy_error'] over those graded runs` (None if no graded runs)
+Render a status line: *"`logged` logged · `graded` graded · evolution `active`/`activates at 3`"* and, when `graded >= 1`, *"mean abs error `mae` ₱/L"*. Empty-state (`graded == 0`): *"No graded outcomes yet — grading waits ~5 days for real DOE pump prices."* (A future option, out of scope here, is to wire the tamper-evident `TrackRecord` into live runs and then show a real chain-verified chip.)
 
 ### 3.2 `main_window` wiring
-- Construct `self._learning = LearningView(self._store)` (it builds its own `TrackRecord` or receives one).
+- Construct `self._learning = LearningView(self._store)` (store-only; no `TrackRecord` dependency).
 - Add it to `self._stack` (new index) and append `(<idx>, 'Learning', False)` to `_NAV` so the tab renders unlocked.
 - On run-complete (`_on_swarm_complete`) call `self._learning.refresh(self._current_run_id)`; also `refresh()` when the Learning tab is shown (nav handler) so it's current.
 
@@ -63,7 +67,7 @@ From `track_record.scorecard()` → `{n_matured, mae, coverage_90}` + `store.tot
 nav 'Learning' clicked / run completes -> LearningView.refresh(run_id)
   block 2 <- store.get_agent_responses(run_id)        (this run's revisions)
   block 3 <- AgentPerformancePanel.refresh()          (trust ladder, get_all_trust_rows)
-  block 4 <- track_record.scorecard() + store.total_runs() + verify_chain()
+  block 4 <- store.total_runs() + store.get_recent_runs()  (logged · graded · MAE)
 block 1 is static (the honest mechanism)
 ```
 
@@ -76,7 +80,7 @@ block 1 is static (the honest mechanism)
 - `test_learning_view.py` (offscreen Qt):
   - builds with a fresh/empty `AgentTrustStore` → all four blocks render; blocks 2 & 4 show empty-states; no crash.
   - with a seeded store (a saved run + `save_agent_responses` two rounds + a trust row) → `refresh(run_id)` shows the per-round revision for the agent and the trust ladder is non-empty.
-  - block 4: with a graded outcome, the scorecard line shows `n_matured >= 1`; chain chip appears only when `verify_chain()` is True.
+  - block 4: with a graded run (`apply_ground_truth_grade` → `actual_price_change`/`accuracy_error` set), the status shows `graded >= 1` + the MAE; with none, the empty-state.
 - `test_main_window` smoke: the `Learning` nav entry exists and `setCurrentIndex` to its page builds without error.
 - Full suite green.
 
