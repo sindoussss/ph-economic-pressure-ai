@@ -1867,60 +1867,68 @@ class Stage3SwarmPanel(QWidget):
         self._details_card = _NodeDetailsCard(self)
         self._details_card.closed.connect(self._details_card.hide)
 
-    # ── Completion toast (achievement-style, slides in from the top) ──────────
+    # ── Completion toast (editorial light card, slides in from the top) ───────
     def _build_completion_toast(self):
+        from ph_economic_ai.ui import theme as _t
         self._toast = QFrame(self)
         self._toast.setObjectName('completeToast')
         self._toast.setStyleSheet(
-            '#completeToast{background:#16181F;border:1px solid #2C2F3A;'
-            'border-radius:12px;}')
+            f'#completeToast{{background:{_t.CARD};border:1px solid {_t.HAIRLINE};'
+            f'border-radius:16px;}}')
         lay = QHBoxLayout(self._toast)
-        lay.setContentsMargins(14, 10, 12, 10)
-        lay.setSpacing(12)
+        lay.setContentsMargins(15, 11, 13, 11)
+        lay.setSpacing(13)
 
+        # soft success check — pale-green disc, green tick
         badge = QLabel('✓')
-        badge.setFixedSize(30, 30)
+        badge.setFixedSize(28, 28)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(
-            'background:#15A150;color:#FFFFFF;border-radius:15px;'
-            'font-family:Consolas,monospace;font-size:16px;font-weight:700;')
+            f'background:#E7F4EC;color:{_t.DOWN};border-radius:14px;'
+            f'font-family:{_t.MONO};font-size:15px;font-weight:700;')
         lay.addWidget(badge)
 
-        col = QVBoxLayout(); col.setSpacing(1); col.setContentsMargins(0, 0, 0, 0)
-        eyebrow = QLabel('SIMULATION COMPLETE')
-        eyebrow.setStyleSheet(
-            'color:#FFFFFF;font-family:Consolas,monospace;font-size:11px;'
-            'font-weight:700;letter-spacing:1.4px;')
-        sub = QLabel('master verdict ready')
-        sub.setStyleSheet('color:#9AA0AA;font-family:Consolas,monospace;font-size:9px;')
-        col.addWidget(eyebrow); col.addWidget(sub)
+        col = QVBoxLayout(); col.setSpacing(2); col.setContentsMargins(0, 0, 0, 0)
+        title = QLabel('Simulation complete')
+        title.setStyleSheet(
+            f'color:{_t.INK};font-family:{_t.SERIF};font-size:15px;font-weight:600;')
+        self._toast_sub = QLabel('master verdict ready')
+        self._toast_sub.setStyleSheet(
+            f'color:{_t.FAINT};font-family:{_t.MONO};font-size:9px;letter-spacing:0.4px;')
+        col.addWidget(title); col.addWidget(self._toast_sub)
         lay.addLayout(col)
-        lay.addSpacing(10)
+        lay.addSpacing(28)
 
-        btn = QPushButton('View report →')
+        btn = QPushButton('View report  →')
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            'QPushButton{background:#FFFFFF;color:#16181F;border:none;border-radius:8px;'
-            'padding:7px 14px;font-family:Consolas,monospace;font-size:11px;font-weight:700;}'
-            'QPushButton:hover{background:#E9ECF2;}')
+            f'QPushButton{{background:{_t.INK};color:#FFFFFF;border:none;border-radius:10px;'
+            f'padding:9px 17px;font-family:{_t.MONO};font-size:11px;font-weight:700;'
+            f'letter-spacing:0.5px;}}'
+            f'QPushButton:hover{{background:#33363F;}}')
         btn.clicked.connect(self.view_report_requested.emit)
         lay.addWidget(btn)
         self._toast_btn = btn
 
+        # soft, low, premium shadow (the card floats)
         shadow = QGraphicsDropShadowEffect(self._toast)
-        shadow.setBlurRadius(30); shadow.setColor(QColor(0, 0, 0, 130)); shadow.setOffset(0, 9)
+        shadow.setBlurRadius(44)
+        shadow.setColor(QColor(17, 24, 39, 55))
+        shadow.setOffset(0, 14)
         self._toast.setGraphicsEffect(shadow)
 
         self._toast_anim = QPropertyAnimation(self._toast, b'pos')
-        self._toast_anim.setDuration(560)
+        self._toast_anim.setDuration(620)
         self._toast_anim.setEasingCurve(QEasingCurve.Type.OutBack)
         self._toast.hide()
 
-    def _show_completion_toast(self):
+    def _show_completion_toast(self, subtitle: str = ''):
+        if subtitle:
+            self._toast_sub.setText(subtitle)
         self._toast.adjustSize()
         cx = max(12, (self.width() - self._toast.width()) // 2)
-        start = QPoint(cx, -self._toast.height() - 6)
-        end = QPoint(cx, 16)
+        start = QPoint(cx, -self._toast.height() - 8)
+        end = QPoint(cx, 18)
         self._toast.move(start)
         self._toast.show()
         self._toast.raise_()
@@ -2445,7 +2453,15 @@ class Stage3SwarmPanel(QWidget):
             self._kg_refresh.stop()
         except Exception:
             pass
-        self._show_completion_toast()
+        try:
+            _conf = getattr(master_verdict, 'confidence_pct', None)
+            _bits = [b for b in (self._master_estimate,
+                                 f'{_conf}% confidence' if _conf is not None else '')
+                     if b and b != '—']
+            _sub = '  ·  '.join(_bits) or 'master verdict ready'
+        except Exception:
+            _sub = 'master verdict ready'
+        self._show_completion_toast(_sub)
         self.swarm_complete.emit(master_verdict)
 
     # ── Trust badges ──────────────────────────────────────────────────────────
