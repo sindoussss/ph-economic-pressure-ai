@@ -48,8 +48,8 @@ def test_live_graph_grows_and_view_report(app):
     p.view_report_requested.connect(lambda: fired.append(True))
     p._on_swarm_complete(NS(final_estimate=-1.8, confidence_pct=80, regional_verdicts=[],
                             dissenting_regions=[], all_responses=[]))
-    assert not p._view_report_btn.isHidden()               # button revealed
-    p._view_report_btn.click()
+    assert not p._toast.isHidden()                         # completion toast slid in
+    p._toast_btn.click()                                   # its "View report →" button
     assert fired == [True]
 
 
