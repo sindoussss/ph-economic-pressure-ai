@@ -30,6 +30,7 @@ from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
 from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
 from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
 from ph_economic_ai.ui.accuracy_view import AccuracyView
+from ph_economic_ai.ui.learning_view import LearningView
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ class _TopNavBar(QFrame):
         (0, 'Home',        False),
         (2, 'Simulation',  True),
         (3, 'Report',      True),
+        (6, 'Learning',    False),
     ]
 
     def __init__(self, parent=None):
@@ -231,6 +233,7 @@ class SimMainWindow(QMainWindow):
 
         self._agent_perf = AgentPerformancePanel(self._store)
         self._accuracy_view = AccuracyView()
+        self._learning = LearningView(self._store)
 
         # ── Wrap the landing in a vertical scroll area (website-style) ──────
         landing_scroll = QScrollArea()
@@ -249,10 +252,10 @@ class SimMainWindow(QMainWindow):
         self._landing_scroll = landing_scroll
 
         # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report(workbench),
-        #              4=AgentPerf, 5=Methodology & Accuracy
+        #              4=AgentPerf, 5=Methodology & Accuracy, 6=Learning
         for widget in (landing_scroll, self._economy_overview,
                        self._stage3_container, self._stage4,
-                       self._agent_perf, self._accuracy_view):
+                       self._agent_perf, self._accuracy_view, self._learning):
             self._stack.addWidget(widget)
 
         # Wire DOE checker → agent perf panel refresh
@@ -285,6 +288,8 @@ class SimMainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
         if idx == 4:        # Agent Performance is now index 4
             self._agent_perf.refresh()
+        if idx == 6:
+            self._learning.refresh(getattr(self, '_current_run_id', None))
 
     def _on_landing_run(self):
         """Click on the landing 'RUN SIMULATION' button — auto-derive a scenario
@@ -616,6 +621,10 @@ class SimMainWindow(QMainWindow):
             self._store.save_agent_responses(self._current_run_id, response_dicts)
             for agent_name, sc in scores.items():
                 self._store.update_trust(agent_name, internal_score=sc['overall'])
+        try:
+            self._learning.refresh(self._current_run_id)
+        except Exception:
+            pass
         self._gas_verdict = str(master_verdict)
         self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
         self._push_sector_forecasts()
