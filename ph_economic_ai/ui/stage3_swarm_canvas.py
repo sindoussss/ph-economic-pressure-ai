@@ -22,9 +22,10 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QTextEdit, QFrame,
     QGraphicsView, QGraphicsScene, QGraphicsObject, QSizePolicy,
     QGraphicsPathItem, QGraphicsItem, QPushButton, QScrollArea,
+    QGraphicsDropShadowEffect,
 )
 from PyQt6.QtCore import (
-    Qt, QRectF, QPointF, pyqtSignal, QTimer,
+    Qt, QRectF, QPointF, QPoint, pyqtSignal, QTimer,
     QPropertyAnimation, QEasingCurve, pyqtProperty, QVariantAnimation,
 )
 from PyQt6.QtGui import (
@@ -1849,14 +1850,8 @@ class Stage3SwarmPanel(QWidget):
         outer.addLayout(self._build_main_row(), stretch=1)
         outer.addWidget(self._build_console())
 
-        # "View report →" button — shown only after swarm completes
-        self._view_report_btn = QPushButton('View report →')
-        self._view_report_btn.setStyleSheet(
-            'QPushButton{background:#1C1E26;color:#FFFFFF;border:none;border-radius:8px;'
-            'padding:8px 16px;font-family:Consolas,monospace;font-size:11px;font-weight:700;}')
-        self._view_report_btn.setVisible(False)
-        self._view_report_btn.clicked.connect(self.view_report_requested.emit)
-        outer.addWidget(self._view_report_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        # Completion toast — an achievement-style card that slides in from the top
+        self._build_completion_toast()
 
         # Live KG state
         self._kg_builder = KnowledgeGraphBuilder()
@@ -1871,6 +1866,80 @@ class Stage3SwarmPanel(QWidget):
         # Node details card — floats over canvas
         self._details_card = _NodeDetailsCard(self)
         self._details_card.closed.connect(self._details_card.hide)
+
+    # ── Completion toast (editorial light card, slides in from the top) ───────
+    def _build_completion_toast(self):
+        from ph_economic_ai.ui import theme as _t
+        self._toast = QFrame(self)
+        self._toast.setObjectName('completeToast')
+        self._toast.setStyleSheet(
+            f'#completeToast{{background:{_t.CARD};border:1px solid {_t.HAIRLINE};'
+            f'border-radius:16px;}}')
+        lay = QHBoxLayout(self._toast)
+        lay.setContentsMargins(15, 11, 13, 11)
+        lay.setSpacing(13)
+
+        # soft success check — pale-green disc, green tick
+        badge = QLabel('✓')
+        badge.setFixedSize(28, 28)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(
+            f'background:#E7F4EC;color:{_t.DOWN};border-radius:14px;'
+            f'font-family:{_t.MONO};font-size:15px;font-weight:700;')
+        lay.addWidget(badge)
+
+        col = QVBoxLayout(); col.setSpacing(2); col.setContentsMargins(0, 0, 0, 0)
+        title = QLabel('Simulation complete')
+        title.setStyleSheet(
+            f'color:{_t.INK};font-family:{_t.SERIF};font-size:15px;font-weight:600;')
+        self._toast_sub = QLabel('master verdict ready')
+        self._toast_sub.setStyleSheet(
+            f'color:{_t.FAINT};font-family:{_t.MONO};font-size:9px;letter-spacing:0.4px;')
+        col.addWidget(title); col.addWidget(self._toast_sub)
+        lay.addLayout(col)
+        lay.addSpacing(28)
+
+        btn = QPushButton('View report  →')
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            f'QPushButton{{background:{_t.INK};color:#FFFFFF;border:none;border-radius:10px;'
+            f'padding:9px 17px;font-family:{_t.MONO};font-size:11px;font-weight:700;'
+            f'letter-spacing:0.5px;}}'
+            f'QPushButton:hover{{background:#33363F;}}')
+        btn.clicked.connect(self.view_report_requested.emit)
+        lay.addWidget(btn)
+        self._toast_btn = btn
+
+        # soft, low, premium shadow (the card floats)
+        shadow = QGraphicsDropShadowEffect(self._toast)
+        shadow.setBlurRadius(44)
+        shadow.setColor(QColor(17, 24, 39, 55))
+        shadow.setOffset(0, 14)
+        self._toast.setGraphicsEffect(shadow)
+
+        self._toast_anim = QPropertyAnimation(self._toast, b'pos')
+        self._toast_anim.setDuration(620)
+        self._toast_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        self._toast.hide()
+
+    def _show_completion_toast(self, subtitle: str = ''):
+        if subtitle:
+            self._toast_sub.setText(subtitle)
+        self._toast.adjustSize()
+        cx = max(12, (self.width() - self._toast.width()) // 2)
+        start = QPoint(cx, -self._toast.height() - 8)
+        end = QPoint(cx, 18)
+        self._toast.move(start)
+        self._toast.show()
+        self._toast.raise_()
+        self._toast_anim.stop()
+        self._toast_anim.setStartValue(start)
+        self._toast_anim.setEndValue(end)
+        self._toast_anim.start()
+
+    def _hide_completion_toast(self):
+        if hasattr(self, '_toast'):
+            self._toast.hide()
 
     def _build_header(self) -> QWidget:
         bar = QWidget()
@@ -2225,7 +2294,7 @@ class Stage3SwarmPanel(QWidget):
         # the user wants); the bare force-graph is not shown live.
         self._canvas.setVisible(True)
         self._kg_canvas.setVisible(False)
-        self._view_report_btn.setVisible(False)
+        self._hide_completion_toast()
 
     def _flush_kg(self):
         try:
@@ -2382,9 +2451,17 @@ class Stage3SwarmPanel(QWidget):
                 lambda _i: self._kg_canvas.set_snapshot(*self._kg_builder.snapshot()))
             self._kg_worker.start()
             self._kg_refresh.stop()
-            self._view_report_btn.setVisible(True)
         except Exception:
             pass
+        try:
+            _conf = getattr(master_verdict, 'confidence_pct', None)
+            _bits = [b for b in (self._master_estimate,
+                                 f'{_conf}% confidence' if _conf is not None else '')
+                     if b and b != '—']
+            _sub = '  ·  '.join(_bits) or 'master verdict ready'
+        except Exception:
+            _sub = 'master verdict ready'
+        self._show_completion_toast(_sub)
         self.swarm_complete.emit(master_verdict)
 
     # ── Trust badges ──────────────────────────────────────────────────────────
@@ -2559,5 +2636,4 @@ class Stage3SwarmPanel(QWidget):
         self._kg_builder = KnowledgeGraphBuilder()
         self._kg_dirty = False
         self._kg_refresh.stop()
-        if hasattr(self, '_view_report_btn'):
-            self._view_report_btn.setVisible(False)
+        self._hide_completion_toast()
