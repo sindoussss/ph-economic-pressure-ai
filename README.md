@@ -52,8 +52,6 @@ The app pulls live data (Brent, USD/PHP, PSA/DOE feeds), runs the swarm, and ren
 |---|---|---|
 | ![workbench](docs/img/workbench.png) | ![simulation](docs/img/sim-graph.png) | ![landing](docs/img/landing.png) |
 
-*(Drop PNGs into `docs/img/` to populate these.)*
-
 ## Repo layout
 
 ```
