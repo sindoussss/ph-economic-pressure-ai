@@ -50,7 +50,7 @@ The app pulls live data (Brent, USD/PHP, PSA/DOE feeds), runs the swarm, and ren
 
 | Workbench (report + interact) | Knowledge-graph simulation | Landing |
 |---|---|---|
-| ![workbench](docs/img/workbench.png) | ![simulation](docs/img/sim-graph.png) | ![landing](docs/img/landing.png) |
+| ![workbench](docs/img/workbench.png) | ![simulation](docs/img/simulation.png) | ![landing](docs/img/landing.png) |
 
 ## Repo layout
 
