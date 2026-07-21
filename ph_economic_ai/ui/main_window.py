@@ -12,6 +12,7 @@ from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
     DEFAULT_AGENTS, FOOD_AGENTS, ELECTRICITY_AGENTS,
     SynthesizerThread, DebateEngine, DebateThread, _extract_percent,
+    _extract_electricity_change,
 )
 from ph_economic_ai.engine.swarm import SwarmThread, fetch_live_retail_price, derive_regional_estimates, build_swarm_agents
 from ph_economic_ai.engine.live_data import (
@@ -455,6 +456,7 @@ class SimMainWindow(QMainWindow):
         self._food_thread.start()
 
         self._elec_engine = DebateEngine(ELECTRICITY_AGENTS, self._rag, scenario_dict,
+                                          price_extractor=_extract_electricity_change,
                                           data_brief=brief)
         self._elec_thread = DebateThread(self._elec_engine, rounds=1)
         self._elec_thread.debate_complete.connect(self._on_elec_complete)
