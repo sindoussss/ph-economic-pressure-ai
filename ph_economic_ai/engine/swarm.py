@@ -690,12 +690,16 @@ class RegionalJudge:
         rag: RagEngine,
         scenario: dict,
         data_brief: Optional['LiveDataBrief'] = None,
+        agent_estimates: Optional[list[float]] = None,
     ):
         self._judge_id = judge_id
         self._s1, self._s2 = survivors
         self._rag = rag
         self._scenario = scenario
         self._data_brief = data_brief
+        # Every estimate produced by the agents in this judge's two regions.
+        # Without them there is nothing to measure agreement over — see run().
+        self._agent_estimates = agent_estimates or []
 
     def _brief_block(self) -> str:
         if self._data_brief is None:
@@ -767,7 +771,12 @@ class RegionalJudge:
         def2 = self._call(self._defense_prompt(self._s2, self._s1))
         synthesis = self._call(self._synthesis_prompt(def1, def2))
         estimate = _extract_fuel_change(synthesis)
-        confidence = 0.75 if estimate is not None else 0.3
+        # Measured, not assumed. This was previously a hardcoded 0.75 whenever
+        # the estimate merely parsed, which the report then displayed as "agent
+        # agreement" — a constant presented as a measurement, and identical on
+        # every card. Uses the same function as the master verdict so the word
+        # "agreement" means one thing everywhere in the report.
+        confidence = _robust_confidence_pct(self._agent_estimates, estimate) / 100
         return RegionalVerdict(
             judge_id=self._judge_id,
             region_pair=(self._s1.region_name, self._s2.region_name),
@@ -920,6 +929,9 @@ class SwarmOrchestrator:
         errors: list[str] = []
         lock = threading.Lock()
         all_arena_responses: list = []
+        # Kept per group, not just pooled, so each regional judge can measure
+        # agreement across exactly the agents it is judging.
+        group_histories: dict[int, list] = {}
 
         def run_group(group_id: int):
             with sem:
@@ -937,6 +949,7 @@ class SwarmOrchestrator:
                     s = arena.run()
                     with lock:
                         survivors[group_id] = s
+                        group_histories[group_id] = list(arena._history)
                         all_arena_responses.extend(arena._history)
                 except Exception as e:
                     with lock:
@@ -968,6 +981,12 @@ class SwarmOrchestrator:
                 rag=self._rag,
                 scenario=self._scenario,
                 data_brief=self._data_brief,
+                agent_estimates=[
+                    r.price_estimate
+                    for gid in (i, j)
+                    for r in group_histories.get(gid, [])
+                    if r.price_estimate is not None
+                ],
             )
             verdict = judge.run()
             regional_verdicts.append(verdict)
