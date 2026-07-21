@@ -1,6 +1,7 @@
 """Tests for the hosted-LLM client. Everything here runs without a network or
 an API key — the transport is stubbed and the pure seams are exercised directly.
 """
+import json
 import threading
 import time
 
@@ -24,12 +25,35 @@ def test_active_provider_falls_back_to_whichever_key_exists(monkeypatch):
     assert llm.active_provider() == 'gemini'
 
 
-def test_active_provider_raises_actionable_error_with_no_keys(monkeypatch):
+def test_defaults_to_local_ollama_with_no_keys(monkeypatch):
+    """The app must run offline out of the box — no key, no quota, no network."""
     monkeypatch.delenv('STRATA_LLM_PROVIDER', raising=False)
     monkeypatch.delenv('GROQ_API_KEY', raising=False)
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
-    with pytest.raises(llm.LLMError, match='No LLM provider configured'):
-        llm.active_provider()
+    assert llm.active_provider() == 'ollama'
+    assert llm.is_local() is True
+
+
+def test_a_hosted_key_takes_precedence_over_local(monkeypatch):
+    monkeypatch.delenv('STRATA_LLM_PROVIDER', raising=False)
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+    monkeypatch.setenv('GROQ_API_KEY', 'x')
+    assert llm.active_provider() == 'groq'
+    assert llm.is_local() is False
+
+
+def test_ollama_needs_no_api_key(monkeypatch):
+    monkeypatch.delenv('GROQ_API_KEY', raising=False)
+    monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+    assert llm._api_key('ollama') == ''
+
+
+def test_local_tiers_fit_an_8gb_gpu():
+    """The old config put judges on qwen2.5:14b (~9GB), which does not fit in
+    8GB of VRAM and silently ran on CPU. Neither local tier may be a 14b."""
+    for tier in (llm.FAST, llm.DEEP):
+        assert '14b' not in llm.model_for(tier, 'ollama')
+        assert '70b' not in llm.model_for(tier, 'ollama')
 
 
 def test_unknown_provider_is_rejected(monkeypatch):
@@ -38,10 +62,18 @@ def test_unknown_provider_is_rejected(monkeypatch):
         llm.active_provider()
 
 
-def test_is_configured_never_raises(monkeypatch):
+def test_is_configured_is_true_offline_because_ollama_needs_no_key(monkeypatch):
+    """is_configured means 'a provider resolves', not 'the daemon is up'. Use
+    probe() for reachability — this one must stay cheap, it is on UI paths."""
     monkeypatch.delenv('STRATA_LLM_PROVIDER', raising=False)
     monkeypatch.delenv('GROQ_API_KEY', raising=False)
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
+    assert llm.is_configured() is True
+
+
+def test_is_configured_is_false_for_a_hosted_provider_with_no_key(monkeypatch):
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'groq')
+    monkeypatch.delenv('GROQ_API_KEY', raising=False)
     assert llm.is_configured() is False
 
 
@@ -281,9 +313,149 @@ def test_deep_tier_selects_the_deep_model(monkeypatch):
 
 
 def test_embed_without_gemini_key_raises_so_caller_can_fall_back(monkeypatch):
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'groq')
+    monkeypatch.setenv('GROQ_API_KEY', 'x')
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
     with pytest.raises(llm.LLMError, match='GEMINI_API_KEY'):
         llm.embed(['some text'])
+
+
+# ── Ollama backend ────────────────────────────────────────────────────────────
+
+class _FakeResponse:
+    def __init__(self, status_code=200, lines=(), text='', payload=None):
+        self.status_code = status_code
+        self._lines = list(lines)
+        self.text = text
+        self._payload = payload or {}
+
+    def iter_lines(self, decode_unicode=False):
+        return iter(self._lines)
+
+    def json(self):
+        return self._payload
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def local(monkeypatch):
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'ollama')
+    monkeypatch.delenv('OLLAMA_HOST', raising=False)
+
+
+def test_extract_ollama_token():
+    assert llm.extract_ollama_token({'message': {'content': 'hi'}}) == 'hi'
+
+
+def test_extract_ollama_token_tolerates_final_frame():
+    """The last NDJSON frame carries done=true and no content."""
+    assert llm.extract_ollama_token({'done': True}) == ''
+
+
+def test_ollama_stream_yields_tokens(local, monkeypatch):
+    lines = [
+        json.dumps({'message': {'content': 'hel'}}),
+        json.dumps({'message': {'content': 'lo'}}),
+        json.dumps({'done': True}),
+    ]
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(lines=lines))
+    assert ''.join(llm.stream([{'role': 'user', 'content': 'q'}])) == 'hello'
+
+
+def test_ollama_missing_model_gives_a_pull_command(local, monkeypatch):
+    """A 404 means the model was never pulled — say so, with the fix."""
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(status_code=404))
+    with pytest.raises(llm.LLMError, match='ollama pull'):
+        list(llm.stream([{'role': 'user', 'content': 'q'}]))
+
+
+def test_ollama_daemon_down_is_an_actionable_error(local, monkeypatch):
+    def _refuse(*a, **k):
+        raise llm.requests.RequestException('connection refused')
+
+    monkeypatch.setattr(llm.requests, 'post', _refuse)
+    with pytest.raises(llm.LLMError, match='Is the Ollama app running'):
+        list(llm.stream([{'role': 'user', 'content': 'q'}]))
+
+
+def test_ollama_passes_max_tokens_as_num_predict(local, monkeypatch):
+    seen = {}
+
+    def _capture(url, json=None, **k):
+        seen.update(json or {})
+        return _FakeResponse(lines=[])
+
+    monkeypatch.setattr(llm.requests, 'post', _capture)
+    list(llm.stream([{'role': 'user', 'content': 'q'}], max_tokens=400))
+    assert seen['options']['num_predict'] == 400
+
+
+def test_ollama_json_mode_sets_format(local, monkeypatch):
+    seen = {}
+
+    def _capture(url, json=None, **k):
+        seen.update(json or {})
+        return _FakeResponse(lines=[])
+
+    monkeypatch.setattr(llm.requests, 'post', _capture)
+    list(llm.stream([{'role': 'user', 'content': 'q'}], json_mode=True))
+    assert seen['format'] == 'json'
+
+
+def test_ollama_is_never_rate_limited(local, monkeypatch):
+    """Local inference has no quota; throttling it would be invented latency."""
+    monkeypatch.setattr(llm, '_limiter_for', _must_not_be_called)
+    monkeypatch.setattr(llm.requests, 'post', lambda *a, **k: _FakeResponse(lines=[]))
+    list(llm.stream([{'role': 'user', 'content': 'q'}]))
+
+
+def test_effective_rpm_is_zero_for_local(local):
+    """0 means 'no cap' — the estimate must not invent a rate floor."""
+    assert llm.effective_rpm() == 0
+
+
+def test_local_has_no_token_cap(local):
+    assert llm.tpm_for('ollama', llm.FAST) == 0
+
+
+def test_ollama_embed_batches_in_one_request(local, monkeypatch):
+    seen = {}
+
+    def _capture(url, json=None, **k):
+        seen['url'] = url
+        seen['input'] = (json or {}).get('input')
+        return _FakeResponse(payload={'embeddings': [[1.0], [2.0]]})
+
+    monkeypatch.setattr(llm.requests, 'post', _capture)
+    assert llm.embed(['a', 'b']) == [[1.0], [2.0]]
+    assert seen['input'] == ['a', 'b']
+    assert seen['url'].endswith('/api/embed')
+
+
+def test_ollama_embed_missing_model_gives_a_pull_command(local, monkeypatch):
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(status_code=404))
+    with pytest.raises(llm.LLMError, match='ollama pull'):
+        llm.embed(['a'])
+
+
+def test_ollama_host_is_overridable(monkeypatch):
+    monkeypatch.setenv('OLLAMA_HOST', 'http://192.168.1.5:11434/')
+    assert llm.ollama_host() == 'http://192.168.1.5:11434'
+
+
+def _must_not_be_called(*a, **k):        # pragma: no cover - must not run
+    raise AssertionError('local inference must not go through the rate limiter')
 
 
 def test_embed_of_nothing_makes_no_request(monkeypatch):

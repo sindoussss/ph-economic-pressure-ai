@@ -34,35 +34,44 @@ This runs the full walk-forward audit and writes artifacts to `ph_economic_ai/be
 
 ## Run the app (interactive simulator)
 
-The app adds a 20-agent swarm + a MiroFish-style knowledge-graph simulation on top of the benchmark. It calls a **hosted LLM over plain HTTP** — no local model, no GPU, no vendor SDK. Both supported providers have a free tier:
+The app adds a 20-agent swarm + a MiroFish-style knowledge-graph simulation on top of the benchmark. It runs **fully offline on a local [Ollama](https://ollama.com)** — no API key, no quota, no internet:
 
 ```bash
 pip install -r requirements-app.txt
 
-# pick one (free, no credit card):
-export GROQ_API_KEY=...      # https://console.groq.com    — fastest
-export GEMINI_API_KEY=...    # https://aistudio.google.com — chat + embeddings
+ollama pull qwen2.5:3b        # fast tier — the 20 bulk swarm agents
+ollama pull qwen2.5:7b        # deep tier — judges and synthesis
+ollama pull nomic-embed-text  # RAG embeddings (optional)
 
 python -m ph_economic_ai.main
 ```
 
-On Windows PowerShell use `$env:GROQ_API_KEY = '...'` instead of `export`.
+Check your setup before a run:
+
+```bash
+python -c "from ph_economic_ai.engine import llm; print(llm.probe()[1])"
+```
+
+Those model sizes are deliberate. They fit in **8GB of VRAM** alongside their context; a 14b model is ~9GB and silently spills to CPU on an 8GB card, which is slow enough to look broken. If you have more VRAM, point the tiers at bigger models with the env vars below.
 
 The app pulls live data (Brent, USD/PHP, PSA/DOE feeds), runs the swarm, and renders the simulation as a knowledge graph of what the agents actually retrieved and claimed — every node traces back to a real source.
 
 ### LLM configuration
 
-Call sites request a **tier**, not a model, so switching providers is a config change rather than a code change:
+Call sites request a **tier**, not a model, so switching provider or model is a config change rather than a code change. Setting a hosted API key switches provider automatically:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `STRATA_LLM_PROVIDER` | auto-detect from keys | `groq` or `gemini` |
-| `STRATA_LLM_FAST_MODEL` | `llama-3.1-8b-instant` | the 20 bulk swarm agents |
-| `STRATA_LLM_DEEP_MODEL` | `llama-3.3-70b-versatile` | judges and synthesis |
-| `STRATA_LLM_EMBED_MODEL` | `gemini-embedding-001` | RAG embeddings (Gemini only) |
-| `STRATA_LLM_RPM` | 28 (Groq) / 9 (Gemini) | client-side rate limit |
+| `STRATA_LLM_PROVIDER` | `ollama` (or a provider whose key is set) | `ollama`, `groq`, `gemini` |
+| `STRATA_LLM_FAST_MODEL` | `qwen2.5:3b` | the 20 bulk swarm agents |
+| `STRATA_LLM_DEEP_MODEL` | `qwen2.5:7b` | judges and synthesis |
+| `STRATA_LLM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | RAG embeddings, local |
+| `OLLAMA_HOST` | `http://localhost:11434` | if Ollama runs elsewhere |
+| `GROQ_API_KEY` / `GEMINI_API_KEY` | unset | opt in to hosted inference |
 
-Free-tier model IDs get retired often — override the model variables rather than editing code. Embeddings are cached to `ph_economic_ai/cache/embeddings.npz` by content hash, so the corpus is embedded once and subsequent launches cost nothing. Without `GEMINI_API_KEY`, retrieval falls back to TF-IDF and the app still runs.
+Embeddings are cached to `ph_economic_ai/cache/embeddings.npz` **by content hash**, so the corpus is embedded once and subsequent launches cost nothing — this is the single largest startup win, and it applies to every provider. With no embedding model available, retrieval falls back to TF-IDF and the app still runs.
+
+**One swarm run is 39 LLM calls** — 32 on the fast tier, 7 on the deep one. `ph_economic_ai.engine.swarm.expected_call_counts()` derives that from the swarm's actual shape.
 
 ## Screenshots
 
