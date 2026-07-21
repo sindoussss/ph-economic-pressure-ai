@@ -86,6 +86,13 @@ _JUDGE_TIER = llm.DEEP
 # makes one. Named so expected_call_counts() stays honest if either changes.
 _REGIONAL_JUDGE_CALLS = 3
 _MASTER_JUDGE_CALLS = 1
+
+# Reserved completion length per call. Module-level so the ablation harness can
+# vary it: completions are ~24K of a run's ~44K fast-tier tokens, making this
+# the single biggest lever on free-tier run time.
+_AGENT_MAX_TOKENS = 750
+_JUDGE_MAX_TOKENS = 900
+_MASTER_MAX_TOKENS = 1000
 _MAX_REALISTIC_FUEL_CHANGE = 8.0
 
 # Role processing order within a round (Critic and ConfidenceScorer last so they
@@ -560,7 +567,7 @@ class GroupArena:
         if self._on_event:
             self._on_event('agent_typing', self._group_id, agent.name)
         full_text = ''
-        for token in llm.stream(messages, tier=agent.tier, max_tokens=750):
+        for token in llm.stream(messages, tier=agent.tier, max_tokens=_AGENT_MAX_TOKENS):
             full_text += token
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
@@ -744,7 +751,7 @@ class RegionalJudge:
         ]
 
     def _call(self, messages: list[dict], tier: str = _JUDGE_TIER) -> str:
-        full = ''.join(llm.stream(messages, tier=tier, max_tokens=900))
+        full = ''.join(llm.stream(messages, tier=tier, max_tokens=_JUDGE_MAX_TOKENS))
         _, statement = _parse_think(full)
         return statement
 
@@ -826,7 +833,8 @@ class MasterJudge:
 
     def run(self) -> MasterVerdict:
         full = ''.join(
-            llm.stream(self._build_prompt(), tier=_JUDGE_TIER, max_tokens=1000)
+            llm.stream(self._build_prompt(), tier=_JUDGE_TIER,
+                       max_tokens=_MASTER_MAX_TOKENS)
         )
         _, statement = _parse_think(full)
         final_estimate = _extract_fuel_change(statement)
@@ -897,7 +905,11 @@ class SwarmOrchestrator:
         else:
             all_agents = build_swarm_agents(live_price)
         sem = threading.Semaphore(self._parallel_n)
-        survivors: list[Optional[GroupSurvivor]] = [None] * 4
+        # Derived from the agents actually built, not a hardcoded 4: the group
+        # count follows REGIONS, so a hardcoded literal silently drops any
+        # extra region and leaves a None survivor if one is removed.
+        n_groups = len({a.group_id for a in all_agents})
+        survivors: list[Optional[GroupSurvivor]] = [None] * n_groups
         errors: list[str] = []
         lock = threading.Lock()
         all_arena_responses: list = []
@@ -924,7 +936,7 @@ class SwarmOrchestrator:
                         errors.append(f"Group {group_id}: {e}")
 
         threads = [threading.Thread(target=run_group, args=(i,))
-                   for i in range(4)]
+                   for i in range(n_groups)]
         for t in threads:
             t.start()
         for t in threads:
@@ -936,6 +948,10 @@ class SwarmOrchestrator:
         # Phase 2: regional judges (sequential)
         regional_verdicts: list[RegionalVerdict] = []
         for judge_id, (i, j) in enumerate(REGION_PAIRS):
+            # A pair can reference a group that does not exist when REGIONS is
+            # trimmed (e.g. during an ablation) — skip rather than IndexError.
+            if i >= n_groups or j >= n_groups:
+                continue
             s1, s2 = survivors[i], survivors[j]
             if s1 is None or s2 is None:
                 continue
