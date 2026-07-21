@@ -87,8 +87,17 @@ def test_effective_rpm_reflects_the_override(monkeypatch):
     assert llm.effective_rpm() == 17
 
 
-def test_effective_rpm_is_pessimistic_when_unconfigured(monkeypatch):
+def test_effective_rpm_is_zero_when_running_locally(monkeypatch):
+    """No keys means local Ollama, which has no quota. Reporting a cap here
+    would make the estimate invent a rate-limit floor that does not exist."""
     monkeypatch.delenv('STRATA_LLM_PROVIDER', raising=False)
     monkeypatch.delenv('GROQ_API_KEY', raising=False)
     monkeypatch.delenv('GEMINI_API_KEY', raising=False)
-    assert llm.effective_rpm() == min(llm._DEFAULT_RPM.values())
+    assert llm.effective_rpm() == 0
+
+
+def test_local_estimate_has_no_rate_or_token_floor(monkeypatch):
+    """Locally the estimate is pure latency — it must scale with parallelism,
+    unlike the Groq case where the token cap flattens it."""
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'ollama')
+    assert estimate_swarm_seconds(4) < estimate_swarm_seconds(1)
