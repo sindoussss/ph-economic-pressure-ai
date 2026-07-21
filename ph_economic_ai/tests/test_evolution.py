@@ -4,6 +4,7 @@ from ph_economic_ai.engine.store import AgentTrustStore
 from ph_economic_ai.engine.evolution import get_evolved_debate_agents, get_evolved_swarm_agents
 from ph_economic_ai.engine.debate import DEFAULT_AGENTS, Agent
 from ph_economic_ai.engine.swarm import build_swarm_agents
+from ph_economic_ai.engine import llm
 
 
 @pytest.fixture
@@ -18,10 +19,10 @@ def test_cold_start_returns_base_agents(store):
     evolved = get_evolved_debate_agents(store, DEFAULT_AGENTS)
     assert len(evolved) == len(DEFAULT_AGENTS)
     for orig, ev in zip(DEFAULT_AGENTS, evolved):
-        assert ev.model == orig.model
+        assert ev.tier == orig.tier
 
 
-def test_promoted_agent_gets_bigger_model(store):
+def test_promoted_agent_gets_deep_tier(store):
     for _ in range(3):
         store.save_run({}, 1.0, 60)
     # Push Market Analyst above 0.70 trust
@@ -29,10 +30,10 @@ def test_promoted_agent_gets_bigger_model(store):
         store.update_trust('Market Analyst', internal_score=1.0, accuracy_score=1.0)
     evolved = get_evolved_debate_agents(store, DEFAULT_AGENTS)
     market_analyst = next(a for a in evolved if a.name == 'Market Analyst')
-    assert market_analyst.model == 'deepseek-r1:32b'
+    assert market_analyst.tier == llm.DEEP
 
 
-def test_demoted_agent_gets_smaller_model(store):
+def test_demoted_agent_gets_fast_tier(store):
     for _ in range(3):
         store.save_run({}, 1.0, 60)
     # Push Risk Assessor below 0.30 trust
@@ -40,7 +41,7 @@ def test_demoted_agent_gets_smaller_model(store):
         store.update_trust('Risk Assessor', internal_score=0.0, accuracy_score=0.0)
     evolved = get_evolved_debate_agents(store, DEFAULT_AGENTS)
     risk_assessor = next(a for a in evolved if a.name == 'Risk Assessor')
-    assert risk_assessor.model == 'qwen2.5:7b'
+    assert risk_assessor.tier == llm.FAST
 
 
 def test_promoted_agent_gets_confidence_suffix(store):
@@ -83,34 +84,33 @@ def test_swarm_cold_start(store):
     evolved = get_evolved_swarm_agents(store, agents)
     assert len(evolved) == len(agents)
     for orig, ev in zip(agents, evolved):
-        assert ev.model == orig.model
+        assert ev.tier == orig.tier
 
 
 def test_default_trust_no_evolution(store):
-    """All agents at default trust (0.5) — no model changes, no prompt suffixes."""
+    """All agents at default trust (0.5) — no tier changes, no prompt suffixes."""
     for _ in range(3):
         store.save_run({}, 1.0, 60)
     # Don't update any trust — all agents stay at 0.5 default
     evolved = get_evolved_debate_agents(store, DEFAULT_AGENTS)
     for orig, ev in zip(DEFAULT_AGENTS, evolved):
-        assert ev.model == orig.model
+        assert ev.tier == orig.tier
         assert ev.system_prompt == orig.system_prompt
 
 
-def test_unknown_model_unchanged(store):
-    """Agent with model not in _DEBATE_TIERS passes through unchanged."""
+def test_untrusted_agent_keeps_its_base_tier(store):
+    """An agent at neutral trust is left exactly as configured."""
     for _ in range(3):
         store.save_run({}, 1.0, 60)
-    # Push a fake agent with unknown model to promoted tier
     store.update_trust('Unknown Agent', internal_score=1.0)
     for _ in range(8):
         store.update_trust('Unknown Agent', internal_score=1.0, accuracy_score=1.0)
     fake_agent = Agent(
-        name='Unknown Agent', role='Test', model='llama3:8b',
+        name='Unknown Agent', role='Test', tier=llm.FAST,
         system_prompt='Test prompt.', rag_sources=[], is_mini=False,
     )
     evolved = get_evolved_debate_agents(store, [fake_agent])
-    assert evolved[0].model == 'llama3:8b'  # unchanged — not in tier map
+    assert evolved[0].tier == llm.DEEP  # promoted: trust earns the stronger tier
 
 
 def test_swarm_diversity_bench_actually_occurs(store):

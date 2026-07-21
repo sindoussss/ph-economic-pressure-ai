@@ -7,10 +7,10 @@ import threading
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import ollama
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import AgentResponse, _parse_think, _extract_price
 from ph_economic_ai.engine.live_data import LiveDataBrief
@@ -66,20 +66,64 @@ REGIONS: list[str] = [
 # Pairs: (0,1) and (2,3) → 2 regional judges
 REGION_PAIRS: list[tuple[int, int]] = [(0, 1), (2, 3)]
 
-# ── Model assignments — light mode ────────────────────────────────────────────
-_ROLE_MODELS: dict[str, str] = {
-    'Forecaster':        'qwen2.5:7b',
-    'DataExtractor':     'qwen2.5:3b',
-    'Synthesizer':       'qwen2.5:3b',
-    'Critic':            'qwen2.5:7b',
-    'ConfidenceScorer':  'qwen2.5:3b',
+# ── Tier assignments ──────────────────────────────────────────────────────────
+# Every bulk agent runs on the fast tier and only the judges get the deep one.
+# That looks blunter than the old five-way 3b/7b/14b split, but free-tier
+# tokens-per-minute — not requests-per-day — is the binding constraint, and the
+# deep tier's TPM ceiling cannot absorb 32 agent calls carrying RAG context.
+# Spending it on the 7 judge calls buys more: the judges are what actually
+# determine the master verdict.
+_ROLE_TIERS: dict[str, str] = {
+    'Forecaster':        llm.FAST,
+    'DataExtractor':     llm.FAST,
+    'Synthesizer':       llm.FAST,
+    'Critic':            llm.FAST,
+    'ConfidenceScorer':  llm.FAST,
 }
-_JUDGE_MODEL = 'qwen2.5:14b'
+_JUDGE_TIER = llm.DEEP
+
+# RegionalJudge.run makes three calls (two defences + a synthesis); MasterJudge
+# makes one. Named so expected_call_counts() stays honest if either changes.
+_REGIONAL_JUDGE_CALLS = 3
+_MASTER_JUDGE_CALLS = 1
 _MAX_REALISTIC_FUEL_CHANGE = 8.0
 
 # Role processing order within a round (Critic and ConfidenceScorer last so they
 # can score agents they've already seen)
 _ROLE_ORDER = ['Forecaster', 'DataExtractor', 'Synthesizer', 'Critic', 'ConfidenceScorer']
+
+
+def expected_call_counts() -> dict[str, int]:
+    """How many LLM calls one swarm run costs, derived from the swarm's shape.
+
+    Single source of truth for anything that needs the number — the setup
+    screen's time estimate, and free-tier quota planning. Derived rather than
+    hardcoded because a stale constant is exactly how the old estimate came to
+    claim "~371 calls" for a run that actually makes 39.
+    """
+    alive = len(_ROLE_ORDER)
+    per_group = 0
+    for _round_num, n_eliminate in _BRACKET:
+        per_group += alive
+        alive -= n_eliminate
+
+    fast = per_group * len(REGIONS)
+    deep = len(REGION_PAIRS) * _REGIONAL_JUDGE_CALLS + _MASTER_JUDGE_CALLS
+    return {'fast': fast, 'deep': deep, 'total': fast + deep}
+
+
+def group_critical_path() -> int:
+    """Sequential call-depth of one group, in call durations.
+
+    Round 1 is sequential by design (each agent reads its peers' answers in
+    order), so it costs one duration per agent. Later rounds fan out across a
+    thread pool and cost roughly one duration each regardless of width.
+    """
+    if not _BRACKET:
+        return 0
+    first_round_agents = len(_ROLE_ORDER)
+    later_rounds = len(_BRACKET) - 1
+    return first_round_agents + later_rounds
 
 
 def _is_realistic_fuel_change(value: Optional[float]) -> bool:
@@ -140,7 +184,7 @@ def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[floa
 class SwarmAgent:
     name: str
     role: str
-    model: str
+    tier: str                  # llm.FAST | llm.DEEP — resolved to a model at call time
     group_id: int
     region_name: str
     system_prompt: str
@@ -323,7 +367,7 @@ def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> lis
             agents.append(SwarmAgent(
                 name=f"{region} {role}",
                 role=role,
-                model=_ROLE_MODELS[role],
+                tier=_ROLE_TIERS[role],
                 group_id=group_id,
                 region_name=region,
                 system_prompt=_make_system_prompt(role, region, current_price),
@@ -387,13 +431,6 @@ def eliminate_bottom_n(
     for e in eliminated:
         e.is_alive = False
     return survivors, eliminated
-
-
-# ── Ollama helper ─────────────────────────────────────────────────────────────
-
-def _ollama_extras(model: str) -> dict:
-    """think=False only for deepseek models; other models ignore or error on it."""
-    return {'think': False} if 'deepseek' in model else {}
 
 
 # ── GroupArena ────────────────────────────────────────────────────────────────
@@ -523,15 +560,8 @@ class GroupArena:
         if self._on_event:
             self._on_event('agent_typing', self._group_id, agent.name)
         full_text = ''
-        stream = ollama.chat(
-            model=agent.model,
-            messages=messages,
-            stream=True,
-            options={'num_predict': 750},
-            **_ollama_extras(agent.model),
-        )
-        for chunk in stream:
-            full_text += chunk['message']['content']
+        for token in llm.stream(messages, tier=agent.tier, max_tokens=750):
+            full_text += token
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
         thinking, statement = _parse_think(full_text)
@@ -627,7 +657,9 @@ class GroupArena:
             response=winner_resp,
             combined_score=winner.combined_score,
             agent_role=winner.role,
-            agent_model=winner.model,
+            # Record the concrete model, not the tier: this is provenance for
+            # the report, and 'fast' resolves differently per provider/config.
+            agent_model=llm.describe_model(winner.tier),
         )
         if self._on_event:
             self._on_event('survivor', self._group_id, survivor)
@@ -711,12 +743,8 @@ class RegionalJudge:
             )},
         ]
 
-    def _call(self, messages: list[dict], model: str = _JUDGE_MODEL) -> str:
-        full = ''
-        for chunk in ollama.chat(model=model, messages=messages,
-                                 stream=True, options={'num_predict': 900},
-                                 **_ollama_extras(model)):
-            full += chunk['message']['content']
+    def _call(self, messages: list[dict], tier: str = _JUDGE_TIER) -> str:
+        full = ''.join(llm.stream(messages, tier=tier, max_tokens=900))
         _, statement = _parse_think(full)
         return statement
 
@@ -797,12 +825,9 @@ class MasterJudge:
         ]
 
     def run(self) -> MasterVerdict:
-        full = ''
-        model = _JUDGE_MODEL
-        for chunk in ollama.chat(model=model, messages=self._build_prompt(),
-                                 stream=True, options={'num_predict': 1000},
-                                 **_ollama_extras(model)):
-            full += chunk['message']['content']
+        full = ''.join(
+            llm.stream(self._build_prompt(), tier=_JUDGE_TIER, max_tokens=1000)
+        )
         _, statement = _parse_think(full)
         final_estimate = _extract_fuel_change(statement)
 
