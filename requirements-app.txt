@@ -7,14 +7,26 @@
 #     pip install -r requirements-app.txt
 #     python -m ph_economic_ai.main
 #
-# The app calls a hosted LLM over plain HTTP via `requests` (no vendor SDK).
-# Set one of these free-tier keys before launching:
+# The app talks to a local Ollama by default — no API key, no quota, no
+# internet. Install Ollama from https://ollama.com, then pull the two models
+# the tiers map onto:
 #
-#     GROQ_API_KEY    — https://console.groq.com   (fastest; no embeddings)
-#     GEMINI_API_KEY  — https://aistudio.google.com (chat + free embeddings)
+#     ollama pull qwen2.5:3b        # fast tier — the 20 bulk swarm agents
+#     ollama pull qwen2.5:7b        # deep tier — judges and synthesis
+#     ollama pull nomic-embed-text  # RAG embeddings (optional)
 #
-# Without a key the app still runs: retrieval falls back to TF-IDF and the
-# swarm reports that no provider is configured.
+# Those sizes are deliberate: they fit in 8GB of VRAM alongside their context.
+# A 14b model is ~9GB and will spill to CPU on an 8GB card, which is slow
+# enough to look broken.
+#
+# Hosted providers are optional. Setting either key switches to it
+# automatically, no code change:
+#
+#     GROQ_API_KEY    — https://console.groq.com
+#     GEMINI_API_KEY  — https://aistudio.google.com
+#
+# No LLM at all still runs: retrieval falls back to TF-IDF and the swarm
+# reports that the provider is unreachable.
 
 -r requirements.txt
 

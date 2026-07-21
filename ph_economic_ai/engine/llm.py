@@ -1,24 +1,30 @@
-"""Provider-agnostic hosted-LLM client for the exploratory layer.
+"""Provider-agnostic LLM client for the exploratory layer.
 
-Replaces the old local-Ollama dependency. Only free-tier providers are wired
-up (Groq, Gemini), so the app stays runnable by anyone with a free API key and
-no GPU.
+Three providers: **ollama** (local, the default), plus **groq** and **gemini**
+for anyone who wants hosted inference. Ollama is the default deliberately —
+the app then runs with no API key, no quota and no internet, which matters for
+a thesis demo where the network cannot be relied on.
 
-Two things drive the design:
+Three things drive the design:
 
 1. **Call sites name a _tier_, not a model.** The swarm asks for `'fast'` or
-   `'deep'`; each provider maps those onto its own model IDs. Swapping Groq for
-   Gemini is then an env change, not a code change, and the prompts port
-   untouched. Free-tier model IDs also get retired often, so every ID is
-   env-overridable — a deprecation is a config fix, not a patch.
+   `'deep'`; each provider maps those onto its own model IDs. Switching
+   provider is then an env change, not a code change, and prompts port
+   untouched. Every ID is env-overridable, so a model swap is a config fix.
 
-2. **Rate limiting is not optional.** Free tiers are ~30 requests/minute, and
-   the swarm fans out across threads (see `GroupArena.run`). Without a shared
-   limiter the first parallel round trips straight into HTTP 429. The limiter
-   here is process-wide and thread-safe precisely because the callers are not.
+2. **Model size must fit the GPU.** The local tiers are 3B/7B, not the 14B the
+   project used to reach for. A 9GB model on an 8GB card does not fail — it
+   silently spills to CPU and runs an order of magnitude slower, which is the
+   single easiest way to make local inference look hopeless.
 
-The network layer is deliberately thin and quarantined in `_post_sse`; the
-message translation and the limiter are pure and directly testable.
+3. **Rate limiting applies to hosted providers only.** Free tiers cap requests
+   and tokens per minute, and the swarm fans out across threads (see
+   `GroupArena.run`), so without a shared limiter the first parallel round
+   trips straight into HTTP 429. Local Ollama has no such quota: throttling it
+   would be pure invented latency, so the limiter is bypassed entirely.
+
+The network layer is quarantined in `_post_sse` / `_ollama_stream`; the message
+translation and the limiter are pure and directly testable.
 """
 from __future__ import annotations
 
@@ -38,6 +44,13 @@ FAST = 'fast'
 DEEP = 'deep'
 
 _DEFAULT_MODELS: dict[str, dict[str, str]] = {
+    'ollama': {
+        # Sized to fit an 8GB GPU with room for context. The project used to
+        # put judges on qwen2.5:14b (~9GB), which does not fit and therefore
+        # ran partly on CPU — most of why local inference felt unusable.
+        FAST: 'qwen2.5:3b',      # ~2GB
+        DEEP: 'qwen2.5:7b',      # ~4.7GB
+    },
     'groq': {
         # 14.4K requests/day — this is what absorbs the bulk agent traffic.
         FAST: 'llama-3.1-8b-instant',
@@ -49,6 +62,9 @@ _DEFAULT_MODELS: dict[str, dict[str, str]] = {
         DEEP: 'gemini-2.5-flash',
     },
 }
+
+# Providers that run locally: no quota, no key, no rate limiting.
+_LOCAL_PROVIDERS = frozenset({'ollama'})
 
 # Free-tier requests/minute, per provider. Deliberately a touch under the
 # published ceiling: the published number is a hard cutoff, not a target, and
@@ -146,7 +162,11 @@ def estimate_tokens(messages: list[dict], max_tokens: Optional[int]) -> int:
 
 
 def _limiter_for(provider: str, tier: str = FAST) -> _RateLimiter:
-    """One limiter per provider+tier — the tiers have separate quotas."""
+    """One limiter per provider+tier — the tiers have separate quotas.
+
+    Local providers never reach here (they use their own transport), so every
+    limiter in this map governs a real hosted quota.
+    """
     key = f'{provider}:{tier}'
     with _limiters_lock:
         if key not in _limiters:
@@ -155,21 +175,30 @@ def _limiter_for(provider: str, tier: str = FAST) -> _RateLimiter:
 
 
 def effective_rpm() -> int:
-    """The active requests-per-minute cap. Never raises — UI-safe.
+    """The active requests-per-minute cap, or 0 when there is none.
 
-    Falls back to the most restrictive default when no provider is configured,
-    so a time estimate shown before setup errs on the pessimistic side.
+    Never raises — UI-safe. Returns 0 for local providers: Ollama has no quota,
+    and pretending otherwise would make the run-time estimate invent a
+    rate-limit floor that does not exist.
     """
     try:
-        return _rpm_for(active_provider())
+        provider = active_provider()
     except LLMError:
         return min(_DEFAULT_RPM.values())
+    if provider in _LOCAL_PROVIDERS:
+        return 0
+    return _rpm_for(provider)
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def active_provider() -> str:
-    """Resolve the provider from env, falling back to whichever key exists."""
+    """Resolve the provider from env.
+
+    Order: an explicit choice wins; otherwise a hosted key if one is present;
+    otherwise local Ollama. Ollama last in precedence but first in practice —
+    it needs no key, so the app works offline out of the box.
+    """
     explicit = (os.getenv('STRATA_LLM_PROVIDER') or '').strip().lower()
     if explicit:
         if explicit not in _DEFAULT_MODELS:
@@ -182,18 +211,28 @@ def active_provider() -> str:
         return 'groq'
     if os.getenv('GEMINI_API_KEY'):
         return 'gemini'
-    raise LLMError(
-        'No LLM provider configured. Set GROQ_API_KEY (free: console.groq.com) '
-        'or GEMINI_API_KEY (free: aistudio.google.com), and optionally '
-        'STRATA_LLM_PROVIDER to pick between them.'
-    )
+    return 'ollama'
+
+
+def is_local(provider: Optional[str] = None) -> bool:
+    """True when inference runs on this machine — no key, no quota."""
+    try:
+        return (provider or active_provider()) in _LOCAL_PROVIDERS
+    except LLMError:
+        return False
 
 
 def _api_key(provider: str) -> str:
+    if provider in _LOCAL_PROVIDERS:
+        return ''
     key = os.getenv('GROQ_API_KEY' if provider == 'groq' else 'GEMINI_API_KEY')
     if not key:
         raise LLMError(f'{provider} selected but its API key env var is unset.')
     return key
+
+
+def ollama_host() -> str:
+    return os.getenv('OLLAMA_HOST', 'http://localhost:11434').rstrip('/')
 
 
 def model_for(tier: str, provider: Optional[str] = None) -> str:
@@ -208,12 +247,60 @@ def model_for(tier: str, provider: Optional[str] = None) -> str:
 
 
 def is_configured() -> bool:
-    """True when a call would have credentials. Never raises — UI-safe."""
+    """True when a provider resolves and has whatever credentials it needs.
+
+    Cheap and never raises — it sits on UI paths. It does NOT prove a call will
+    succeed: for Ollama it cannot tell whether the daemon is running or the
+    model is pulled. Use `probe()` for that.
+    """
     try:
-        active_provider()
+        _api_key(active_provider())
         return True
     except LLMError:
         return False
+
+
+def probe() -> tuple[bool, str]:
+    """Actually check that a call would work. Returns (ok, human message).
+
+    Makes one real request, so this belongs in diagnostics and setup screens —
+    never in a hot path.
+    """
+    try:
+        provider = active_provider()
+    except LLMError as exc:
+        return False, str(exc)
+
+    if provider in _LOCAL_PROVIDERS:
+        try:
+            resp = requests.get(f'{ollama_host()}/api/tags', timeout=5)
+            resp.raise_for_status()
+            installed = {m['name'] for m in resp.json().get('models', [])}
+        except requests.RequestException as exc:
+            return False, (
+                f'Ollama is not reachable at {ollama_host()} ({exc}). '
+                'Start the Ollama app and try again.'
+            )
+        wanted = {model_for(FAST, provider), model_for(DEEP, provider)}
+        missing = {m for m in wanted if not _has_model(m, installed)}
+        if missing:
+            pulls = '  '.join(f'ollama pull {m}' for m in sorted(missing))
+            return False, f'Ollama is running but these models are missing: {pulls}'
+        return True, f'Ollama ready at {ollama_host()} with {", ".join(sorted(wanted))}.'
+
+    if not is_configured():
+        return False, f'{provider} selected but its API key env var is unset.'
+    try:
+        complete([{'role': 'user', 'content': 'ping'}], max_tokens=1)
+        return True, f'{provider} reachable.'
+    except LLMError as exc:
+        return False, str(exc)
+
+
+def _has_model(wanted: str, installed: set) -> bool:
+    """Ollama reports 'qwen2.5:3b'; tolerate a missing ':latest' either way."""
+    candidates = {wanted, f'{wanted}:latest', wanted.removesuffix(':latest')}
+    return bool(candidates & installed)
 
 
 def describe_model(tier: str) -> str:
@@ -296,6 +383,15 @@ def extract_gemini_token(obj: dict) -> str:
     return out
 
 
+def extract_ollama_token(obj: dict) -> str:
+    """Pull the incremental text out of one Ollama stream chunk.
+
+    Ollama streams newline-delimited JSON rather than SSE, and each frame
+    carries the whole message object with an incremental `content`.
+    """
+    return (obj.get('message') or {}).get('content', '') or ''
+
+
 # ── Transport ─────────────────────────────────────────────────────────────────
 
 def _post_sse(
@@ -357,6 +453,77 @@ def _post_sse(
     )
 
 
+def _ollama_stream(
+    messages: list[dict],
+    model: str,
+    max_tokens: Optional[int],
+    json_mode: bool,
+) -> Iterator[dict]:
+    """POST to a local Ollama and yield decoded NDJSON frames.
+
+    No rate limiting and no retries: there is no quota to respect, and a local
+    failure (daemon down, model not pulled) is a setup problem the user needs
+    to see immediately rather than have masked by four slow retries.
+    """
+    payload: dict = {'model': model, 'messages': messages, 'stream': True}
+    if max_tokens:
+        payload['options'] = {'num_predict': max_tokens}
+    if json_mode:
+        payload['format'] = 'json'
+
+    try:
+        resp = requests.post(
+            f'{ollama_host()}/api/chat', json=payload,
+            stream=True, timeout=_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise LLMError(
+            f'Cannot reach Ollama at {ollama_host()} ({exc}). '
+            'Is the Ollama app running?'
+        ) from exc
+
+    if resp.status_code == 404:
+        resp.close()
+        raise LLMError(
+            f"Ollama has no model {model!r}. Pull it first:  ollama pull {model}"
+        )
+    if resp.status_code != 200:
+        detail = resp.text[:300]
+        resp.close()
+        raise LLMError(f'Ollama returned HTTP {resp.status_code}: {detail}')
+
+    with resp:
+        for raw in resp.iter_lines(decode_unicode=True):
+            if not raw:
+                continue
+            try:
+                yield json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+
+def _ollama_embed(texts: list[str]) -> list[list[float]]:
+    """Embed via a local Ollama. Batches natively through /api/embed."""
+    model = os.getenv('STRATA_LLM_OLLAMA_EMBED_MODEL', 'nomic-embed-text')
+    try:
+        resp = requests.post(
+            f'{ollama_host()}/api/embed',
+            json={'model': model, 'input': texts},
+            timeout=_TIMEOUT,
+        )
+    except requests.RequestException as exc:
+        raise LLMError(f'Cannot reach Ollama at {ollama_host()} ({exc}).') from exc
+
+    if resp.status_code == 404:
+        raise LLMError(
+            f"Ollama has no embedding model {model!r}. "
+            f"Pull it first:  ollama pull {model}"
+        )
+    if resp.status_code != 200:
+        raise LLMError(f'Ollama embedding failed: HTTP {resp.status_code} {resp.text[:200]}')
+    return resp.json().get('embeddings', [])
+
+
 def _is_number(value: Optional[str]) -> bool:
     try:
         float(value)  # type: ignore[arg-type]
@@ -388,6 +555,13 @@ def stream(
     model = model_for(tier, provider)
     key = _api_key(provider)
     cost = estimate_tokens(messages, max_tokens)
+
+    if provider == 'ollama':
+        for obj in _ollama_stream(messages, model, max_tokens, json_mode):
+            token = extract_ollama_token(obj)
+            if token:
+                yield token
+        return
 
     if provider == 'groq':
         url = 'https://api.groq.com/openai/v1/chat/completions'
@@ -431,13 +605,20 @@ def complete(
 
 
 def embed(texts: Iterable[str]) -> list[list[float]]:
-    """Embed texts via Gemini's free embedding endpoint.
+    """Embed texts, locally via Ollama or hosted via Gemini.
 
-    Groq serves no embedding model, so this always targets Gemini regardless of
-    the configured chat provider. Callers must be prepared for `LLMError` and
-    fall back to the lexical TF-IDF path — embeddings are an upgrade, never a
-    hard requirement.
+    Groq serves no embedding model, so a Groq user falls through to Gemini if
+    they have that key. Callers must be prepared for `LLMError` and fall back
+    to the lexical TF-IDF path — embeddings are an upgrade, never a hard
+    requirement.
     """
+    batch = list(texts)
+    if not batch:
+        return []
+
+    if is_local():
+        return _ollama_embed(batch)
+
     key = os.getenv('GEMINI_API_KEY')
     if not key:
         raise LLMError('Embeddings need GEMINI_API_KEY (free: aistudio.google.com).')
@@ -446,9 +627,6 @@ def embed(texts: Iterable[str]) -> list[list[float]]:
         f'https://generativelanguage.googleapis.com/v1beta/models/'
         f'{model}:batchEmbedContents'
     )
-    batch = list(texts)
-    if not batch:
-        return []
     payload = {
         'requests': [
             {'model': f'models/{model}', 'content': {'parts': [{'text': t}]}}
