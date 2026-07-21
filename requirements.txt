@@ -1,5 +1,15 @@
-# Strata — runtime dependencies (Python 3.10)
-PyQt6
+# Strata — benchmark dependencies (Python 3.10)
+#
+# This is the VALIDATED half: the walk-forward backtests, Diebold-Mariano
+# tests and conformal intervals in ph_economic_ai/benchmark. It needs no API
+# key, no GPU and no Qt — install this alone to reproduce every published
+# number:
+#
+#     pip install -r requirements.txt
+#     python -m ph_economic_ai.benchmark.run
+#
+# The interactive multi-agent app is the EXPLORATORY half and pulls extra
+# dependencies — see requirements-app.txt.
 pandas
 numpy
 scipy
@@ -7,8 +17,7 @@ scikit-learn
 matplotlib
 statsmodels
 requests
-beautifulsoup4
-ollama
+openpyxl        # reading the World Bank fuel-price workbook in refresh_data
 
 # Dev / test only:
 # pytest
