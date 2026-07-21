@@ -161,6 +161,40 @@ class _TopNavBar(QFrame):
         self._refresh_styles()
 
 
+def _format_gas_verdict(
+    estimate: float | None,
+    agreement_pct: float | None = None,
+    low: float | None = None,
+    high: float | None = None,
+    regional: list | None = None,
+) -> str:
+    """Human-readable gas verdict for the downstream LLM prompts.
+
+    This used to be `str(master_verdict)` — a raw dataclass repr. Two things
+    went wrong with that. The BSP banner regexed it for a peso figure and hit a
+    nested regional verdict instead of the consensus, and the causal-chain
+    prompt truncates its input to 600 characters, so the model was handed a
+    mangled Python object and invented its own numbers (+₱13.70/L against a
+    +₱2.54/L consensus). Food and electricity always formatted prose here; gas
+    was the odd one out.
+    """
+    if estimate is None:
+        return '(Gas sector verdict unavailable.)'
+    parts = [f'Retail gasoline monthly change: {estimate:+.2f} ₱/L']
+    if agreement_pct is not None:
+        parts.append(f'agent agreement {agreement_pct:.0f}%')
+    if low is not None and high is not None:
+        parts.append(f'range {low:+.2f} to {high:+.2f} ₱/L')
+    summary = f'{parts[0]} ({", ".join(parts[1:])})' if len(parts) > 1 else parts[0]
+
+    for pair, value in (regional or []):
+        if value is None:
+            continue
+        name = ' & '.join(pair) if isinstance(pair, (tuple, list)) else str(pair)
+        summary += f'\n  {name}: {value:+.2f} ₱/L'
+    return summary
+
+
 class SimMainWindow(QMainWindow):
     def __init__(self, df, regressor, data_source: str = 'Live Data',
                  cv_rmse: float = 0.0, regressors: dict | None = None,
@@ -518,7 +552,9 @@ class SimMainWindow(QMainWindow):
             avg = c.get('weighted_avg')
             self._elec_estimate = avg
             conf = c.get('confidence_pct', 0)
-            avg_str = f'+₱{avg:.4f}/kWh' if avg is not None else 'N/A'
+            # Sign comes from the value — hardcoding '+' rendered a fall as
+            # "+₱-0.1234/kWh".
+            avg_str = f'{avg:+.4f} ₱/kWh' if avg is not None else 'N/A'
             self._elec_verdict = (
                 f'Electricity rate monthly change: {avg_str} '
                 f'(confidence {conf}%, range {c.get("low", 0):+.4f} to {c.get("high", 0):+.4f} ₱/kWh)'
@@ -546,7 +582,12 @@ class SimMainWindow(QMainWindow):
 
     def _on_simulation_complete(self, responses):
         consensus = self._stage3.engine.consensus()
-        self._gas_verdict = str(consensus)
+        self._gas_verdict = _format_gas_verdict(
+            estimate=consensus.get('weighted_avg') if isinstance(consensus, dict) else None,
+            agreement_pct=consensus.get('confidence_pct') if isinstance(consensus, dict) else None,
+            low=consensus.get('low') if isinstance(consensus, dict) else None,
+            high=consensus.get('high') if isinstance(consensus, dict) else None,
+        )
         if responses:
             estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
             scores = QualityScorer.score_responses(responses, estimates)
@@ -629,8 +670,16 @@ class SimMainWindow(QMainWindow):
             self._learning.refresh(self._current_run_id)
         except Exception:
             pass
-        self._gas_verdict = str(master_verdict)
         self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
+        regional = [
+            (rv.region_pair, rv.estimate)
+            for rv in getattr(master_verdict, 'regional_verdicts', []) or []
+        ]
+        self._gas_verdict = _format_gas_verdict(
+            estimate=self._gas_estimate,
+            agreement_pct=getattr(master_verdict, 'confidence_pct', None),
+            regional=regional,
+        )
         self._push_sector_forecasts()
         self._stage4.populate_swarm(
             master_verdict, self._regressor, self._df, self._cv_rmse,
@@ -724,20 +773,19 @@ class SimMainWindow(QMainWindow):
         self._chain_thread.start()
 
     def _run_bsp_alert(self):
-        """Compute CPI basket impact and push BSP alert to Stage 4."""
+        """Compute CPI basket impact and push BSP alert to Stage 4.
+
+        Uses the numeric estimates directly. This previously re-derived them by
+        regexing the verdict *strings* — and `_gas_verdict` is `str(master_verdict)`,
+        a dataclass repr that embeds every regional verdict, so a first-match
+        scan picked up whichever region happened to appear first rather than the
+        consensus. The banner then disagreed with the headline it sits above:
+        a +₱2.54/L consensus was reported as +₱6.19/L worth of CPI impact.
+        """
         try:
-            # Extract numeric estimates from stored verdict strings
-            import re
-            gas_m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', self._gas_verdict)
-            gas_v = (1 if gas_m.group(1) == '+' else -1) * float(gas_m.group(2)) if gas_m else None
-
-            food_m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', self._food_verdict)
-            food_v = (1 if food_m.group(1) == '+' else -1) * float(food_m.group(2)) if food_m else None
-
-            elec_m = re.search(r'([+\-])\s*₱(\d+\.?\d*)\s*/\s*kWh', self._elec_verdict)
-            elec_v = (1 if elec_m.group(1) == '+' else -1) * float(elec_m.group(2)) if elec_m else None
-
-            alert = LiveDataBrief.check_bsp_alert(gas_v, food_v, elec_v)
+            alert = LiveDataBrief.check_bsp_alert(
+                self._gas_estimate, self._food_estimate, self._elec_estimate,
+            )
             self._stage4.set_bsp_alert(alert)
         except Exception:
             pass
