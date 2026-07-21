@@ -11,12 +11,23 @@ from ph_economic_ai.engine.swarm import (
     REGIONS, expected_call_counts, group_critical_path,
 )
 
-# Rough streamed-completion latency against a hosted free tier. The old
-# estimate assumed 15s per call, which was a local-Ollama number — hosted
-# inference is far quicker, and on free tiers the quota, not the model, is
-# usually what sets the floor.
-_FAST_CALL_SECS = 3
-_DEEP_CALL_SECS = 7
+# Streamed-completion latency per call. Local inference is slower per call than
+# hosted but has no quota, so which one dominates flips by provider.
+_HOSTED_FAST_SECS = 3
+_HOSTED_DEEP_SECS = 7
+
+# Measured on an 8GB GPU: qwen2.5:3b answers an agent-shaped call (~650 token
+# prompt, 750 max_tokens) in ~4s once warm. The deep tier is ~2.3x the
+# parameters and scaled accordingly. The old setup put judges on a 9GB model
+# that does not fit in 8GB of VRAM and therefore ran partly on CPU — that is
+# where the original "15s per call" figure came from.
+_LOCAL_FAST_SECS = 4
+_LOCAL_DEEP_SECS = 9
+
+# Loading a model into VRAM costs ~50s and is not inference. A run pays it
+# once per tier: all group calls use the fast model, then the judges swap in
+# the deep one. Ignoring this made the first run look mysteriously slow.
+_LOCAL_MODEL_LOAD_SECS = 50
 
 # Reserved completion budget per call, mirroring the max_tokens the engine
 # passes. Completions, not prompts, dominate the token bill.
@@ -44,14 +55,27 @@ def estimate_swarm_seconds(parallel_n: int) -> int:
     n_groups = max(1, len(REGIONS))
     parallel_n = max(1, parallel_n)
 
+    fast_secs, deep_secs = call_latencies()
     batches = -(-n_groups // parallel_n)                      # ceil div
-    group_secs = group_critical_path() * _FAST_CALL_SECS
-    latency_secs = batches * group_secs + counts['deep'] * _DEEP_CALL_SECS
+    group_secs = group_critical_path() * fast_secs
+    latency_secs = batches * group_secs + counts['deep'] * deep_secs
+    if llm.is_local():
+        # One model load per tier — see _LOCAL_MODEL_LOAD_SECS.
+        latency_secs += 2 * _LOCAL_MODEL_LOAD_SECS
 
-    request_floor = counts['total'] / max(1, llm.effective_rpm()) * 60
+    # rpm of 0 means no quota (local inference) — no rate floor applies.
+    rpm = llm.effective_rpm()
+    request_floor = counts['total'] / rpm * 60 if rpm else 0.0
     token_floor = _token_floor_seconds(counts)
 
     return int(max(latency_secs, request_floor, token_floor))
+
+
+def call_latencies() -> tuple[int, int]:
+    """(fast, deep) per-call seconds for the active provider."""
+    if llm.is_local():
+        return _LOCAL_FAST_SECS, _LOCAL_DEEP_SECS
+    return _HOSTED_FAST_SECS, _HOSTED_DEEP_SECS
 
 
 def _token_floor_seconds(counts: dict) -> float:
@@ -327,7 +351,7 @@ class Stage2SetupPanel(QWidget):
             secs = estimate_swarm_seconds(self._parallel_slider.value())
         else:
             rounds = 3 if len(self._agents) <= 7 else 2
-            secs = len(self._agents) * rounds * _FAST_CALL_SECS
+            secs = len(self._agents) * rounds * call_latencies()[0]
         label = f'~{secs // 60} min estimated' if secs >= 60 else f'~{secs}s estimated'
         if self._swarm_btn.isChecked():
             label += ' (swarm)'
