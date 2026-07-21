@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
     DEFAULT_AGENTS, FOOD_AGENTS, ELECTRICITY_AGENTS,
@@ -564,7 +565,8 @@ class SimMainWindow(QMainWindow):
                     'has_causal_chain': sc.get('has_causal_chain', 0),
                     'internal_score': sc.get('overall', 0.5),
                     'model_used': next(
-                        (a.model for a in self._agents if a.name == r.agent_name), ''),
+                        (llm.describe_model(a.tier) for a in self._agents
+                         if a.name == r.agent_name), ''),
                 })
             self._store.save_agent_responses(self._current_run_id, response_dicts)
             for agent_name, sc in scores.items():
