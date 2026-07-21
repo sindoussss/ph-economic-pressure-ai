@@ -1,15 +1,12 @@
 """Grounded entity/relation extraction over REAL chunk text. Pure parser is the
-tested seam; the ollama call degrades to an empty result on any failure so the
+tested seam; the LLM call degrades to an empty result on any failure so the
 structured graph is never broken by this optional layer."""
 import logging
 import re
 
-try:
-    import ollama
-except Exception:                       # ollama not installed / importable
-    ollama = None
+from ph_economic_ai.engine import llm
 
-_MODEL = 'qwen2.5:3b'                    # already pulled for the swarm — no new dep
+_TIER = llm.FAST                        # extraction is mechanical — no deep tier needed
 _PROMPT = (
     'Extract named entities and relations from the Philippine economic text. '
     'Output ONLY lines in these exact formats, nothing else:\n'
@@ -35,17 +32,17 @@ def parse_extraction(text: str) -> dict:
     return {'entities': entities, 'relations': relations}
 
 
-def extract(chunk_text: str, source: str = '', model: str = _MODEL) -> dict:
-    if ollama is None or not (chunk_text or '').strip():
+def extract(chunk_text: str, source: str = '', tier: str = _TIER) -> dict:
+    if not (chunk_text or '').strip() or not llm.is_configured():
         return {'entities': [], 'relations': []}
     try:
-        resp = ollama.chat(
-            model=model,
-            messages=[{'role': 'system', 'content': _PROMPT},
-                      {'role': 'user', 'content': chunk_text[:1500]}],
-            options={'num_predict': 256, 'temperature': 0.1},
+        text = llm.complete(
+            [{'role': 'system', 'content': _PROMPT},
+             {'role': 'user', 'content': chunk_text[:1500]}],
+            tier=tier,
+            max_tokens=256,
         )
-        return parse_extraction(resp['message']['content'])
+        return parse_extraction(text)
     except Exception as exc:                      # noqa: BLE001 — must never raise
         logging.warning('entity extraction failed for %s: %s', source, exc)
         return {'entities': [], 'relations': []}

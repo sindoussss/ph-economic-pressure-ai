@@ -1,4 +1,5 @@
 import pytest
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.swarm import (
     SwarmAgent, GroupSurvivor, RegionalVerdict, MasterVerdict, REGIONS
 )
@@ -11,7 +12,7 @@ def test_regions_has_4_entries():
 def test_swarm_agent_defaults():
     agent = SwarmAgent(
         name='NCR Forecaster-1', role='Forecaster',
-        model='deepseek-r1:8b', group_id=0, region_name='NCR',
+        tier=llm.FAST, group_id=0, region_name='NCR',
         system_prompt='You are...', rag_sources=['YahooFinanceCrude'],
     )
     assert agent.is_alive is True
@@ -55,12 +56,11 @@ def test_build_swarm_agents_group_composition():
     assert roles.count('ConfidenceScorer') == 1
 
 
-def test_build_swarm_agents_models():
+def test_build_swarm_agents_all_use_the_fast_tier():
+    """Bulk agents must stay on the fast tier: the deep tier's tokens-per-minute
+    ceiling cannot absorb 32 agent calls carrying RAG context."""
     agents = build_swarm_agents()
-    forecasters = [a for a in agents if a.role == 'Forecaster']
-    assert all(a.model == 'qwen2.5:7b' for a in forecasters)
-    critics = [a for a in agents if a.role == 'Critic']
-    assert all(a.model == 'qwen2.5:7b' for a in critics)
+    assert all(a.tier == llm.FAST for a in agents)
 
 
 def test_build_swarm_agents_names_unique():
@@ -151,8 +151,13 @@ from ph_economic_ai.engine.swarm import GroupArena, GroupSurvivor
 
 
 def _stream(text: str):
-    """Returns a one-chunk ollama stream."""
-    return [{'message': {'content': text}}]
+    """A one-token llm.stream result.
+
+    Deliberately a list, not a generator: RegionalJudge.run() calls the model
+    three times against a single `return_value`, and a generator would be
+    drained by the first call.
+    """
+    return [text]
 
 
 def _make_rag():
@@ -187,7 +192,7 @@ def test_group_arena_run_returns_one_survivor():
     )
     normal_text = "Analysis here. ESTIMATE: +₱1.50/L"
 
-    def fake_chat(model, messages, stream, **kwargs):
+    def fake_chat(messages, **kwargs):
         role_hint = messages[0]['content'] if messages else ''
         if 'Challenge' in role_hint:     # Critic system prompt
             return _stream(critic_text)
@@ -195,7 +200,7 @@ def test_group_arena_run_returns_one_survivor():
             return _stream(conf_text)
         return _stream(normal_text)
 
-    with patch('ph_economic_ai.engine.swarm.ollama.chat', side_effect=fake_chat):
+    with patch('ph_economic_ai.engine.swarm.llm.stream', side_effect=fake_chat):
         survivor = arena.run()
 
     assert isinstance(survivor, GroupSurvivor)
@@ -221,7 +226,7 @@ def test_group_arena_elimination_events_fired():
     )
     normal_text = "ESTIMATE: +₱2.00/L"
 
-    def fake_chat(model, messages, stream, **kwargs):
+    def fake_chat(messages, **kwargs):
         role_hint = messages[0]['content'] if messages else ''
         if 'Challenge' in role_hint:
             return _stream(critic_text)
@@ -229,7 +234,7 @@ def test_group_arena_elimination_events_fired():
             return _stream(conf_text)
         return _stream(normal_text)
 
-    with patch('ph_economic_ai.engine.swarm.ollama.chat', side_effect=fake_chat):
+    with patch('ph_economic_ai.engine.swarm.llm.stream', side_effect=fake_chat):
         arena.run()
 
     eliminated_events = [e for e in events if e[0] == 'eliminated']
@@ -288,7 +293,7 @@ def test_regional_judge_returns_verdict():
     judge = RegionalJudge(judge_id=0, survivors=(s1, s2), rag=_make_rag(),
                           scenario=SCENARIO)
 
-    with patch('ph_economic_ai.engine.swarm.ollama.chat',
+    with patch('ph_economic_ai.engine.swarm.llm.stream',
                return_value=_stream('Good analysis. ESTIMATE: +₱1.75/L')):
         verdict = judge.run()
 
@@ -306,7 +311,7 @@ def test_master_judge_returns_master_verdict():
     ]
     master = MasterJudge(verdicts=verdicts, rag=_make_rag(), scenario=SCENARIO)
 
-    with patch('ph_economic_ai.engine.swarm.ollama.chat',
+    with patch('ph_economic_ai.engine.swarm.llm.stream',
                return_value=_stream(
                    'Final analysis. ESTIMATE: +₱1.80/L\n'
                    'Dissenting: Region IX — Zamboanga Peninsula'
@@ -322,20 +327,13 @@ from ph_economic_ai.engine.swarm import SwarmOrchestrator
 
 
 def test_swarm_orchestrator_returns_master_verdict():
-    def fake_chat(model, messages, stream, **kwargs):
-        if 'mistral' in model:
-            all_agents = build_swarm_agents()
-            names = [a.name for a in all_agents[:10]]
-            text = '\n'.join(f'SCORE: {n}: 7' for n in names) + '\nESTIMATE: +₱1.50/L'
-            return _stream(text)
-        if 'phi4' in model:
-            all_agents = build_swarm_agents()
-            names = [a.name for a in all_agents[:10]]
-            text = '\n'.join(f'CONFIDENCE: {n}: 0.70' for n in names) + '\nESTIMATE: +₱1.50/L'
-            return _stream(text)
+    # The old fake branched on 'mistral'/'phi4' model names, but no role ever
+    # used those models — both branches were unreachable and every call fell
+    # through to the flat estimate below. Kept as-is, minus the dead code.
+    def fake_chat(messages, **kwargs):
         return _stream('ESTIMATE: +₱1.50/L')
 
-    with patch('ph_economic_ai.engine.swarm.ollama.chat', side_effect=fake_chat):
+    with patch('ph_economic_ai.engine.swarm.llm.stream', side_effect=fake_chat):
         orch = SwarmOrchestrator(rag=_make_rag(), scenario=SCENARIO, parallel_n=2)
         mv = orch.run()
 
