@@ -5,7 +5,73 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.debate import Agent, DEFAULT_AGENTS
+from ph_economic_ai.engine.swarm import (
+    REGIONS, expected_call_counts, group_critical_path,
+)
+
+# Rough streamed-completion latency against a hosted free tier. The old
+# estimate assumed 15s per call, which was a local-Ollama number — hosted
+# inference is far quicker, and on free tiers the quota, not the model, is
+# usually what sets the floor.
+_FAST_CALL_SECS = 3
+_DEEP_CALL_SECS = 7
+
+# Reserved completion budget per call, mirroring the max_tokens the engine
+# passes. Completions, not prompts, dominate the token bill.
+_FAST_MAX_TOKENS = 750
+_DEEP_MAX_TOKENS = 900
+_TYPICAL_PROMPT_TOKENS = 650      # measured against a populated RAG index
+
+
+def estimate_swarm_seconds(parallel_n: int) -> int:
+    """Estimated wall-clock for one swarm run, in seconds.
+
+    Three things can dominate, so the estimate takes whichever is worst:
+
+    * **latency** — groups run `parallel_n` at a time; inside a group round 1
+      is sequential (agents read each other) and later rounds are parallel.
+      The judges then run sequentially.
+    * **the request cap** — a free tier caps requests per minute, so a run
+      cannot finish faster than `total_calls / RPM`.
+    * **the token cap** — and usually this is the one that bites. A run spends
+      roughly 44K fast-tier tokens against a 6K/min free-tier ceiling, so the
+      token budget alone can set a multi-minute floor however fast the model
+      responds.
+    """
+    counts = expected_call_counts()
+    n_groups = max(1, len(REGIONS))
+    parallel_n = max(1, parallel_n)
+
+    batches = -(-n_groups // parallel_n)                      # ceil div
+    group_secs = group_critical_path() * _FAST_CALL_SECS
+    latency_secs = batches * group_secs + counts['deep'] * _DEEP_CALL_SECS
+
+    request_floor = counts['total'] / max(1, llm.effective_rpm()) * 60
+    token_floor = _token_floor_seconds(counts)
+
+    return int(max(latency_secs, request_floor, token_floor))
+
+
+def _token_floor_seconds(counts: dict) -> float:
+    """Seconds implied by the per-minute token ceiling, worst tier wins."""
+    try:
+        provider = llm.active_provider()
+    except llm.LLMError:
+        return 0.0
+
+    worst = 0.0
+    for tier, n_calls, max_tokens in (
+        (llm.FAST, counts['fast'], _FAST_MAX_TOKENS),
+        (llm.DEEP, counts['deep'], _DEEP_MAX_TOKENS),
+    ):
+        tpm = llm.tpm_for(provider, tier)
+        if not tpm:
+            continue
+        spend = n_calls * (_TYPICAL_PROMPT_TOKENS + max_tokens)
+        worst = max(worst, spend / tpm * 60)
+    return worst
 
 
 @dataclass
@@ -258,15 +324,14 @@ class Stage2SetupPanel(QWidget):
 
     def _update_time_estimate(self, *_):
         if self._swarm_btn.isChecked():
-            parallel_n = self._parallel_slider.value()
-            # ~371 ollama calls, roughly 15s each
-            batches = -(-20 // parallel_n)  # ceil div
-            secs = batches * 3 * 15 + 10 * 15 + 15
-            self._time_lbl.setText(f'~{secs // 60} min estimated (swarm)')
+            secs = estimate_swarm_seconds(self._parallel_slider.value())
         else:
             rounds = 3 if len(self._agents) <= 7 else 2
-            secs = len(self._agents) * rounds * 10
-            self._time_lbl.setText(f'~{secs // 60} min estimated')
+            secs = len(self._agents) * rounds * _FAST_CALL_SECS
+        label = f'~{secs // 60} min estimated' if secs >= 60 else f'~{secs}s estimated'
+        if self._swarm_btn.isChecked():
+            label += ' (swarm)'
+        self._time_lbl.setText(label)
 
     def _on_swarm_toggled(self, checked: bool):
         self._parallel_slider.setEnabled(checked)
