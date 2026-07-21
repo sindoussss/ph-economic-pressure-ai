@@ -26,15 +26,15 @@ def test_electricity_agents_have_estimate_format():
 
 
 def test_food_agents_use_main_model():
-    from ph_economic_ai.engine.debate import _MAIN_MODEL
+    from ph_economic_ai.engine.debate import _MAIN_TIER
     for agent in FOOD_AGENTS:
-        assert agent.model == _MAIN_MODEL
+        assert agent.tier == _MAIN_TIER
 
 
 def test_electricity_agents_use_main_model():
-    from ph_economic_ai.engine.debate import _MAIN_MODEL
+    from ph_economic_ai.engine.debate import _MAIN_TIER
     for agent in ELECTRICITY_AGENTS:
-        assert agent.model == _MAIN_MODEL
+        assert agent.tier == _MAIN_TIER
 
 
 def test_parse_think_splits_tag():
@@ -94,16 +94,16 @@ def test_build_prompt_contains_scenario():
     assert '6.5' in combined
 
 
-def test_run_calls_ollama_per_agent_per_round():
+def test_run_calls_the_provider_per_agent_per_round():
     rag = _make_mock_rag()
     engine = DebateEngine(DEFAULT_AGENTS[:2], rag,
                           {'oil_pct': 5.0, 'usd_pct': 2.0,
                            'bsp_rate': 6.5, 'demand_index': 72})
 
-    fake_stream = [{'message': {'content': tok}} for tok in
+    fake_stream = [tok for tok in
                    ['<think>', 'thinking', '</think>', '+₱2.50/L']]
 
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=iter(fake_stream)) as mock_chat:
         responses = engine.run(rounds=2)
 
@@ -117,9 +117,9 @@ def test_run_extracts_price_estimate():
     engine = DebateEngine(DEFAULT_AGENTS[:1], rag,
                           {'oil_pct': 5.0, 'usd_pct': 2.0,
                            'bsp_rate': 6.5, 'demand_index': 72})
-    fake_stream = [{'message': {'content': tok}}
+    fake_stream = [tok
                    for tok in ['Pump price estimate is ', '+₱2.50', '/L']]
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=iter(fake_stream)):
         responses = engine.run(rounds=1)
     assert responses[0].price_estimate == pytest.approx(2.50)
@@ -157,14 +157,14 @@ def test_ask_unknown_agent_returns_empty():
     assert result == ''
 
 
-def test_ask_calls_ollama():
+def test_ask_calls_the_provider():
     rag = _make_mock_rag()
     engine = DebateEngine(DEFAULT_AGENTS[:1], rag,
                           {'oil_pct': 5.0, 'usd_pct': 2.0,
                            'bsp_rate': 6.5, 'demand_index': 72})
-    fake_stream = [{'message': {'content': tok}}
+    fake_stream = [tok
                    for tok in ['The rate cut would push ', '+₱0.30/L', ' higher.']]
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=iter(fake_stream)):
         result = engine.ask('Market Analyst', 'What about a rate cut?')
     assert '+₱0.30' in result or '0.30' in result
@@ -185,11 +185,9 @@ def test_consensus_final_round_only():
     engine = DebateEngine(DEFAULT_AGENTS[:1], rag,
                           {'oil_pct': 5.0, 'usd_pct': 2.0,
                            'bsp_rate': 6.5, 'demand_index': 72})
-    fake_stream_r1 = [{'message': {'content': t}}
-                      for t in ['Round 1: +₱1.00/L']]
-    fake_stream_r2 = [{'message': {'content': t}}
-                      for t in ['Round 2: +₱2.00/L']]
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    fake_stream_r1 = ['Round 1: +₱1.00/L']
+    fake_stream_r2 = ['Round 2: +₱2.00/L']
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                side_effect=[iter(fake_stream_r1), iter(fake_stream_r2)]):
         engine.run(rounds=2)
     result = engine.consensus()
@@ -202,12 +200,12 @@ def test_run_clears_history_on_rerun():
     engine = DebateEngine(DEFAULT_AGENTS[:1], rag,
                           {'oil_pct': 5.0, 'usd_pct': 2.0,
                            'bsp_rate': 6.5, 'demand_index': 72})
-    fake_stream = [{'message': {'content': '+₱2.50/L'}}]
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    fake_stream = ['+₱2.50/L']
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=iter(fake_stream)):
         engine.run(rounds=1)
-    fake_stream2 = [{'message': {'content': '+₱3.00/L'}}]
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    fake_stream2 = ['+₱3.00/L']
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=iter(fake_stream2)):
         responses = engine.run(rounds=1)
     assert len(responses) == 1
@@ -218,7 +216,7 @@ from ph_economic_ai.engine.debate import SynthesizerThread
 
 
 def _make_chunk(text: str):
-    return {'message': {'content': text}}
+    return text
 
 
 def test_synthesizer_emits_tokens():
@@ -230,7 +228,7 @@ def test_synthesizer_emits_tokens():
     tokens = []
     thread.token_ready.connect(tokens.append)
 
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=[_make_chunk('Summary'), _make_chunk(' text.')]):
         thread.run()
 
@@ -246,7 +244,7 @@ def test_synthesizer_finished_signal():
     results = []
     thread.finished.connect(results.append)
 
-    with patch('ph_economic_ai.engine.debate.ollama.chat',
+    with patch('ph_economic_ai.engine.debate.llm.stream',
                return_value=[_make_chunk('Done.')]):
         thread.run()
 

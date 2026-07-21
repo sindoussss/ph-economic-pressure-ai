@@ -7,20 +7,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ph_economic_ai.engine.store import AgentTrustStore
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.debate import Agent
 from ph_economic_ai.engine.store import trust_tier
 from ph_economic_ai.engine.swarm import SwarmAgent
 
 _COLD_START_RUNS = 3
 _DIVERSITY_MIN   = 0.60
-
-# Model tier maps
-_DEBATE_TIERS: dict[str, dict[str, str]] = {
-    'deepseek-r1:8b':  {'promoted': 'deepseek-r1:32b', 'demoted': 'qwen2.5:7b'},
-    'qwen2.5:3b':      {'promoted': 'qwen2.5:7b',      'demoted': 'qwen2.5:3b'},
-    'qwen2.5:7b':      {'promoted': 'qwen2.5:14b',     'demoted': 'qwen2.5:3b'},
-    'qwen2.5:14b':     {'promoted': 'deepseek-r1:32b', 'demoted': 'qwen2.5:7b'},
-}
 
 _PROMOTED_SUFFIX = (
     ' Your past estimates have been consistently accurate — '
@@ -32,13 +25,20 @@ _DEMOTED_SUFFIX = (
 )
 
 
-def _resolve_model(base_model: str, tier: str) -> str:
-    tiers = _DEBATE_TIERS.get(base_model, {})
-    if tier == 'promoted':
-        return tiers.get('promoted', base_model)
-    if tier == 'demoted':
-        return tiers.get('demoted', base_model)
-    return base_model
+def _resolve_tier(base_tier: str, trust_band: str) -> str:
+    """Map a trust band onto a model tier.
+
+    The old ladder climbed four Ollama sizes (3b -> 7b -> 14b -> 32b); hosted
+    free tiers expose only two, so the ladder collapses to its endpoints. The
+    intent is unchanged — agents that have earned trust get the stronger model,
+    agents that have not get the cheap one — but a demotion now also protects
+    the scarce deep-tier daily quota.
+    """
+    if trust_band == 'promoted':
+        return llm.DEEP
+    if trust_band == 'demoted':
+        return llm.FAST
+    return base_tier
 
 
 def get_evolved_debate_agents(
@@ -53,16 +53,16 @@ def get_evolved_debate_agents(
     evolved: list[Agent] = []
     for agent in base_agents:
         trust = trust_map.get(agent.name, 0.5)
-        tier = trust_tier(trust)
-        new_model = _resolve_model(agent.model, tier)
+        band = trust_tier(trust)
+        new_tier = _resolve_tier(agent.tier, band)
         new_prompt = agent.system_prompt
-        if tier == 'promoted':
+        if band == 'promoted':
             new_prompt = new_prompt.rstrip() + _PROMOTED_SUFFIX
-        elif tier == 'demoted':
+        elif band == 'demoted':
             new_prompt = new_prompt.rstrip() + _DEMOTED_SUFFIX
         # Fix: clear is_mini when a mini-agent is promoted to a larger model
-        is_mini_new = False if (tier == 'promoted' and agent.is_mini) else agent.is_mini
-        evolved.append(replace(agent, model=new_model, system_prompt=new_prompt,
+        is_mini_new = False if (band == 'promoted' and agent.is_mini) else agent.is_mini
+        evolved.append(replace(agent, tier=new_tier, system_prompt=new_prompt,
                                 is_mini=is_mini_new))
     return evolved
 
@@ -93,16 +93,16 @@ def get_evolved_swarm_agents(
         active: list[SwarmAgent] = []
         for agent in scored:
             trust = trust_map.get(agent.name, 0.5)
-            tier = trust_tier(trust)
-            if tier == 'demoted' and len(active) >= min_active:
+            band = trust_tier(trust)
+            if band == 'demoted' and len(active) >= min_active:
                 # bench this agent — skip it
                 continue
-            new_model = _resolve_model(agent.model, tier)
+            new_tier = _resolve_tier(agent.tier, band)
             prompt = agent.system_prompt
-            if tier == 'promoted':
+            if band == 'promoted':
                 prompt = prompt.rstrip() + _PROMOTED_SUFFIX
-            elif tier == 'demoted':
+            elif band == 'demoted':
                 prompt = prompt.rstrip() + _DEMOTED_SUFFIX
-            active.append(replace(agent, model=new_model, system_prompt=prompt))
+            active.append(replace(agent, tier=new_tier, system_prompt=prompt))
         evolved.extend(active)
     return evolved
