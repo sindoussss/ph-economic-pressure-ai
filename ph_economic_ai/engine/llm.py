@@ -46,11 +46,17 @@ DEEP = 'deep'
 
 _DEFAULT_MODELS: dict[str, dict[str, str]] = {
     'ollama': {
-        # Sized to fit an 8GB GPU with room for context. The project used to
-        # put judges on qwen2.5:14b (~9GB), which does not fit and therefore
-        # ran partly on CPU — most of why local inference felt unusable.
-        FAST: 'qwen2.5:3b',      # ~2GB
-        DEEP: 'qwen2.5:7b',      # ~4.7GB
+        # The fast tier carries 32 of the 39 calls and must stay small enough
+        # to sit in VRAM alongside its context — a model that does not fit is
+        # not slow, it is unusable, which is what qwen2.5:14b judges did to
+        # this project before.
+        FAST: 'qwen2.5:3b',          # ~2GB
+        # The deep tier is deliberately large. It runs only the 7 judge calls,
+        # and those decide the master verdict. qwen2.5:7b consistently produced
+        # fuel estimates several times too large — the ±₱8/L plausibility guard
+        # was discarding whole regional verdicts. A reasoning model is worth
+        # ~55s per call here; at 7 calls that is a bounded cost.
+        DEEP: 'deepseek-r1:14b',     # ~9GB, partially CPU-offloaded on 8GB
     },
     'groq': {
         # 14.4K requests/day — this is what absorbs the bulk agent traffic.

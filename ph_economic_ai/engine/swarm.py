@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import re
 import statistics
 import threading
@@ -144,8 +145,14 @@ def _is_realistic_fuel_change(value: Optional[float]) -> bool:
     return value is not None and abs(value) <= _MAX_REALISTIC_FUEL_CHANGE
 
 
-def _extract_fuel_change(text: str) -> Optional[float]:
-    """Extract a signed PHP/L fuel price change, rejecting absolute-price parses."""
+def parse_fuel_estimate(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Parse a PHP/L fuel change into (accepted, rejected).
+
+    Returns the value in the first slot if it survives the plausibility guard,
+    otherwise in the second. Separating the two lets callers tell "the judge
+    never gave a number" apart from "the judge gave one and we threw it away" —
+    a distinction the report previously collapsed into a bare em dash.
+    """
     estimate = None
     estimate_lines = re.findall(
         r'ESTIMATE\s*:\s*([+\-])\s*(?:₱|PHP|P|â‚±)?\s*(\d+(?:\.\d+)?)\s*/?\s*L?',
@@ -157,9 +164,22 @@ def _extract_fuel_change(text: str) -> Optional[float]:
         estimate = (-1 if sign == '-' else 1) * float(raw)
     else:
         estimate = _extract_price(text)
+
+    if estimate is None:
+        return None, None
     if not _is_realistic_fuel_change(estimate):
-        return None
-    return estimate
+        logging.info(
+            'swarm: rejected fuel estimate %+.2f PHP/L (outside +/-%.0f)',
+            estimate, _MAX_REALISTIC_FUEL_CHANGE,
+        )
+        return None, estimate
+    return estimate, None
+
+
+def _extract_fuel_change(text: str) -> Optional[float]:
+    """Extract a signed PHP/L fuel price change, rejecting absolute-price parses."""
+    accepted, _ = parse_fuel_estimate(text)
+    return accepted
 
 
 def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[float]) -> int:
@@ -225,6 +245,10 @@ class RegionalVerdict:
     confidence: float
     reasoning: str
     survivor_names: tuple[str, str]
+    # Set when the judge did produce a number but it failed the plausibility
+    # guard. Lets the report explain a missing estimate instead of showing a
+    # bare dash that reads as a crash.
+    rejected_estimate: Optional[float] = None
 
 
 @dataclass
@@ -770,7 +794,7 @@ class RegionalJudge:
         def1 = self._call(self._defense_prompt(self._s1, self._s2))
         def2 = self._call(self._defense_prompt(self._s2, self._s1))
         synthesis = self._call(self._synthesis_prompt(def1, def2))
-        estimate = _extract_fuel_change(synthesis)
+        estimate, rejected = parse_fuel_estimate(synthesis)
         # Measured, not assumed. This was previously a hardcoded 0.75 whenever
         # the estimate merely parsed, which the report then displayed as "agent
         # agreement" — a constant presented as a measurement, and identical on
@@ -784,6 +808,7 @@ class RegionalJudge:
             confidence=confidence,
             reasoning=synthesis,
             survivor_names=(self._s1.response.agent_name, self._s2.response.agent_name),
+            rejected_estimate=rejected,
         )
 
 
