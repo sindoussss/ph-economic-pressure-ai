@@ -14,6 +14,7 @@ from PyQt6.QtGui import (
     QPainter, QPen, QColor, QFont, QBrush, QPainterPath, QFontMetricsF,
 )
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import Agent, DebateEngine, DebateThread, AgentResponse
 from ph_economic_ai.utils.preprocessing import build_features
@@ -1493,7 +1494,7 @@ class Stage3CanvasPanel(QWidget):
         r = self._agent_radii.get(name, _AR)
         self._spawn_ripple(ax, ay, r, c)
         agent = next((a for a in self._agents if a.name == name), None)
-        model = agent.model if agent else '—'
+        model = llm.describe_model(agent.tier) if agent else '—'
 
         resp = self._agent_responses.get(name)
         if name in self._active_set:
