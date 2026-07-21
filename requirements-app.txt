@@ -1,0 +1,22 @@
+# Strata — interactive app dependencies (Python 3.10)
+#
+# This is the EXPLORATORY half: the 20-agent swarm, the knowledge-graph
+# simulation and the PyQt6 workbench. It is an interface and explanation
+# layer, not a validated predictor.
+#
+#     pip install -r requirements-app.txt
+#     python -m ph_economic_ai.main
+#
+# The app calls a hosted LLM over plain HTTP via `requests` (no vendor SDK).
+# Set one of these free-tier keys before launching:
+#
+#     GROQ_API_KEY    — https://console.groq.com   (fastest; no embeddings)
+#     GEMINI_API_KEY  — https://aistudio.google.com (chat + free embeddings)
+#
+# Without a key the app still runs: retrieval falls back to TF-IDF and the
+# swarm reports that no provider is configured.
+
+-r requirements.txt
+
+PyQt6
+beautifulsoup4
