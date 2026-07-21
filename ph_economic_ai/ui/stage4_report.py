@@ -13,8 +13,27 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 from ph_economic_ai.engine.debate import AgentResponse
+from ph_economic_ai.engine.swarm import _MAX_REALISTIC_FUEL_CHANGE
 from ph_economic_ai.utils.preprocessing import build_features
 from ph_economic_ai import model as ml
+
+
+def _missing_estimate_note(estimate, rejected) -> str:
+    """Explain a blank estimate. Empty string when there is nothing to explain.
+
+    "Discarded because the model said something impossible" and "the model
+    never answered" are very different failures, and a reader who sees only a
+    dash cannot tell either of them from a crash.
+    """
+    if estimate is not None:
+        return ''
+    if rejected is not None:
+        return (
+            f'Judge proposed {rejected:+.2f} ₱/L — discarded as implausible '
+            f'(outside ±₱{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L). Not counted toward '
+            f'the consensus.'
+        )
+    return 'Judge produced no parseable estimate. Not counted toward the consensus.'
 from ph_economic_ai.ui.causal_chain_widget import CausalChainWidget, BSPAlertBanner
 from ph_economic_ai.ui.regional_map import RegionalMapWidget
 from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
@@ -426,7 +445,13 @@ class Stage4ReportPanel(QWidget):
             pair_str = ' & '.join(rv.region_pair)
             name_lbl = QLabel(pair_str[:50])
             name_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
-            est_str = f'+₱{rv.estimate:.2f}/L' if rv.estimate is not None else '—'
+            rejected = getattr(rv, 'rejected_estimate', None)
+            if rv.estimate is not None:
+                est_str = f'{rv.estimate:+.2f} ₱/L'
+            elif rejected is not None:
+                est_str = 'discarded'
+            else:
+                est_str = 'no estimate'
             est_lbl = QLabel(est_str)
             est_lbl.setStyleSheet('font-size:10px;font-weight:700;color:#1C1E26;')
             head_row.addWidget(name_lbl)
@@ -437,6 +462,14 @@ class Stage4ReportPanel(QWidget):
             conf_lbl = QLabel(f'Agent agreement: {rv.confidence:.0%}')
             conf_lbl.setStyleSheet('font-size:8px;color:#9EA3AE;')
             rvfl.addWidget(conf_lbl)
+
+            # A blank estimate reads as a crash unless we say what happened.
+            note = _missing_estimate_note(rv.estimate, rejected)
+            if note:
+                note_lbl = QLabel(note)
+                note_lbl.setWordWrap(True)
+                note_lbl.setStyleSheet('font-size:8px;color:#B45309;')
+                rvfl.addWidget(note_lbl)
 
             rvcl.addWidget(rvf)
 

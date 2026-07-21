@@ -16,13 +16,14 @@ from ph_economic_ai.engine.swarm import (
 _HOSTED_FAST_SECS = 3
 _HOSTED_DEEP_SECS = 7
 
-# Measured on an 8GB GPU: qwen2.5:3b answers an agent-shaped call (~650 token
-# prompt, 750 max_tokens) in ~4s once warm. The deep tier is ~2.3x the
-# parameters and scaled accordingly. The old setup put judges on a 9GB model
-# that does not fit in 8GB of VRAM and therefore ran partly on CPU — that is
-# where the original "15s per call" figure came from.
+# Both measured on an 8GB GPU, not estimated. qwen2.5:3b answers an
+# agent-shaped call (~650 token prompt, 750 max_tokens) in ~4s once warm.
+# deepseek-r1:14b takes ~55s: it is a reasoning model that thinks before it
+# answers, and at 9GB it is partly CPU-offloaded on this card. That cost is
+# accepted deliberately — it runs only the 7 judge calls, and those are what
+# decide the verdict.
 _LOCAL_FAST_SECS = 4
-_LOCAL_DEEP_SECS = 9
+_LOCAL_DEEP_SECS = 55
 
 # Loading a model into VRAM costs ~50s and is not inference. A run pays it
 # once per tier: all group calls use the fast model, then the judges swap in
