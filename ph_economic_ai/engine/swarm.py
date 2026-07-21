@@ -90,9 +90,16 @@ _MASTER_JUDGE_CALLS = 1
 # Reserved completion length per call. Module-level so the ablation harness can
 # vary it: completions are ~24K of a run's ~44K fast-tier tokens, making this
 # the single biggest lever on free-tier run time.
+#
+# The judge budgets are deliberately generous. A reasoning model on the deep
+# tier (deepseek-r1 and friends) spends hundreds of tokens thinking before it
+# writes anything, and if the cap lands mid-thought the reply is truncated
+# before the ESTIMATE line — which does not error, it just silently yields a
+# verdict with no estimate. This is a cap, not a target: models that finish
+# early cost nothing extra.
 _AGENT_MAX_TOKENS = 750
-_JUDGE_MAX_TOKENS = 900
-_MASTER_MAX_TOKENS = 1000
+_JUDGE_MAX_TOKENS = 1800
+_MASTER_MAX_TOKENS = 2000
 _MAX_REALISTIC_FUEL_CHANGE = 8.0
 
 # Role processing order within a round (Critic and ConfidenceScorer last so they

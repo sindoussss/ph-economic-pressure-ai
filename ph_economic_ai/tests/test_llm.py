@@ -449,6 +449,90 @@ def test_ollama_embed_missing_model_gives_a_pull_command(local, monkeypatch):
         llm.embed(['a'])
 
 
+def _frame(content='', thinking=''):
+    msg = {}
+    if content:
+        msg['content'] = content
+    if thinking:
+        msg['thinking'] = thinking
+    return {'message': msg}
+
+
+def test_reasoning_is_rewrapped_as_inline_think_tags():
+    """Reasoning models return thought in a separate field; the rest of the
+    codebase splits it with _parse_think, which expects inline tags."""
+    out = ''.join(llm.wrap_ollama_thinking([
+        _frame(thinking='let me '),
+        _frame(thinking='reason'),
+        _frame(content='ESTIMATE: +1.50'),
+    ]))
+    assert out == '<think>let me reason</think>ESTIMATE: +1.50'
+
+
+def test_rewrapped_thinking_round_trips_through_parse_think():
+    from ph_economic_ai.engine.debate import _parse_think
+    out = ''.join(llm.wrap_ollama_thinking([
+        _frame(thinking='deliberating'),
+        _frame(content='ESTIMATE: +2.00'),
+    ]))
+    thinking, statement = _parse_think(out)
+    assert thinking.strip() == 'deliberating'
+    assert statement.strip() == 'ESTIMATE: +2.00'
+
+
+def test_unterminated_reasoning_still_closes_the_tag():
+    """A model that is cut off mid-thought must not emit an unclosed tag."""
+    out = ''.join(llm.wrap_ollama_thinking([_frame(thinking='cut off here')]))
+    assert out == '<think>cut off here</think>'
+
+
+def test_non_reasoning_output_is_untouched():
+    out = ''.join(llm.wrap_ollama_thinking([_frame(content='plain answer')]))
+    assert out == 'plain answer'
+
+
+def test_json_mode_drops_reasoning_entirely(local, monkeypatch):
+    """live_data json.loads() the deep-tier reply — a <think> preamble would
+    make it unparseable."""
+    lines = [
+        json.dumps(_frame(thinking='pondering')),
+        json.dumps(_frame(content='{"steps": []}')),
+    ]
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(lines=lines))
+    out = ''.join(llm.stream([{'role': 'user', 'content': 'q'}], json_mode=True))
+    assert out == '{"steps": []}'
+    assert json.loads(out) == {'steps': []}
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('```json\n{"a":1}\n```', '{"a":1}'),
+    ('```\n{"a":1}\n```', '{"a":1}'),
+    ('{"a":1}', '{"a":1}'),
+    ('  {"a":1}  ', '{"a":1}'),
+    ('', ''),
+])
+def test_strip_json_fence(raw, expected):
+    """JSON mode is a hint, not a guarantee — reasoning models still fence."""
+    assert llm.strip_json_fence(raw) == expected
+
+
+def test_complete_defences_json_mode_output(local, monkeypatch):
+    lines = [json.dumps(_frame(content='```json\n{"steps": []}\n```'))]
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(lines=lines))
+    out = llm.complete([{'role': 'user', 'content': 'q'}], json_mode=True)
+    assert json.loads(out) == {'steps': []}
+
+
+def test_complete_leaves_prose_alone(local, monkeypatch):
+    """Only JSON mode is de-fenced; a code block in prose must survive."""
+    lines = [json.dumps(_frame(content='```python\nx=1\n```'))]
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(lines=lines))
+    assert '```' in llm.complete([{'role': 'user', 'content': 'q'}])
+
+
 def test_ollama_host_is_overridable(monkeypatch):
     monkeypatch.setenv('OLLAMA_HOST', 'http://192.168.1.5:11434/')
     assert llm.ollama_host() == 'http://192.168.1.5:11434'
