@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import threading
 import time
 from typing import Iterable, Iterator, Optional
@@ -392,6 +393,42 @@ def extract_ollama_token(obj: dict) -> str:
     return (obj.get('message') or {}).get('content', '') or ''
 
 
+def extract_ollama_thinking(obj: dict) -> str:
+    """Pull reasoning text out of one Ollama frame.
+
+    Reasoning models (deepseek-r1 and friends) return their chain of thought in
+    a separate `thinking` field rather than inline, so `content` alone silently
+    drops it.
+    """
+    return (obj.get('message') or {}).get('thinking', '') or ''
+
+
+def wrap_ollama_thinking(frames: Iterable[dict]) -> Iterator[str]:
+    """Yield tokens with reasoning re-wrapped as inline <think>...</think>.
+
+    The rest of the codebase splits reasoning from answer with
+    `debate._parse_think`, which expects inline tags — the convention older
+    Ollama used. Restoring that shape here keeps the agent "thinking" panels
+    working with reasoning models without changing anything downstream.
+    """
+    in_think = False
+    for obj in frames:
+        thought = extract_ollama_thinking(obj)
+        if thought:
+            if not in_think:
+                in_think = True
+                yield '<think>'
+            yield thought
+        token = extract_ollama_token(obj)
+        if token:
+            if in_think:
+                in_think = False
+                yield '</think>'
+            yield token
+    if in_think:
+        yield '</think>'          # model emitted only reasoning before stopping
+
+
 # ── Transport ─────────────────────────────────────────────────────────────────
 
 def _post_sse(
@@ -557,10 +594,17 @@ def stream(
     cost = estimate_tokens(messages, max_tokens)
 
     if provider == 'ollama':
-        for obj in _ollama_stream(messages, model, max_tokens, json_mode):
-            token = extract_ollama_token(obj)
-            if token:
-                yield token
+        frames = _ollama_stream(messages, model, max_tokens, json_mode)
+        if json_mode:
+            # Callers of json_mode parse the result directly, so reasoning must
+            # be dropped rather than wrapped — a <think> preamble would make the
+            # payload unparseable.
+            for obj in frames:
+                token = extract_ollama_token(obj)
+                if token:
+                    yield token
+        else:
+            yield from wrap_ollama_thinking(frames)
         return
 
     if provider == 'groq':
@@ -590,6 +634,21 @@ def stream(
             yield token
 
 
+def strip_json_fence(text: str) -> str:
+    """Unwrap ```json ... ``` fencing around a JSON payload.
+
+    Requesting JSON mode is a strong hint, not a guarantee: reasoning models in
+    particular still wrap their answer in a markdown fence, which turns a valid
+    payload into a `json.loads` failure. Observed on deepseek-r1 via Ollama and
+    occasionally on hosted models, so this is applied to every provider.
+    """
+    cleaned = (text or '').strip()
+    if not cleaned.startswith('```'):
+        return cleaned
+    cleaned = re.sub(r'^```[a-zA-Z]*\s*', '', cleaned)
+    return re.sub(r'\s*```$', '', cleaned).strip()
+
+
 def complete(
     messages: list[dict],
     tier: str = FAST,
@@ -597,11 +656,16 @@ def complete(
     provider: Optional[str] = None,
     json_mode: bool = False,
 ) -> str:
-    """Collect a full response. Convenience wrapper over `stream`."""
-    return ''.join(stream(
+    """Collect a full response. Convenience wrapper over `stream`.
+
+    In JSON mode the reply is de-fenced, so callers can `json.loads` it
+    directly rather than each re-implementing the same cleanup.
+    """
+    text = ''.join(stream(
         messages, tier=tier, max_tokens=max_tokens,
         provider=provider, json_mode=json_mode,
     ))
+    return strip_json_fence(text) if json_mode else text
 
 
 def embed(texts: Iterable[str]) -> list[list[float]]:
