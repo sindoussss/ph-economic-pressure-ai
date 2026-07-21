@@ -396,9 +396,44 @@ def _parse_think(text: str) -> tuple[str, str]:
     return ' '.join(thinking_parts).strip(), statement.strip()
 
 
+# Parse-sanity bounds. These are not economic claims — they reject values that
+# can only be a misparse. PSA month-on-month food CPI moves within a couple of
+# percent, so a double-digit "monthly" figure is a year-on-year number that
+# leaked out of the surrounding prose. Meralco's residential rate is ~₱14/kWh
+# and moves by tenths of a peso month to month.
+_MAX_REALISTIC_FOOD_PCT = 10.0
+_MAX_REALISTIC_ELEC_PHP_KWH = 3.0
+
+
+def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
+    """Read the value off the agent's final `ESTIMATE:` line.
+
+    Every agent prompt ends with an explicit "End with: ESTIMATE: ..."
+    instruction, so that line — not the surrounding reasoning — is the answer.
+    Taking the last match matters because agents restate and revise; taking the
+    first would lock in a number the agent went on to reject.
+    """
+    hits = re.findall(
+        rf'ESTIMATE\s*:\s*([+\-])\s*{unit_pattern}',
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not hits:
+        return None
+    sign, raw = hits[-1]
+    return (-1 if sign == '-' else 1) * float(raw)
+
+
 def _extract_price(text: str) -> Optional[float]:
-    """Extract signed price change: +₱X.XX or -₱X.XX. Requires explicit sign to avoid
-    matching baseline price mentions like 'a base of ₱60/L'."""
+    """Extract a signed price change: +₱X.XX or -₱X.XX.
+
+    Prefers the explicit ESTIMATE line; only falls back to scanning the prose
+    when the agent did not produce one. Requires an explicit sign either way,
+    so baseline mentions like 'a base of ₱60/L' are not mistaken for a change.
+    """
+    anchored = _last_estimate_match(text, r'(?:₱|PHP|P)?\s*(\d+\.?\d*)')
+    if anchored is not None:
+        return anchored
     m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', text)
     if m:
         sign = -1 if m.group(1) == '-' else 1
@@ -406,13 +441,32 @@ def _extract_price(text: str) -> Optional[float]:
     return None
 
 
+def _extract_electricity_change(text: str) -> Optional[float]:
+    """Electricity rate change in ₱/kWh, with a parse-sanity bound."""
+    value = _extract_price(text)
+    if value is None or abs(value) > _MAX_REALISTIC_ELEC_PHP_KWH:
+        return None
+    return value
+
+
 def _extract_percent(text: str) -> Optional[float]:
-    """Extract signed percentage change: +X.X% or -X.X% (for food index estimates)."""
-    m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', text)
-    if m:
-        sign = -1 if m.group(1) == '-' else 1
-        return sign * float(m.group(2))
-    return None
+    """Extract a signed percentage change: +X.X% or -X.X%.
+
+    Anchored to the ESTIMATE line for a specific reason: agents routinely cite
+    a year-on-year figure while reasoning ("food inflation ran 6.1% YoY, so I
+    expect +0.4% this month"). A first-match scan of the prose returns the
+    citation instead of the forecast — and that number then flows through the
+    0.388 food basket weight straight into the projected-CPI headline.
+    """
+    value = _last_estimate_match(text, r'(\d+\.?\d*)\s*%')
+    if value is None:
+        m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', text)
+        if not m:
+            return None
+        value = (-1 if m.group(1) == '-' else 1) * float(m.group(2))
+    if abs(value) > _MAX_REALISTIC_FOOD_PCT:
+        return None
+    return value
 
 
 class DebateEngine:
