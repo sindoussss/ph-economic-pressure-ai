@@ -48,12 +48,19 @@ def test_ollama_needs_no_api_key(monkeypatch):
     assert llm._api_key('ollama') == ''
 
 
-def test_local_tiers_fit_an_8gb_gpu():
-    """The old config put judges on qwen2.5:14b (~9GB), which does not fit in
-    8GB of VRAM and silently ran on CPU. Neither local tier may be a 14b."""
-    for tier in (llm.FAST, llm.DEEP):
-        assert '14b' not in llm.model_for(tier, 'ollama')
-        assert '70b' not in llm.model_for(tier, 'ollama')
+def test_local_fast_tier_stays_small_enough_to_fit_vram():
+    """The fast tier carries 32 of 39 calls. It must fit in VRAM alongside its
+    context — this is the constraint the old qwen2.5:14b judges violated."""
+    fast = llm.model_for(llm.FAST, 'ollama')
+    assert '14b' not in fast and '70b' not in fast and '32b' not in fast
+
+
+def test_local_deep_tier_is_a_reasoning_model():
+    """Deliberately large, unlike the fast tier: it runs only the 7 judge calls
+    and those decide the verdict. qwen2.5:7b produced fuel estimates several
+    times too large, so the plausibility guard was discarding entire regional
+    verdicts."""
+    assert 'deepseek-r1' in llm.model_for(llm.DEEP, 'ollama')
 
 
 def test_unknown_provider_is_rejected(monkeypatch):
