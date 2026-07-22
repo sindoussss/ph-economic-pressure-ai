@@ -58,6 +58,41 @@ def test_weak_model_benefit_is_positive_on_synthetic_data():
     assert wb['improvement_pct'] > 0
 
 
+def test_corr_significance_flags_a_strong_relationship():
+    x = np.linspace(0, 10, 60)
+    y = x + np.random.default_rng(0).normal(0, 1, 60)   # strong positive
+    s = ab.corr_significance(x, y)
+    assert s['r'] > 0.9
+    assert s['p_value'] < 0.001
+    assert s['significant'] is True
+    assert s['ci95'][0] < s['r'] < s['ci95'][1]
+
+
+def test_corr_significance_flags_noise_as_not_significant():
+    rng = np.random.default_rng(1)
+    x, y = rng.normal(size=40), rng.normal(size=40)     # independent
+    s = ab.corr_significance(x, y)
+    assert s['p_value'] > 0.05
+    assert s['significant'] is False
+
+
+def test_slope_significance_recovers_a_known_slope():
+    x = np.linspace(-5, 5, 80)
+    y = 0.8 * x + np.random.default_rng(2).normal(0, 0.3, 80)
+    s = ab.slope_significance(x, y)
+    assert s['slope'] == pytest.approx(0.8, abs=0.1)
+    assert s['p_slope_ne_0'] < 0.001          # clearly non-zero
+    assert s['p_slope_ne_1'] < 0.001          # clearly not 1.0
+
+
+def test_fuel_backtest_carries_significance_fields():
+    """A correlation without a p-value is a point estimate, not a result."""
+    bt = ab.backtest(_synthetic_panel(passthrough=0.8, n=60))
+    assert 'correlation_significance' in bt and 'p_value' in bt['correlation_significance']
+    assert 'dm_vs_naive' in bt and 'p_value' in bt['dm_vs_naive']
+    assert 'slope_significance' in bt
+
+
 def test_lagged_corr_and_scale_ratio():
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     assert ab._lagged_corr(x, x, 0) == pytest.approx(1.0)

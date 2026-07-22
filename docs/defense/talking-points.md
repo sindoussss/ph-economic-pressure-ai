@@ -67,7 +67,7 @@ Two follow-up contributions on the exploratory side. Both are *honesty stories* 
 **Conditioned on the benchmark — this is the key link.** Each sector is anchored to **the signal its own backtest found real**: fuel and electricity get a fuel pass-through; **food gets its own trailing trend, NOT oil** — because your benchmark proved food is a clean null on commodities. Anchoring food to oil would be anchoring it to what you already proved is noise. This ties the exploratory app *directly* to the validated benchmark.
 
 **Regressed against real data — and honestly bounded** (`anchor_validation.json`):
-- **Fuel anchor → validated predictor.** Correlation **0.60** with actual monthly pump moves over 78 months, beats a no-change baseline, calibrated to the empirically-fitted **0.79×** pass-through.
+- **Fuel anchor → significantly tracks pass-through.** Correlation **0.60** with actual monthly pump moves over 78 months (**p < 0.001**, CI [0.44, 0.73]), 74% directional. Lower MAE than a no-change baseline (₱2.21 vs ₱2.64) but only *marginally* — DM **p = 0.065**, so say "co-moves significantly; beats naive only marginally," never a flat "beats naive." Calibrated to the fitted **0.79×** pass-through (which at 5% isn't distinguishable from a full 1:1 — disclose that).
 - **Electricity & food anchors → magnitude guards, NOT predictors.** They get the *scale* right (~1.0×) but do not forecast the monthly move (electricity corr ~0.03; food persistence ≈ oil ≈ a plain mean). Raw commodity prices can't reproduce the benchmark's electricity edge — that needs the full generation-charge formula, and I say so.
 
 **The line to say:** *"One anchor predicts, two only guard magnitude — and I report which is which. The anchor's job is to stop a weak model hallucinating ₱33/kWh, not to forecast."*
@@ -94,7 +94,7 @@ The benchmark is the validated science. The swarm is an explanation/interface la
 They're not asked to do the hard part. Small models get *direction* right but *magnitude* wrong, so magnitude is computed deterministically (the pass-through anchor) and the LLM only supplies direction and qualitative judgment. Program-aided reasoning: LLM for structure, code for the arithmetic. It's how the app stays coherent on an 8GB GPU.
 
 **Q: Did you just tune the anchors to look good?**
-The opposite — I regressed all three against real PH series and *reported the failures*. Fuel predicts (correlation 0.60 over 78 months, beats a no-change baseline). Electricity and food anchors do **not** forecast — they only guard magnitude. Two of three are honest negatives; I didn't hide them.
+The opposite — I regressed all three against real PH series, significance-tested them with the same DM test as the audit, and *reported the limits*. Fuel significantly co-moves with pass-through (r 0.60, p < 0.001) but only *marginally* beats naive on error (DM p = 0.065). Electricity and food anchors do **not** forecast — they only guard magnitude. If anything I under-claim: I flag my own strongest result as merely marginal.
 
 **Q: Isn't the electricity anchor a cheat if it doesn't predict?**
 It's never claimed as a predictor. Its job is *scale* — stopping a weak model saying ₱33/kWh. The benchmark's electricity *prediction* edge (+28%) needs the full generation-charge formula; raw oil can't reproduce it, and the write-up says so plainly (§6.6, §6.7 of the manuscript).

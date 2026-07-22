@@ -33,12 +33,14 @@ from pathlib import Path
 
 import numpy as np
 import requests
+from scipy import stats
 
 import pandas as pd
 
 from ph_economic_ai.engine import anchoring
 from ph_economic_ai.benchmark import ground_truth as gt
 from ph_economic_ai.benchmark import psa_cpi
+from ph_economic_ai.benchmark.significance import diebold_mariano
 
 _ELEC_BASE_RATE_PHP_KWH = 11.2   # to express the ₱/kWh anchor as a CPI %
 
@@ -100,6 +102,48 @@ def _ols(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
     return float(b), float(a), r2
 
 
+def corr_significance(x: np.ndarray, y: np.ndarray) -> dict:
+    """Pearson r with a two-sided p-value (H0: ρ=0) and a Fisher-z 95% CI.
+
+    A correlation reported without this is just a point estimate; the p-value
+    and CI are what let a reviewer judge whether it is distinguishable from
+    zero. Small n makes this decisive — it is why the electricity/food anchors
+    are honestly non-significant while fuel is not.
+    """
+    n = len(x)
+    r = float(np.corrcoef(x, y)[0, 1])
+    if n < 4 or abs(r) >= 1.0:
+        return {'r': round(r, 3), 'n': n, 'p_value': None, 'ci95': None, 'significant': None}
+    t = r * math.sqrt((n - 2) / (1 - r ** 2))
+    p = float(2.0 * (1.0 - stats.t.cdf(abs(t), df=n - 2)))
+    z, se = math.atanh(r), 1.0 / math.sqrt(n - 3)
+    lo, hi = math.tanh(z - 1.96 * se), math.tanh(z + 1.96 * se)
+    return {
+        'r': round(r, 3), 'n': n, 'p_value': round(p, 4),
+        'ci95': [round(lo, 3), round(hi, 3)],
+        'significant': p < 0.05,
+    }
+
+
+def slope_significance(x: np.ndarray, y: np.ndarray) -> dict:
+    """OLS slope with SE, and tests of slope≠0 and slope≠1.
+
+    The calibration coefficient (§ fuel) is only meaningful if the slope is
+    distinguishable from a no-relationship 0; whether it also differs from a
+    perfect 1 says whether the textbook anchor over- or under-states.
+    """
+    lr = stats.linregress(x, y)
+    df = len(x) - 2
+    t_vs_1 = (lr.slope - 1.0) / lr.stderr if lr.stderr else 0.0
+    p_vs_1 = float(2.0 * (1.0 - stats.t.cdf(abs(t_vs_1), df=df))) if df > 0 else None
+    return {
+        'slope': round(float(lr.slope), 3),
+        'stderr': round(float(lr.stderr), 3),
+        'p_slope_ne_0': round(float(lr.pvalue), 4),
+        'p_slope_ne_1': round(p_vs_1, 4) if p_vs_1 is not None else None,
+    }
+
+
 def backtest(panel: list[dict]) -> dict:
     """Does the anchor's predicted pump change track the actual one?"""
     preds, actuals = [], []
@@ -122,15 +166,27 @@ def backtest(panel: list[dict]) -> dict:
     mae_naive = float(np.mean(np.abs(a)))                 # predict "no change"
     directional = float(np.mean(np.sign(p) == np.sign(a)))
 
+    # Is the anchor's lower error significant, not just numerically smaller? The
+    # HLN-corrected Diebold–Mariano test on the absolute-error series — the same
+    # test the thesis uses for its core claims (benchmark/significance.py) — so
+    # the anchor's "beats naive" is judged on the same footing as the audit.
+    dm = diebold_mariano(np.abs(a - p), np.abs(a))
+    beats_naive_sig = bool(dm['dm_stat'] < 0 and dm['p_value'] < 0.05)
+
     return {
         'n_months': len(a),
         'correlation': round(corr, 3),
+        'correlation_significance': corr_significance(p, a),
         'ols_slope': round(slope, 3),
         'ols_intercept': round(intercept, 3),
+        'slope_significance': slope_significance(p, a),
         'r_squared': round(r2, 3),
         'mae_anchor_php_l': round(mae_anchor, 3),
         'mae_naive_php_l': round(mae_naive, 3),
         'anchor_beats_naive': mae_anchor < mae_naive,
+        'dm_vs_naive': {'dm_stat': round(dm['dm_stat'], 3),
+                        'p_value': round(dm['p_value'], 4),
+                        'significant': beats_naive_sig},
         'directional_accuracy': round(directional, 3),
         'calibrated_multiplier': round(slope, 3),   # OLS slope IS the recalibration
         'actual_change_std_php_l': round(float(a.std()), 3),
@@ -191,12 +247,17 @@ def backtest_electricity() -> dict:
     actual = np.array([r['mom'] for r in panel])
     lag_corrs = {lag: round(_lagged_corr(anchor_pct, actual, lag), 3) for lag in (0, 1, 2)}
     best_lag = max(lag_corrs, key=lambda k: abs(lag_corrs[k]))
+    # Significance at the best lag: aligns the two series and tests ρ=0.
+    bl = best_lag
+    ap, ac = (anchor_pct, actual) if bl == 0 else (anchor_pct[:-bl], actual[bl:])
+    best_sig = corr_significance(ap, ac)
     return {
         'n_months': len(panel),
         'predictive_correlation_by_lag': lag_corrs,
         'best_correlation': lag_corrs[best_lag],
         'best_lag': best_lag,
-        'is_predictive': abs(lag_corrs[best_lag]) >= 0.2,
+        'best_correlation_significance': best_sig,
+        'is_predictive': bool(best_sig['significant']) and abs(lag_corrs[best_lag]) >= 0.2,
         'scale_ratio': round(_scale_ratio(anchor_pct, actual), 2),
         'finding': ('the fuel-price anchor does NOT predict monthly electricity '
                     'CPI at this resolution (the benchmark result used the '
@@ -224,8 +285,10 @@ def backtest_food() -> dict:
         oil_act.append(float(oil[i]))
     p, a, o = np.array(persist_pred), np.array(act), np.array(oil_act)
 
-    persist_corr = round(float(np.corrcoef(p, a)[0, 1]), 3)
-    oil_corr = round(float(np.corrcoef(o, a)[0, 1]), 3)
+    persist_sig = corr_significance(p, a)
+    oil_sig = corr_significance(o, a)
+    persist_corr = persist_sig['r']
+    oil_corr = oil_sig['r']
     mae_persist = round(float(np.mean(np.abs(a - p))), 3)
     mae_naive = round(float(np.mean(np.abs(a - a.mean()))), 3)
 
@@ -246,7 +309,9 @@ def backtest_food() -> dict:
     return {
         'n_months': len(a),
         'persistence_correlation': persist_corr,
+        'persistence_significance': persist_sig,
         'oil_correlation': oil_corr,
+        'oil_significance': oil_sig,
         'correlation_se': round(se, 3),
         'indistinguishable': indistinguishable,
         'persistence_mae': mae_persist,
@@ -368,13 +433,16 @@ def main() -> int:
 
     bt = result.get('backtest')
     if bt:
+        cs, ss, dm = bt['correlation_significance'], bt['slope_significance'], bt['dm_vs_naive']
         print(f"\nReal-data backtest ({bt['n_months']} months, WB RON95 vs Brent/FX):")
-        print(f"  correlation anchor vs actual : {bt['correlation']}")
-        print(f"  OLS slope (calibration)      : {bt['ols_slope']}  (1.0 = perfectly scaled)")
+        print(f"  correlation anchor vs actual : {bt['correlation']}  "
+              f"(p={cs['p_value']}, 95% CI {cs['ci95']}, {'SIGNIFICANT' if cs['significant'] else 'n.s.'})")
+        print(f"  OLS slope (calibration)      : {ss['slope']} ± {ss['stderr']}  "
+              f"(≠0 p={ss['p_slope_ne_0']}; ≠1 p={ss['p_slope_ne_1']})")
         print(f"  R^2                          : {bt['r_squared']}")
         print(f"  directional accuracy         : {bt['directional_accuracy']:.0%}")
         print(f"  MAE anchor / naive (PHP/L)   : {bt['mae_anchor_php_l']} / {bt['mae_naive_php_l']}"
-              f"  ({'anchor wins' if bt['anchor_beats_naive'] else 'naive wins'})")
+              f"  (DM p={dm['p_value']}, {'anchor beats naive, significant' if dm['significant'] else 'not significant'})")
         wb = result['weak_model_benefit']
         print(f"\nWeak-model benefit (simulated, vs actual):")
         print(f"  MAE raw model / anchored     : {wb['mae_raw_model_php_l']} / {wb['mae_anchored_php_l']}")
@@ -382,14 +450,20 @@ def main() -> int:
 
     ele = result.get('electricity')
     if ele:
+        es = ele['best_correlation_significance']
         print(f"\nElectricity anchor vs real PSA electricity CPI ({ele['n_months']} months):")
         print(f"  predictive corr by lag : {ele['predictive_correlation_by_lag']}")
+        print(f"  best corr {ele['best_correlation']} (lag {ele['best_lag']}): p={es['p_value']}, "
+              f"{'SIGNIFICANT' if es['significant'] else 'n.s.'}")
         print(f"  magnitude (scale ratio): {ele['scale_ratio']}   (~1 = right magnitude)")
         print(f"  -> {ele['finding']}")
     fd = result.get('food')
     if fd:
+        ps, os_ = fd['persistence_significance'], fd['oil_significance']
         print(f"\nFood anchor vs real PSA food CPI ({fd['n_months']} months):")
-        print(f"  persistence corr : {fd['persistence_correlation']}   |   oil corr : {fd['oil_correlation']}")
+        print(f"  persistence corr {fd['persistence_correlation']} (p={ps['p_value']}, "
+              f"{'sig' if ps['significant'] else 'n.s.'}) | oil corr {fd['oil_correlation']} "
+              f"(p={os_['p_value']}, {'sig' if os_['significant'] else 'n.s.'})")
         print(f"  MAE persist / naive : {fd['persistence_mae']} / {fd['naive_mean_mae']}")
         print(f"  magnitude (scale ratio): {fd['scale_ratio']}")
         print(f"  -> {fd['finding']}")
