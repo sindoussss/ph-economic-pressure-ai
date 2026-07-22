@@ -2,7 +2,7 @@
 
 **Author:** Sindous
 **Draft:** 2026-06-10 · grounded in the frozen `ph_economic_ai/benchmark/artifacts/accuracy_report.json` and companion tables.
-**Status:** Working draft for review. All empirical values are taken verbatim from committed artifacts; the §1.1 macro figures (2022–2025 episode) have been verified against PSA/BSP releases (cite the primary releases in the final bibliography).
+**Status:** Draft. All empirical values are taken verbatim from committed artifacts; the §1.1 macro figures (2022–2025 episode) are drawn from PSA and BSP releases, cited under *Primary institutional and data sources* in the References (specific release reference numbers to be confirmed in the final version).
 
 ---
 
@@ -19,7 +19,7 @@ Fuel and food prices, and the inflation they feed, dominate Philippine household
 
 The pass-through to consumer prices was rapid. Headline CPI inflation climbed through 2022 (averaging 5.8% for the year) to **8.7% year-on-year in January 2023** — its highest since November 2008, a roughly fourteen-year peak — well above the Bangko Sentral ng Pilipinas (BSP) target band of 2–4%, with food and fuel-intensive components among the largest contributors. The BSP responded by raising its policy rate from **2.0% to 6.50%** in a sequence of hikes from May 2022 through October 2023 (a cumulative 400 basis points). Inflation then receded: the annual average eased from 6.0% in 2023 to **3.2% in 2024** (back inside the 2–4% target) and further to about **1.7% in 2025** — below the band, the lowest in nearly a decade. Throughout, the monthly inflation print released by the Philippine Statistics Authority (PSA) was a closely watched signal that moved expectations and framed each BSP decision.
 
-In that environment, a credible ability to anticipate next month's fuel price or inflation rate — even by the short interval between the close of within-month data and the official PSA release — would be valuable to households, firms, and the central bank. This is the practical question the thesis makes precise and tests. *(Figures verified against PSA and BSP releases: Jan-2023 peak 8.7% [PSA, highest since Nov-2008]; annual averages 5.8/6.0/3.2/1.7% for 2022–2025 [BSP]; policy rate 2.0%→6.50% by Oct-2023 [BSP]; target band 2–4%. Cite the primary PSA/BSP releases in the final bibliography.)*
+In that environment, a credible ability to anticipate next month's fuel price or inflation rate — even by the short interval between the close of within-month data and the official PSA release — would be valuable to households, firms, and the central bank. This is the practical question the thesis makes precise and tests. *(Sourced from PSA and BSP releases — Jan-2023 peak 8.7% [PSA CPI, highest since Nov-2008]; annual averages 5.8/6.0/3.2/1.7% for 2022–2025 [BSP]; policy rate 2.0%→6.50% by Oct-2023 [BSP]; target band 2–4% — cited under Primary institutional and data sources in the References.)*
 
 ### 1.2 The gap
 A wave of applications — including multi-agent "swarm" and large-language-model systems — claim to forecast prices or "the economy," but almost none report a like-for-like comparison against the simplest defensible benchmark: assuming next month looks like this month. Without that comparison, an impressive-looking forecast says nothing. The prior question is therefore not "how good is the model?" but "is this series forecastable at all, relative to naive persistence — and how would anyone know?"
@@ -166,6 +166,10 @@ A pass-through regression of the RON95 change on contemporaneous and lagged driv
 
 The Phase-2 gated feature ablation selected the `passthrough_lags` variant as the best-justified specification; it still did not beat the random walk, but it closed the model-vs-RW gap and tightened intervals.
 
+![Pass-through of world product-price changes to PH RON95: a partial, lagged response built on a near-random-walk driver.](../../ph_economic_ai/benchmark/artifacts/figures/passthrough.png)
+
+**Figure 1.** Estimated pass-through of contemporaneous and lagged driver changes to the monthly RON95 change (total β = 0.56, R² = 0.33). A partial, lagged pass-through of a driver that is itself close to a random walk is the mechanism behind the fuel series' efficiency.
+
 ### 5.3 Nowcasting (RQ3)
 
 **YoY nowcast.** Adding within-month oil/FX/fuel plus the previous print, before the PSA release, still yields **no_better_than_naive** (n = 61). Year-on-year inflation overlaps 11 of 12 months with its prior value, so persistence is mechanically near-unbeatable.
@@ -183,6 +187,10 @@ The Phase-2 gated feature ablation selected the `passthrough_lags` variant as th
 | seasonal_naive | 0.534 |
 
 ARIMA beats the random walk by **+16.2% skill, DM p = 0.032**. Month-on-month inflation carries genuine within-month signal that the annual frame hides.
+
+![Month-on-month inflation nowcast: ARIMA predictions track the pre-release actuals more closely than the random walk.](../../ph_economic_ai/benchmark/artifacts/figures/nowcast_mom.png)
+
+**Figure 2.** Month-on-month inflation nowcast (n = 61): ARIMA (own-dynamics) versus the random-walk baseline against the realized pre-release actual. The ARIMA edge (+16.2%, DM p = 0.032) strengthens to +16.3% (p = 0.001) on the 2007–2026 sample (§5.4).
 
 **Driver-only ablation.** Dropping the own-lag and restricting to driver regressors gives **driver_edge = False** (n = 61): driver-only Ridge (RMSE 0.399) is directionally better than the random walk (0.453, −12%) but does not clear DM significance. The MoM win is therefore attributable to inflation's **own short-run dynamics** (captured by ARIMA), with the contemporaneous-driver edge suggestive but not significant.
 
@@ -256,6 +264,14 @@ The mechanism reconciles the surprise. The Meralco generation charge is a **form
 | Transport-CPI MoM | nowcast, driver-only | apparent +14.8% edge **not robust** (preliminary-data artifact) → efficient |
 | **Electricity-CPI MoM** | **nowcast, driver-only** | **robust driver edge — Ridge +28%, p ≈ 0.001, `driver_edge_robust = True`** |
 
+![Predictability map: skill vs the strongest naive baseline per target — electricity and MoM inflation predictable, fuel/FX/YoY efficient, transport rejected.](../../ph_economic_ai/benchmark/artifacts/figures/predictability_map.png)
+
+**Figure 3.** The predictability map — skill over the strongest naive baseline per target. Predictable channels (electricity +28%, MoM inflation +16%) sit above the line; efficient ones (fuel, FX, YoY) at zero; the transport edge is shown as rejected on robustness.
+
+![Audit verdicts: predictable, efficient, and rejected targets classified by the same protocol.](../../ph_economic_ai/benchmark/artifacts/figures/audit_verdicts.png)
+
+**Figure 4.** Audit verdicts by target: the same protocol produces a confirmed true positive (electricity), a confirmed null (food drivers), and a rejected false positive (transport) — the three-way discrimination that earns trust in the positives.
+
 **Multiple-comparison correction (§4.9).** Over the six confirmatory tests, four survive the strict Bonferroni family-wise threshold (α/6 = 0.0083): **electricity MoM** (p = 0.0005), the **electricity within-month driver** (p = 0.0011), **long-sample headline MoM** (p = 0.001), and **food MoM** (p = 0.0046) — Bonferroni-adjusted p ≤ 0.028 for all four. The two weaker positives survive only the less-conservative Benjamini–Hochberg FDR: the **short-sample headline MoM** (p = 0.032), which the long-sample re-run already supersedes, and the **transport driver** (p = 0.021), which the robustness check independently rejects as a preliminary-data artifact. The headline findings therefore hold under the most conservative correction available; the two that do not are precisely the two already down-weighted for independent reasons. (`multiple_testing.json`.)
 
 ---
@@ -312,6 +328,16 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 
 ---
 
+## Data and Code Availability
+
+**Data.** All series are third-party and publicly available: World Bank Global Fuel Prices Database (RON95 pump prices, ODbL); IMF International Financial Statistics via DBnomics (CPI); Philippine Statistics Authority OpenSTAT (CPI by commodity group); the Department of Energy (pump-price bulletins); and Yahoo Finance market series (Brent, USD/PHP, RBOB, natural gas). Every series used is committed to the repository as a frozen CSV, so the benchmark reads only static files and reproduces offline; the raw sources are refreshable via `refresh_data.py`.
+
+**Code.** The full analysis code and the frozen result artifacts are in the repository at `github.com/sindoussss/ph-economic-pressure-ai` (MIT license). The entire audit — every table, significance test, multiple-comparison correction, power analysis, and figure — regenerates with `python -m ph_economic_ai.benchmark.run`; the reported numbers were verified to reproduce byte-for-byte. *[final version: archive a tagged release for a citable DOI, e.g. via Zenodo.]*
+
+**Ethics.** The study uses only aggregate, publicly published macroeconomic and market data; it involves no human subjects, no personal data, and no proprietary or licensed-restricted material beyond the terms of the public sources above.
+
+---
+
 ## References
 
 - Angelopoulos, A. N., & Bates, S. (2023). *Conformal Prediction: A Gentle Introduction.* Foundations and Trends in Machine Learning, 16(4), 494–591.
@@ -342,7 +368,14 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 - Timmermann, A. (2006). Forecast combinations. In *Handbook of Economic Forecasting* (Vol. 1, pp. 135–196). Elsevier.
 - Vovk, V., Gammerman, A., & Shafer, G. (2005). *Algorithmic Learning in a Random World.* Springer.
 - West, K. D. (1996). Asymptotic inference about predictive ability. *Econometrica*, 64(5), 1067–1084.
-- Data: World Bank Global Fuel Prices Database; IMF International Financial Statistics (via DBnomics); Yahoo Finance; Philippine Statistics Authority OpenSTAT (CPI by commodity group); Department of Energy (Philippines).
+
+**Primary institutional and data sources**
+- Bangko Sentral ng Pilipinas. *Monetary Policy Decisions* (policy-rate history, cumulative 2.00% → 6.50%, May 2022 – October 2023) and the *Inflation Target* (2–4% ± 1 ppt band). Manila: BSP. *[final citation: confirm the specific press-release dates/URLs.]*
+- Philippine Statistics Authority. *Consumer Price Index (2018 = 100), January 2023* (headline inflation 8.7% year-on-year) and monthly CPI by commodity group. Quezon City: PSA / OpenSTAT. *[final citation: confirm the specific release reference number.]*
+- World Bank. *Global Fuel Prices Database* (Open Database License, ODbL). Washington, DC.
+- International Monetary Fund. *International Financial Statistics*, accessed via DBnomics.
+- Republic of the Philippines, Department of Energy. *Oil Price / Pump Price Bulletins.*
+- Yahoo Finance market data: Brent (`BZ=F`), USD/PHP (`PHP=X`), RBOB (`RB=F`), Henry Hub natural gas (`NG=F`).
 
 ---
 

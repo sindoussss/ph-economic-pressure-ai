@@ -168,16 +168,18 @@ information available at each nowcast date. One figure or table settles it.
 
 ## MINOR — polish before submission
 
-- **Status line** still says "Working draft." Remove.
-- **Bibliography** has TODOs (PSA/BSP primary releases). Complete them.
-- **No figures embedded** in the manuscript body — add the predictability map
-  (§5.8), the pass-through scatter (§5.2/App C), and the audit-verdicts bar.
-- **Abstract** is ~350 words in one block; most venues cap 150–250. Trim.
-- **Inconsistent n** across panels (52 / 79 / 143 / 151). Add one sentence
-  reconciling why each analysis uses the n it does (backtest warm-up, sample
-  window, component availability).
-- **Data availability / ethics / licensing statement** — add a formal one
-  (World Bank ODbL, IMF via DBnomics, PSA OpenSTAT, Yahoo terms).
+- ✅ **Status line** — softened from "Working draft" to "Draft".
+- ⚠️ **Bibliography** — institutional PSA/BSP/World Bank/IMF/DOE/Yahoo sources
+  now cited under *Primary institutional and data sources*; **specific PSA/BSP
+  release reference numbers still to be confirmed** (web verification was
+  unavailable when drafting — do not ship without confirming these).
+- ✅ **Figures embedded** — pass-through (Fig 1, §5.2), MoM nowcast (Fig 2,
+  §5.3), predictability map (Fig 3) and audit verdicts (Fig 4) in §5.8.
+- ⬜ **Abstract** ~350 words in one block; most venues cap 150–250. Trim — held
+  until the venue word limit is known.
+- ⬜ **Inconsistent n** across panels (52 / 79 / 143 / 151). Add one sentence
+  reconciling why each analysis uses the n it does.
+- ✅ **Data / code / ethics availability statement** — added before References.
 
 ---
 
