@@ -67,11 +67,11 @@ Call sites request a **tier**, not a model, so switching provider or model is a 
 | `STRATA_LLM_DEEP_MODEL` | `qwen2.5:7b` | judges and synthesis |
 | `STRATA_LLM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | RAG embeddings, local |
 | `OLLAMA_HOST` | `http://localhost:11434` | if Ollama runs elsewhere |
-| `STRATA_OLLAMA_CONCURRENCY` | `2` | max simultaneous local calls (set `1` on a tight GPU) |
+| `STRATA_OLLAMA_CONCURRENCY` | `1` | max simultaneous local calls; raise it only on a GPU with headroom |
 | `STRATA_OLLAMA_CALL_DEADLINE` | `300` | seconds before a local call is treated as stalled |
 | `GROQ_API_KEY` / `GEMINI_API_KEY` | unset | opt in to hosted inference |
 
-> **If a run stalls on local Ollama:** the swarm fans out across threads and a single GPU can't serve them all at once. `STRATA_OLLAMA_CONCURRENCY` caps how many hit Ollama simultaneously; lower it to `1` if runs still hang. A call that exceeds `STRATA_OLLAMA_CALL_DEADLINE` now fails with a clear error instead of freezing the run — restarting the Ollama app usually clears the underlying stall.
+> **Local runs are serial by default.** The swarm fans out across threads, but a single GPU can't serve many requests at once — parallel local calls just thrash VRAM and stall Ollama. Only raise `STRATA_OLLAMA_CONCURRENCY` if your card has room for several models at once. A call exceeding `STRATA_OLLAMA_CALL_DEADLINE` fails with a clear error instead of freezing the run; if that happens, restart the Ollama app to clear the underlying stall.
 
 Embeddings are cached to `ph_economic_ai/cache/embeddings.npz` **by content hash**, so the corpus is embedded once and subsequent launches cost nothing — this is the single largest startup win, and it applies to every provider. With no embedding model available, retrieval falls back to TF-IDF and the app still runs.
 
