@@ -803,8 +803,11 @@ class SimMainWindow(QMainWindow):
         self._synth_thread.finished.connect(self._economy_overview.update_summary)
         self._synth_thread.start()
 
-        # BSP alert — compute CPI basket impact from all three verdicts
-        self._run_bsp_alert()
+        # BSP alert — compute CPI basket impact from all three verdicts. Reuse
+        # the same deterministic projected CPI for the causal chain so the two
+        # never disagree.
+        alert = self._run_bsp_alert()
+        projected_cpi = alert.get('projected_cpi') if alert else None
 
         # Causal chain synthesis
         self._chain_thread = CausalChainThread(
@@ -812,6 +815,7 @@ class SimMainWindow(QMainWindow):
             food_verdict=self._food_verdict,
             elec_verdict=self._elec_verdict,
             scenario=self._last_scenario,
+            projected_cpi=projected_cpi,
         )
         self._chain_thread.chain_ready.connect(self._stage4.set_chain)
         self._chain_thread.error.connect(lambda msg: print(f'Chain error: {msg}'))
@@ -844,5 +848,6 @@ class SimMainWindow(QMainWindow):
                 self._gas_estimate, self._food_estimate, self._elec_estimate,
             )
             self._stage4.set_bsp_alert(alert)
+            return alert
         except Exception:
-            pass
+            return None
