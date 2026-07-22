@@ -31,8 +31,9 @@ model or a network.
 """
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 # Litres per barrel of crude (42 US gal). Not an approximation — a definition.
 _LITRES_PER_BARREL = 158.987
@@ -78,6 +79,74 @@ def fuel_passthrough_anchor(
     return delta_landed * (1 + _VAT)
 
 
+# ── Electricity: a *validated* physical anchor ────────────────────────────────
+# Unlike fuel, electricity is not informationally efficient. The benchmark found
+# electricity-CPI predictable within the month (Ridge +28% over the best naive,
+# DM p ≈ 0.001) precisely because its regulated generation charge is a
+# formulaic, observable fuel pass-through. So here the physical anchor is not
+# merely a scale — it is the signal the backtest identified as real.
+
+# Meralco's generation charge, the fuel-driven slice of a ~₱11–14/kWh total bill.
+_GEN_CHARGE_PHP_KWH = 5.50
+# Share of the generation charge that tracks fuel prices (natural gas via
+# Malampaya/LNG, imported coal, oil peaking plants).
+_GEN_FUEL_SHARE = 0.55
+
+
+def electricity_passthrough_anchor(
+    oil_pct: float,
+    usd_pct: float,
+    generation_charge_php_kwh: float = _GEN_CHARGE_PHP_KWH,
+    fuel_share: float = _GEN_FUEL_SHARE,
+) -> float:
+    """Mechanical ₱/kWh change in the generation charge from a fuel/FX shock.
+
+    The fuel-indexed slice of the generation charge is
+    ``generation_charge · fuel_share``; a fuel-cost move passes through it about
+    one-for-one, and a weaker peso raises the cost of imported coal and LNG, so
+    the oil and FX shocks enter together as they do for pump prices.
+    """
+    fuel_indexed = generation_charge_php_kwh * fuel_share
+    return fuel_indexed * (oil_pct + usd_pct) / 100.0
+
+
+# ── Food: a *persistence* anchor, deliberately not a commodity one ─────────────
+# The benchmark is blunt here: food-CPI is a clean null on commodity drivers, so
+# anchoring food to oil would be anchoring it to noise. What the backtest *did*
+# find is predictable own-dynamics (ARIMA ~+16% over naive, DM p = 0.005). The
+# honest food anchor is therefore the recent trend of food inflation itself, not
+# a pass-through. Fuel enters only through a small transport-cost term, kept
+# deliberately weak because the data says it is.
+
+_FOOD_DEFAULT_MOM_PCT = 0.4      # fallback trend when no history is available
+_FOOD_TRANSPORT_FUEL_BETA = 0.03  # ppt of monthly food inflation per 1% oil move
+
+
+def food_persistence_anchor(
+    recent_mom_pcts: Sequence[float],
+    oil_pct: float = 0.0,
+) -> float:
+    """% month-on-month food-inflation anchor from own persistence.
+
+    The base is the trailing mean of recent monthly food inflation — the
+    own-dynamics the benchmark found predictable — plus a small transport term
+    so a large fuel shock can nudge it. The transport coefficient is small by
+    design: the benchmark rejected commodity drivers for food, so fuel must not
+    dominate this number.
+    """
+    usable = [p for p in recent_mom_pcts if p is not None]
+    base = statistics.fmean(usable) if usable else _FOOD_DEFAULT_MOM_PCT
+    return base + _FOOD_TRANSPORT_FUEL_BETA * oil_pct
+
+
+# Sector-appropriate reconciliation bands. Each is the room genuine
+# sector-specific factors have to move the number beyond its anchor before the
+# estimate is more likely a model error than a real signal.
+FUEL_TOLERANCE_PHP_L = _DEFAULT_TOLERANCE_PHP
+ELECTRICITY_TOLERANCE_PHP_KWH = 0.40
+FOOD_TOLERANCE_PCT = 1.5
+
+
 @dataclass
 class Reconciled:
     """Outcome of blending a model estimate with the physical anchor."""
@@ -115,21 +184,29 @@ def reconcile_estimate(
     return Reconciled(edge, 'clamped', anchor, llm_estimate)
 
 
-def explain(reconciled: Reconciled) -> str:
-    """One line describing what the reconciliation did, for the report."""
+def explain(
+    reconciled: Reconciled,
+    unit: str = '₱/L',
+    anchor_label: str = 'mechanical pass-through',
+) -> str:
+    """One line describing what the reconciliation did, for the report.
+
+    `anchor_label` names the *kind* of anchor, which differs by sector: a
+    mechanical pass-through for fuel and electricity, own-trend persistence for
+    food. That distinction is the point of the experiment, so it is surfaced.
+    """
     a = reconciled.anchor
     if reconciled.source == 'agent':
         return (
-            f'Agent estimate {reconciled.value:+.2f} ₱/L is consistent with the '
-            f'{a:+.2f} ₱/L mechanical pass-through.'
+            f'Agent estimate {reconciled.value:+.2f} {unit} is consistent with the '
+            f'{a:+.2f} {unit} {anchor_label}.'
         )
     if reconciled.source == 'clamped':
         return (
-            f'Agent estimate {reconciled.llm_estimate:+.2f} ₱/L diverged from the '
-            f'{a:+.2f} ₱/L mechanical pass-through; clamped to '
-            f'{reconciled.value:+.2f} ₱/L.'
+            f'Agent estimate {reconciled.llm_estimate:+.2f} {unit} diverged from the '
+            f'{a:+.2f} {unit} {anchor_label}; clamped to {reconciled.value:+.2f} {unit}.'
         )
     return (
-        f'No usable agent estimate; using the {a:+.2f} ₱/L mechanical '
-        f'pass-through as the physical anchor.'
+        f'No usable agent estimate; using the {a:+.2f} {unit} {anchor_label} '
+        f'as the anchor.'
     )
