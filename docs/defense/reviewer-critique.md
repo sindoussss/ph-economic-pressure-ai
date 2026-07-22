@@ -54,7 +54,9 @@ each. Frame it as a strength — your two headline positives (electricity, MoM
 long-sample) survive even Bonferroni; downgrade the short-sample MoM to
 "suggestive, robust only in the long sample," which you already partly do.
 
-### M2. Small samples → accepting the null is underpowered
+### M2. Small samples → accepting the null is underpowered  ✅ ADDRESSED
+*(Done: `benchmark/power.py` + `power.json`; manuscript §5.1 power paragraph, §6.8 limitations, and "efficient" reworded to "no detectable edge over RW". The fuel forecast MDE is ~25% skill at 80% power — the nulls rule out large edges, not small ones, now stated explicitly.)*
+
 **Attack.** "n = 38–143. Your efficiency findings (fuel, FX, YoY) *accept* the
 null. With this little power, absence of evidence isn't evidence of absence —
 you may simply lack power to detect a real edge."
