@@ -77,6 +77,10 @@ Embeddings are cached to `ph_economic_ai/cache/embeddings.npz` **by content hash
 
 **One swarm run is 39 LLM calls** — 32 on the fast tier, 7 on the deep one. `ph_economic_ai.engine.swarm.expected_call_counts()` derives that from the swarm's actual shape.
 
+### Physics-anchored estimation (weak-model experiment)
+
+Small local models reason about *direction* well but get *magnitude* wrong: asked for the pump-price effect of a +6.8% oil shock they answered **+₱12.93/L**, where the mechanical pass-through is about **+₱2.72/L**. Rather than reach for a larger model the hardware can't hold, `engine/anchoring.py` stops asking the model for the number it can't produce. The oil→pump pass-through is computed deterministically (crude cost per litre, revalued at the exchange rate, plus VAT) and used three ways: injected into the judge prompt as a **prior**, used as a **leash** that clamps a drifting estimate back toward physics while keeping its direction, and used as a **fallback** when the model produces nothing usable. The report shows which of the three happened, so the reconciliation is transparent. With the anchor in place, a live `qwen2.5:7b` judge returned **+₱2.91/L** for that same shock — its own refinement of the physical baseline. This makes the exploratory swarm's numbers physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
+
 ## Screenshots
 
 | Workbench (report + interact) | Knowledge-graph simulation | Landing |
