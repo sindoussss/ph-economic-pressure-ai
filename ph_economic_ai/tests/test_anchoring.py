@@ -8,7 +8,8 @@ import pytest
 
 from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.anchoring import (
-    fuel_passthrough_anchor, reconcile_estimate, explain,
+    fuel_passthrough_anchor, electricity_passthrough_anchor,
+    food_persistence_anchor, reconcile_estimate, explain,
 )
 
 
@@ -51,6 +52,56 @@ def test_scale_is_robust_to_input_noise():
     a = fuel_passthrough_anchor(6.8, 0.0, brent_usd=98.0, fx_php_per_usd=58.0)
     b = fuel_passthrough_anchor(6.8, 0.0, brent_usd=103.0, fx_php_per_usd=58.0)
     assert abs(a - b) < 0.20
+
+
+# ── Electricity: physical fuel pass-through (a validated signal) ──────────────
+
+def test_electricity_anchor_scales_with_the_fuel_shock():
+    a = electricity_passthrough_anchor(oil_pct=6.8, usd_pct=0.0)
+    assert a == pytest.approx(5.50 * 0.55 * 0.068, abs=0.01)
+    assert 0.0 < a < 0.5              # sane ₱/kWh magnitude for a moderate shock
+
+
+def test_electricity_oil_and_fx_add():
+    oil = electricity_passthrough_anchor(5.0, 0.0)
+    fx = electricity_passthrough_anchor(0.0, 5.0)
+    assert electricity_passthrough_anchor(5.0, 5.0) == pytest.approx(oil + fx)
+
+
+def test_electricity_fall_is_negative():
+    assert electricity_passthrough_anchor(-5.0, 0.0) < 0
+
+
+# ── Food: own-persistence, NOT a commodity pass-through ───────────────────────
+
+def test_food_anchor_is_the_trailing_trend():
+    """The benchmark says food is a null on commodities but predictable from its
+    own dynamics — so the anchor is the recent mean, not a fuel formula."""
+    a = food_persistence_anchor([0.4, 0.6, 0.8], oil_pct=0.0)
+    assert a == pytest.approx(0.6)
+
+
+def test_food_barely_moves_with_oil():
+    """Fuel must be a weak driver for food — anchoring it to oil would be
+    anchoring to what the backtest proved is noise."""
+    flat = food_persistence_anchor([0.5, 0.5], oil_pct=0.0)
+    shocked = food_persistence_anchor([0.5, 0.5], oil_pct=10.0)
+    assert abs(shocked - flat) < 0.5     # a +10% oil move nudges food <0.5ppt
+
+
+def test_food_anchor_survives_no_history():
+    a = food_persistence_anchor([], oil_pct=0.0)
+    assert a == pytest.approx(anchoring._FOOD_DEFAULT_MOM_PCT)
+
+
+def test_each_sector_anchor_is_a_different_kind():
+    """The experiment's core: fuel/electricity are pass-throughs, food is not."""
+    # electricity responds strongly to oil; food barely does
+    elec_sensitivity = abs(electricity_passthrough_anchor(10, 0)
+                           - electricity_passthrough_anchor(0, 0))
+    food_sensitivity = abs(food_persistence_anchor([0.5], 10)
+                           - food_persistence_anchor([0.5], 0))
+    assert elec_sensitivity > food_sensitivity
 
 
 # ── Reconciliation ────────────────────────────────────────────────────────────

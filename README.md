@@ -77,9 +77,19 @@ Embeddings are cached to `ph_economic_ai/cache/embeddings.npz` **by content hash
 
 **One swarm run is 39 LLM calls** — 32 on the fast tier, 7 on the deep one. `ph_economic_ai.engine.swarm.expected_call_counts()` derives that from the swarm's actual shape.
 
-### Physics-anchored estimation (weak-model experiment)
+### Benchmark-conditioned anchoring (weak-model experiment)
 
-Small local models reason about *direction* well but get *magnitude* wrong: asked for the pump-price effect of a +6.8% oil shock they answered **+₱12.93/L**, where the mechanical pass-through is about **+₱2.72/L**. Rather than reach for a larger model the hardware can't hold, `engine/anchoring.py` stops asking the model for the number it can't produce. The oil→pump pass-through is computed deterministically (crude cost per litre, revalued at the exchange rate, plus VAT) and used three ways: injected into the judge prompt as a **prior**, used as a **leash** that clamps a drifting estimate back toward physics while keeping its direction, and used as a **fallback** when the model produces nothing usable. The report shows which of the three happened, so the reconciliation is transparent. With the anchor in place, a live `qwen2.5:7b` judge returned **+₱2.91/L** for that same shock — its own refinement of the physical baseline. This makes the exploratory swarm's numbers physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
+Small local models reason about *direction* well but get *magnitude* wrong: asked for the pump-price effect of a +6.8% oil shock they answered **+₱12.93/L**, where the mechanical pass-through is about **+₱2.72/L**; food came back at **+7.6%** monthly where its own trend is under **+1%**. Rather than reach for a larger model the hardware can't hold, `engine/anchoring.py` stops asking the model for the number it can't produce and grounds each estimate in an anchor — used three ways: injected into the prompt as a **prior**, applied as a **leash** that clamps a drifting estimate back toward the anchor while keeping its direction, and used as a **fallback** when the model produces nothing (so a sector is never blank). The report shows which of the three happened.
+
+The novel part is that **each sector is anchored to the signal its own walk-forward backtest found real** — the anchors differ in *kind*, not just value:
+
+| Sector | Benchmark verdict | Anchor |
+|---|---|---|
+| **Fuel** | informationally efficient (RW wins) | mechanical oil→pump pass-through — a *scale*, not a forecast |
+| **Electricity** | predictable via a formulaic fuel pass-through (Ridge +28%, DM p ≈ 0.001) | fuel→generation-charge pass-through — a *validated* physical signal |
+| **Food** | clean null on commodities, but predictable own-dynamics (ARIMA +16%) | trailing own-trend **persistence** — deliberately *not* a commodity pass-through |
+
+Anchoring food to oil would be anchoring it to what the backtest proved is noise; anchoring it to its own recent trend is what the backtest says is informative. This couples the exploratory swarm directly to the validated benchmark. Verified live on 8GB hardware: with anchors injected, `qwen2.5:7b` returned **+₱2.91/L** for fuel and a food agent returned **+0.77%** — each its own refinement of the physical/statistical baseline, where the un-anchored model had produced ₱12.93 and 7.6%. This makes the exploratory layer physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
 
 ## Screenshots
 
