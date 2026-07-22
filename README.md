@@ -91,6 +91,8 @@ The novel part is that **each sector is anchored to the signal its own walk-forw
 
 Anchoring food to oil would be anchoring it to what the backtest proved is noise; anchoring it to its own recent trend is what the backtest says is informative. This couples the exploratory swarm directly to the validated benchmark. Verified live on 8GB hardware: with anchors injected, `qwen2.5:7b` returned **+₱2.91/L** for fuel and a food agent returned **+0.77%** — each its own refinement of the physical/statistical baseline, where the un-anchored model had produced ₱12.93 and 7.6%. This makes the exploratory layer physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
 
+**The fuel anchor is itself backtested and calibrated.** `python -m ph_economic_ai.tools.anchor_backtest` pairs 78 months of real World Bank RON95 pump prices with monthly Brent/FX and asks whether the mechanical pass-through tracks *actual* pump moves: correlation **0.60**, directional accuracy **74%**, and MAE **₱2.21 vs ₱2.64** for a no-change baseline — the anchor wins. The OLS slope of **0.79** (real PH pass-through is partial — subsidy buffers, DOE averaging lag, competitive absorption) is fed back as the anchor's calibration coefficient. A robustness sweep exercises 10k+ scenarios and adversarial inputs, and a simulation shows reconciliation cuts a hallucinating model's error by **~58%**. Full result in `benchmark/artifacts/anchor_validation.json`.
+
 ## Screenshots
 
 | Workbench (report + interact) | Knowledge-graph simulation | Landing |

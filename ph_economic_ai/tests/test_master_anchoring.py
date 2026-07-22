@@ -36,22 +36,23 @@ def _master(statement):
 
 
 def test_anchor_is_computed_for_the_scenario():
-    mv = _master('ESTIMATE: +₱2.60/L')
-    assert mv.physical_anchor == pytest.approx(2.72, abs=0.2)
+    """Calibrated anchor for +6.8% oil ≈ 2.72 × 0.79 ≈ 2.15."""
+    mv = _master('ESTIMATE: +₱2.20/L')
+    assert mv.physical_anchor == pytest.approx(2.15, abs=0.3)
 
 
 def test_a_sane_headline_is_left_alone():
-    mv = _master('ESTIMATE: +₱2.60/L')
+    mv = _master('ESTIMATE: +₱2.20/L')
     assert mv.estimate_source == 'agent'
-    assert mv.final_estimate == pytest.approx(2.60)
+    assert mv.final_estimate == pytest.approx(2.20)
 
 
 def test_a_hallucinated_headline_is_clamped_to_physics():
     """The exact failure: the judge says +₱12.93/L, the report must not."""
     mv = _master('After analysis. ESTIMATE: +₱12.93/L')
     assert mv.estimate_source == 'clamped'
-    assert mv.final_estimate < 6.0           # near the ~2.7 anchor, not 12.93
-    assert mv.final_estimate > 2.72          # kept the upward direction
+    assert mv.final_estimate < 6.0                    # near the anchor, not 12.93
+    assert mv.final_estimate > mv.physical_anchor     # kept the upward direction
 
 
 def test_a_blank_headline_falls_back_to_physics_not_none():
@@ -69,4 +70,4 @@ def test_the_anchor_is_injected_into_the_prompt():
     prompt = judge._build_prompt()
     joined = ' '.join(m['content'] for m in prompt)
     assert 'MECHANICAL PASS-THROUGH' in joined
-    assert '2.7' in joined                   # the computed anchor, in the text
+    assert f'{judge._anchor:+.2f}' in joined   # the computed anchor, in the text

@@ -15,11 +15,23 @@ from ph_economic_ai.engine.anchoring import (
 
 # ── The pass-through formula ──────────────────────────────────────────────────
 
-def test_the_shock_that_broke_the_swarm_anchors_near_two_pesos():
-    """+6.8% oil, no FX move: the swarm answered +₱12.93/L; physics says ~₱2.7."""
+def test_raw_mechanical_anchor_is_the_textbook_pass_through():
+    """+6.8% oil, no FX move: the swarm answered +₱12.93/L; textbook physics
+    says ~₱2.72 before the empirical calibration is applied."""
     anchor = fuel_passthrough_anchor(oil_pct=6.8, usd_pct=0.0,
-                                     brent_usd=98.0, fx_php_per_usd=58.0)
+                                     brent_usd=98.0, fx_php_per_usd=58.0,
+                                     calibrated=False)
     assert anchor == pytest.approx(2.72, abs=0.1)
+
+
+def test_calibrated_anchor_applies_the_fitted_passthrough():
+    """The default anchor is scaled by the ~0.79 fitted on 78 months of real
+    WB data — real PH pump prices pass through only part of an oil move."""
+    raw = fuel_passthrough_anchor(6.8, 0.0, brent_usd=98.0, fx_php_per_usd=58.0,
+                                  calibrated=False)
+    cal = fuel_passthrough_anchor(6.8, 0.0, brent_usd=98.0, fx_php_per_usd=58.0)
+    assert cal == pytest.approx(raw * anchoring._FUEL_PASSTHROUGH_CALIBRATION)
+    assert cal < raw                       # calibration damps the textbook value
 
 
 def test_no_shock_means_no_change():
@@ -41,7 +53,8 @@ def test_a_price_fall_gives_a_negative_anchor():
 
 def test_vat_is_included():
     """The pump number carries 12% VAT over the bare landed-cost change."""
-    with_vat = fuel_passthrough_anchor(10.0, 0.0, brent_usd=100.0, fx_php_per_usd=60.0)
+    with_vat = fuel_passthrough_anchor(10.0, 0.0, brent_usd=100.0,
+                                       fx_php_per_usd=60.0, calibrated=False)
     bare = 100.0 * 60.0 / anchoring._LITRES_PER_BARREL * 0.10
     assert with_vat == pytest.approx(bare * 1.12)
 
