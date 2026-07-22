@@ -502,6 +502,16 @@ class SimMainWindow(QMainWindow):
         brief = self._live_brief  # may be None if still fetching — that's OK
 
         food_anchor = self._food_anchor(scenario_dict)
+        elec_anchor = self._elec_anchor(scenario_dict)
+        # Seed the sector forecasts with their anchors immediately. The anchor is
+        # deterministic and known before the debate runs, so food/electricity
+        # show a grounded provisional number right away instead of a blank dash
+        # for the minute or two the debates take; each is refined in place when
+        # its debate completes.
+        self._food_estimate = food_anchor
+        self._elec_estimate = elec_anchor
+        self._push_sector_forecasts()
+
         food_note = (
             f"BASELINE: recent food inflation runs about {food_anchor:+.2f}% per "
             f"month (its own trend — commodity/oil prices are a poor predictor of "
@@ -519,7 +529,6 @@ class SimMainWindow(QMainWindow):
         )
         self._food_thread.start()
 
-        elec_anchor = self._elec_anchor(scenario_dict)
         elec_note = (
             f"MECHANICAL PASS-THROUGH: the fuel-indexed part of the Meralco "
             f"generation charge implies a rate change of about {elec_anchor:+.4f} "
