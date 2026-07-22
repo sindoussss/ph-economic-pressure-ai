@@ -18,6 +18,14 @@ from ph_economic_ai.utils.preprocessing import build_features
 from ph_economic_ai import model as ml
 
 
+def _signed_php(value: float, suffix: str = '') -> str:
+    """Peso change with a leading sign: +₱0.35, -₱0.25.
+
+    Replaces a hardcoded '+₱' that rendered a fall as '+₱-0.25'."""
+    sign = '-' if value < 0 else '+'
+    return f'{sign}₱{abs(value):.2f}{suffix}'
+
+
 def _physics_anchor_label(master_verdict):
     """A small line showing how the headline related to the physical anchor.
 
@@ -413,7 +421,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
-        val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
+        val_str = _signed_php(avg, '/L') if avg is not None else 'No consensus'
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
@@ -425,7 +433,7 @@ class Stage4ReportPanel(QWidget):
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
-                v_str = f'+₱{value:.2f}'
+                v_str = _signed_php(value)
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
@@ -527,7 +535,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
-        val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
+        val_str = _signed_php(avg, '/L') if avg is not None else 'No consensus'
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
@@ -539,7 +547,7 @@ class Stage4ReportPanel(QWidget):
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
-                v_str = f'+₱{value:.2f}'
+                v_str = _signed_php(value)
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
@@ -575,7 +583,7 @@ class Stage4ReportPanel(QWidget):
             head_row = QHBoxLayout()
             name_lbl = QLabel(resp.agent_name)
             name_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
-            est = f'+₱{resp.price_estimate:.2f}' if resp.price_estimate is not None else '—'
+            est = _signed_php(resp.price_estimate) if resp.price_estimate is not None else '—'
             est_lbl = QLabel(est)
             est_lbl.setStyleSheet('font-size:10px;font-weight:700;color:#1C1E26;')
             head_row.addWidget(name_lbl)
