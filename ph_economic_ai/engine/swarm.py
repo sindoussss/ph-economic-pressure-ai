@@ -11,7 +11,7 @@ from typing import Callable, Optional
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from ph_economic_ai.engine import llm
+from ph_economic_ai.engine import anchoring, llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import AgentResponse, _parse_think, _extract_price
 from ph_economic_ai.engine.live_data import LiveDataBrief
@@ -260,6 +260,12 @@ class MasterVerdict:
     regional_verdicts: list[RegionalVerdict]
     regional_estimates: Optional[dict] = None  # {region_name: Optional[float]}
     all_responses: list = None   # list[AgentResponse] from all group arenas
+    # Physics-anchored reconciliation (engine/anchoring.py): the mechanical
+    # pass-through the estimate was checked against, and how the final number
+    # was arrived at — 'agent' (model agreed with physics), 'clamped' (model
+    # drifted, pulled back), or 'anchor' (model unusable, physics stood in).
+    physical_anchor: Optional[float] = None
+    estimate_source: str = 'agent'
 
     def __post_init__(self):
         if self.all_responses is None:
@@ -831,6 +837,24 @@ class MasterJudge:
         self._scenario = scenario
         self._survivors = survivors or []
         self._data_brief = data_brief
+        self._anchor = self._compute_physical_anchor()
+
+    def _compute_physical_anchor(self) -> float:
+        """The mechanical oil→pump pass-through for this scenario, in ₱/L.
+
+        Live Brent/FX when the brief has them, reference values otherwise — the
+        anchor is a scale, not a precise forecast, so stale inputs cost cents.
+        """
+        s = self._scenario
+        kwargs = {}
+        if self._data_brief is not None:
+            if getattr(self._data_brief, 'brent', None):
+                kwargs['brent_usd'] = self._data_brief.brent
+            if getattr(self._data_brief, 'usd_php', None):
+                kwargs['fx_php_per_usd'] = self._data_brief.usd_php
+        return anchoring.fuel_passthrough_anchor(
+            s.get('oil_pct', 0.0), s.get('usd_pct', 0.0), **kwargs
+        )
 
     def _brief_block(self) -> str:
         if self._data_brief is None:
@@ -856,19 +880,29 @@ class MasterJudge:
             f"(confidence {v.confidence:.2f})\n{v.reasoning[:400]}"
             for v in self._verdicts
         )
+        anchor_text = (
+            f"MECHANICAL PASS-THROUGH: the DOE auto-pricing formula implies a pump "
+            f"change of {self._anchor:+.2f} ₱/L from this oil and FX move alone "
+            f"(crude cost per litre revalued at the exchange rate, plus 12% VAT). "
+            f"This is the physical baseline. Start from it and adjust only for "
+            f"factors it cannot see — a fuel subsidy release, an excise suspension, "
+            f"a refinery outage, competitive lag. A national monthly pump change is "
+            f"almost never more than ~₱2/L away from this number."
+        )
         return [
             {'role': 'system', 'content': (
                 "You are the Master Judge synthesizing 2 regional Philippine fuel price "
                 "estimates into a single national verdict. Give special weight to the "
                 "NCR region as it represents the majority of fuel consumption. "
-                "Cite DATA BRIEF figures when available. "
-                "Identify any dissenting regions. "
+                "Anchor your number to the MECHANICAL PASS-THROUGH provided and adjust "
+                "within a narrow band; do not restate a regional outlier that ignores it. "
+                "Cite DATA BRIEF figures when available. Identify any dissenting regions. "
                 f"Ignore estimates outside ±{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L as invalid absolute-price parses. "
-                "Apply the project confidence policy: prefer calibrated, reconciled estimates over unreconciled outliers. "
                 "End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
             )},
             {'role': 'user', 'content': (
-                f"{self._brief_block()}{scenario_text}\n\nRegional verdicts:\n{verdicts_text}"
+                f"{self._brief_block()}{scenario_text}\n\n{anchor_text}\n\n"
+                f"Regional verdicts:\n{verdicts_text}"
             )},
         ]
 
@@ -878,7 +912,18 @@ class MasterJudge:
                        max_tokens=_MASTER_MAX_TOKENS)
         )
         _, statement = _parse_think(full)
-        final_estimate = _extract_fuel_change(statement)
+
+        # Physics-anchored reconciliation: the weak model supplies direction and
+        # qualitative judgement, the pass-through formula supplies scale. Feed it
+        # the model's raw number even when that number failed the ±₱8 guard — the
+        # anchor is a tighter, physics-based leash, so a +₱12.93/L reading is
+        # clamped back toward physics (keeping its upward direction) rather than
+        # discarded to a blank. Only a genuinely absent number falls back to the
+        # anchor outright.
+        accepted, rejected = parse_fuel_estimate(statement)
+        model_estimate = accepted if accepted is not None else rejected
+        reconciled = anchoring.reconcile_estimate(model_estimate, self._anchor)
+        final_estimate = reconciled.value
 
         # Collect all estimates: group survivors + regional judges + master final
         all_estimates: list[float] = [
@@ -914,6 +959,8 @@ class MasterJudge:
             reasoning=statement,
             regional_verdicts=self._verdicts,
             regional_estimates=regional_estimates,
+            physical_anchor=reconciled.anchor,
+            estimate_source=reconciled.source,
         )
 
 

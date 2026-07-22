@@ -51,12 +51,12 @@ _DEFAULT_MODELS: dict[str, dict[str, str]] = {
         # not slow, it is unusable, which is what qwen2.5:14b judges did to
         # this project before.
         FAST: 'qwen2.5:3b',          # ~2GB
-        # The deep tier is deliberately large. It runs only the 7 judge calls,
-        # and those decide the master verdict. qwen2.5:7b consistently produced
-        # fuel estimates several times too large — the ±₱8/L plausibility guard
-        # was discarding whole regional verdicts. A reasoning model is worth
-        # ~55s per call here; at 7 calls that is a bounded cost.
-        DEEP: 'deepseek-r1:14b',     # ~9GB, partially CPU-offloaded on 8GB
+        # The deep tier runs the 7 judge calls. qwen2.5:7b fits VRAM alongside
+        # the fast model without the swaps a 9GB judge forced. It still gets the
+        # magnitude wrong on its own — that is what engine/anchoring.py corrects,
+        # rather than throwing a bigger model at a problem the hardware can't
+        # hold. Override with STRATA_LLM_DEEP_MODEL for a card with headroom.
+        DEEP: 'qwen2.5:7b',          # ~4.7GB
     },
     'groq': {
         # 14.4K requests/day — this is what absorbs the bulk agent traffic.
