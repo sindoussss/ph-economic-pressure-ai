@@ -502,7 +502,7 @@ Rules:
 - label: node title, 5 words max
 - mechanism: one sentence explaining the causal link to the next step
 - magnitude: quantified effect using actual numbers from the verdicts (e.g. "+₱1.42/L", "+2.1%", "+0.34 ppt CPI")
-- Last step must state projected household CPI impact and BSP policy signal
+- Last step must state the BSP policy signal; if an AUTHORITATIVE PROJECTED CPI is given, cite that exact figure and do not recompute it
 
 Example output:
 {"chain": [
@@ -572,6 +572,7 @@ class CausalChainThread(QThread):
         food_verdict: str,
         elec_verdict: str,
         scenario:     dict,
+        projected_cpi: Optional[float] = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -579,21 +580,36 @@ class CausalChainThread(QThread):
         self._food     = food_verdict
         self._elec     = elec_verdict
         self._scenario = scenario
+        # The deterministic projected CPI from check_bsp_alert. Passed in so the
+        # chain's final step narrates the same figure the banner shows, instead
+        # of the LLM computing its own (which drifted: 4.52% chain vs 4.10%
+        # banner in one run).
+        self._projected_cpi = projected_cpi
+
+    def _build_user_msg(self) -> str:
+        scenario_str = (
+            f"Oil shock {self._scenario.get('oil_pct', 0):+.1f}%, "
+            f"USD/PHP {self._scenario.get('usd_pct', 0):+.1f}%, "
+            f"BSP rate {self._scenario.get('bsp_rate', 6.5):.2f}%, "
+            f"demand index {self._scenario.get('demand_index', 72):.0f}"
+        )
+        user_msg = _CHAIN_USER.format(
+            gas=self._gas[:600],
+            food=self._food[:600],
+            elec=self._elec[:600],
+            scenario=scenario_str,
+        )
+        if self._projected_cpi is not None:
+            user_msg += (
+                f"\n\nAUTHORITATIVE PROJECTED CPI: {self._projected_cpi:.2f}%. "
+                f"The final BSP Policy Signal step MUST cite exactly this CPI "
+                f"figure and MUST NOT compute or state a different one."
+            )
+        return user_msg
 
     def run(self):
         try:
-            scenario_str = (
-                f"Oil shock {self._scenario.get('oil_pct', 0):+.1f}%, "
-                f"USD/PHP {self._scenario.get('usd_pct', 0):+.1f}%, "
-                f"BSP rate {self._scenario.get('bsp_rate', 6.5):.2f}%, "
-                f"demand index {self._scenario.get('demand_index', 72):.0f}"
-            )
-            user_msg = _CHAIN_USER.format(
-                gas=self._gas[:600],
-                food=self._food[:600],
-                elec=self._elec[:600],
-                scenario=scenario_str,
-            )
+            user_msg = self._build_user_msg()
             text = llm.complete(
                 [
                     {'role': 'system', 'content': _CHAIN_SYSTEM},
