@@ -79,7 +79,10 @@ Two follow-up contributions on the exploratory side. Both are *honesty stories* 
 ## 6. Q&A bank — likely examiner questions
 
 **Q: So your AI predicts fuel prices?**
-No — and that's a *result*, not a failure. Fuel (RON95) is informationally efficient: no method beats a random walk. The value is knowing precisely what is and isn't predictable, so effort goes where there's signal.
+No — and that's a *result*, not a failure. Fuel (RON95) shows no detectable edge over a random walk. The value is knowing precisely what is and isn't predictable, so effort goes where there's signal.
+
+**Q: With n≈50, isn't your "efficient" verdict just underpowered — absence of evidence?**
+Fair, and we quantify it: the fuel test can detect a ~25% skill edge at 80% power (`power.json`), and observed −0.3%. So we claim exactly what the data support — "no *large, exploitable* edge (≳25%) is detectable," not "predictability is proven absent." We say "no detectable edge at this power," never "proven efficient." Small edges we cannot and do not rule out.
 
 **Q: What's your actual contribution, then?**
 A significance-tested predictability map of PH fuel/inflation that cleanly separates predictable channels (MoM inflation +16%, electricity drivers +28%) from efficient ones (fuel, FX, YoY) — and is honest enough to reject a false positive (transport).
