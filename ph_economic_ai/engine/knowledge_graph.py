@@ -1,6 +1,6 @@
 """Honest knowledge graph of a swarm run — nodes/edges that each map to a real
 artifact (retrieved chunk, claim) or a grounded extraction (entity + provenance).
-Pure: no Qt, no ollama. The canvas (SP3b) renders a snapshot()."""
+Pure: no Qt, no LLM. The canvas (SP3b) renders a snapshot()."""
 from dataclasses import dataclass, field
 from typing import Optional
 

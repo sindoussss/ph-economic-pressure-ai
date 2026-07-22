@@ -20,6 +20,8 @@ from typing import Optional
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from ph_economic_ai.engine import llm
+
 # ── HTTP headers ──────────────────────────────────────────────────────────────
 _JSON_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -484,7 +486,7 @@ class LiveBriefThread(QThread):
 
 # ── Causal Chain Thread ───────────────────────────────────────────────────────
 
-_CHAIN_MODEL = 'qwen2.5:14b'
+_CHAIN_TIER = llm.DEEP
 
 _CHAIN_SYSTEM = """\
 You are a Philippine macroeconomic policy analyst.
@@ -500,7 +502,7 @@ Rules:
 - label: node title, 5 words max
 - mechanism: one sentence explaining the causal link to the next step
 - magnitude: quantified effect using actual numbers from the verdicts (e.g. "+₱1.42/L", "+2.1%", "+0.34 ppt CPI")
-- Last step must state projected household CPI impact and BSP policy signal
+- Last step must state the BSP policy signal; if an AUTHORITATIVE PROJECTED CPI is given, cite that exact figure and do not recompute it
 
 Example output:
 {"chain": [
@@ -570,6 +572,7 @@ class CausalChainThread(QThread):
         food_verdict: str,
         elec_verdict: str,
         scenario:     dict,
+        projected_cpi: Optional[float] = None,
         parent=None,
     ):
         super().__init__(parent)
@@ -577,32 +580,44 @@ class CausalChainThread(QThread):
         self._food     = food_verdict
         self._elec     = elec_verdict
         self._scenario = scenario
+        # The deterministic projected CPI from check_bsp_alert. Passed in so the
+        # chain's final step narrates the same figure the banner shows, instead
+        # of the LLM computing its own (which drifted: 4.52% chain vs 4.10%
+        # banner in one run).
+        self._projected_cpi = projected_cpi
+
+    def _build_user_msg(self) -> str:
+        scenario_str = (
+            f"Oil shock {self._scenario.get('oil_pct', 0):+.1f}%, "
+            f"USD/PHP {self._scenario.get('usd_pct', 0):+.1f}%, "
+            f"BSP rate {self._scenario.get('bsp_rate', 6.5):.2f}%, "
+            f"demand index {self._scenario.get('demand_index', 72):.0f}"
+        )
+        user_msg = _CHAIN_USER.format(
+            gas=self._gas[:600],
+            food=self._food[:600],
+            elec=self._elec[:600],
+            scenario=scenario_str,
+        )
+        if self._projected_cpi is not None:
+            user_msg += (
+                f"\n\nAUTHORITATIVE PROJECTED CPI: {self._projected_cpi:.2f}%. "
+                f"The final BSP Policy Signal step MUST cite exactly this CPI "
+                f"figure and MUST NOT compute or state a different one."
+            )
+        return user_msg
 
     def run(self):
         try:
-            import ollama
-            scenario_str = (
-                f"Oil shock {self._scenario.get('oil_pct', 0):+.1f}%, "
-                f"USD/PHP {self._scenario.get('usd_pct', 0):+.1f}%, "
-                f"BSP rate {self._scenario.get('bsp_rate', 6.5):.2f}%, "
-                f"demand index {self._scenario.get('demand_index', 72):.0f}"
-            )
-            user_msg = _CHAIN_USER.format(
-                gas=self._gas[:600],
-                food=self._food[:600],
-                elec=self._elec[:600],
-                scenario=scenario_str,
-            )
-            resp = ollama.chat(
-                model=_CHAIN_MODEL,
-                messages=[
+            user_msg = self._build_user_msg()
+            text = llm.complete(
+                [
                     {'role': 'system', 'content': _CHAIN_SYSTEM},
                     {'role': 'user',   'content': user_msg},
                 ],
-                stream=False,
-                format='json',
+                tier=_CHAIN_TIER,
+                json_mode=True,
             )
-            text  = resp['message']['content']
             steps = parse_chain(text)
             if steps:
                 self.chain_ready.emit(steps)
@@ -614,7 +629,7 @@ class CausalChainThread(QThread):
 
 # ── Policy Recommendation Thread ──────────────────────────────────────────────
 
-_RECO_MODEL = 'qwen2.5:14b'
+_RECO_TIER = llm.DEEP
 
 _RECO_SYSTEM = """\
 You are a senior economic policy adviser to the Philippine government.
@@ -708,7 +723,6 @@ class PolicyRecoThread(QThread):
     def run(self):
         import json
         try:
-            import ollama
             user_msg = _RECO_USER.format(
                 gas=self._gas[:600],
                 food=self._food[:600],
@@ -718,16 +732,14 @@ class PolicyRecoThread(QThread):
                 bsp_rate=self._scenario.get('bsp_rate', 6.5),
                 demand_index=self._scenario.get('demand_index', 72),
             )
-            resp = ollama.chat(
-                model=_RECO_MODEL,
-                messages=[
+            data = json.loads(llm.complete(
+                [
                     {'role': 'system', 'content': _RECO_SYSTEM},
                     {'role': 'user',   'content': user_msg},
                 ],
-                stream=False,
-                format='json',
-            )
-            data = json.loads(resp['message']['content'])
+                tier=_RECO_TIER,
+                json_mode=True,
+            ))
             recos = [
                 PolicyReco(
                     lever=r.get('lever', ''),

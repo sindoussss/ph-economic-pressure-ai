@@ -20,7 +20,7 @@ Layout:
   │  RECENT WORK                                                     │
   │  #5  May 29  +₱0.42/L 78%       #4  May 28  +₱1.12/L 81%  ...    │
   ├──────────────────────────────────────────────────────────────────┤
-  │  Local-first · Ollama · Open-Meteo · World Bank · EIA      MIT   │
+  │  Groq/Gemini · Open-Meteo · World Bank · EIA               MIT   │
   └──────────────────────────────────────────────────────────────────┘
 """
 from __future__ import annotations
@@ -566,7 +566,7 @@ class LandingPanel(QWidget):
         h.setContentsMargins(40, 0, 40, 0)
         h.setSpacing(16)
         left = QLabel(
-            'Local-first  ·  Ollama  ·  Open-Meteo  ·  World Bank  ·  EIA'
+            'Groq/Gemini  ·  Open-Meteo  ·  World Bank  ·  EIA'
         )
         left.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;color:{TEXT_3};'
