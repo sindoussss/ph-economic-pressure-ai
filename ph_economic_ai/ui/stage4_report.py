@@ -18,6 +18,30 @@ from ph_economic_ai.utils.preprocessing import build_features
 from ph_economic_ai import model as ml
 
 
+def _physics_anchor_label(master_verdict):
+    """A small line showing how the headline related to the physical anchor.
+
+    Transparency is the point of the anchoring experiment: the reader should be
+    able to see when the number is the model's own, when it was pulled back to
+    physics, and when physics stood in entirely. Returns a configured QLabel, or
+    None when there is no anchor to show (e.g. debate mode).
+    """
+    anchor = getattr(master_verdict, 'physical_anchor', None)
+    if anchor is None:
+        return None
+    source = getattr(master_verdict, 'estimate_source', 'agent')
+    text = {
+        'agent':   f'✓ Consistent with the {anchor:+.2f} ₱/L mechanical pass-through',
+        'clamped': f'⟐ Clamped toward the {anchor:+.2f} ₱/L mechanical pass-through',
+        'anchor':  f'⚑ No usable agent estimate — using the {anchor:+.2f} ₱/L physical anchor',
+    }.get(source, f'Mechanical pass-through: {anchor:+.2f} ₱/L')
+    color = {'agent': '#1C7C54', 'clamped': '#B45309', 'anchor': '#B45309'}.get(source, '#6B7280')
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{color};')
+    return lbl
+
+
 def _missing_estimate_note(estimate, rejected) -> str:
     """Explain a blank estimate. Empty string when there is nothing to explain.
 
@@ -411,6 +435,9 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        _anchor_lbl = _physics_anchor_label(master_verdict)
+        if _anchor_lbl is not None:
+            cf_layout.addWidget(_anchor_lbl)
         _note = QLabel(_honesty.consensus_note())
         _note.setWordWrap(True)
         _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
