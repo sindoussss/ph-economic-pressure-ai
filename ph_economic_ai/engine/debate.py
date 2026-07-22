@@ -471,12 +471,17 @@ def _extract_percent(text: str) -> Optional[float]:
 
 class DebateEngine:
     def __init__(self, agents: list[Agent], rag: RagEngine, scenario: dict,
-                 price_extractor=None, data_brief: Optional['LiveDataBrief'] = None):
+                 price_extractor=None, data_brief: Optional['LiveDataBrief'] = None,
+                 anchor_note: str = ''):
         """
         scenario keys: oil_pct, usd_pct, bsp_rate, demand_index
         price_extractor: callable(text) -> Optional[float]. Defaults to _extract_price.
                          Pass _extract_percent for food agents.
         data_brief: LiveDataBrief instance injected into every agent prompt.
+        anchor_note: optional physical/statistical baseline injected into every
+                     prompt so a weak model reasons from the right scale rather
+                     than inventing one — the sector equivalent of the master
+                     judge's mechanical pass-through line.
         """
         self._agents = agents
         self._rag = rag
@@ -484,6 +489,7 @@ class DebateEngine:
         self._history: list[AgentResponse] = []
         self._price_extractor = price_extractor or _extract_price
         self._data_brief = data_brief
+        self._anchor_note = anchor_note
 
     def _scenario_text(self) -> str:
         s = self._scenario
@@ -514,9 +520,11 @@ class DebateEngine:
             except Exception:
                 pass
 
+        anchor_block = f"{self._anchor_note}\n\n" if self._anchor_note else ''
         user_content = (
             f"{brief_block}"
             f"{scenario_text}\n\n"
+            f"{anchor_block}"
             f"Relevant context:\n{rag_text}\n\n"
             + (f"Previous agent responses:\n{prior}\n\n" if prior else '')
             + "Give your analysis. You MUST cite specific data from the DATA BRIEF "
