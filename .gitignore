@@ -42,3 +42,4 @@ _ohms_final.py
 launch_and_run_swarm.py
 navigate_swarm.py
 ph_economic_ai/cache/
+ph_economic_ai/tools/_market_monthly_cache.json

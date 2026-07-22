@@ -41,6 +41,17 @@ _LITRES_PER_BARREL = 158.987
 # VAT applied to the ex-refinery component of the pump price in the Philippines.
 _VAT = 0.12
 
+# Empirical pass-through calibration. The pure mechanical anchor is accounting,
+# but real PH pump prices pass through only part of an oil move within a month —
+# subsidy buffers, the DOE weekly-averaging lag, and competitive absorption damp
+# it. Backtested on 78 months of World Bank RON95 vs monthly Brent/FX
+# (tools/anchor_backtest.py): correlation 0.60, directional accuracy 74%, and an
+# OLS slope of 0.79 of the mechanical value, which beats a no-change baseline
+# (MAE ₱2.21 vs ₱2.64). That 0.79 is applied here so the anchor reflects the
+# observed pass-through, not just the textbook one. It is a fit to one window
+# and may drift; re-run the backtest to refresh it.
+_FUEL_PASSTHROUGH_CALIBRATION = 0.79
+
 # Reference inputs used when live values are unavailable. The anchor's job is
 # scale, not precision — a ±$5 error in Brent moves a ₱2.7 anchor by cents — so
 # stale-but-reasonable defaults are fine, and callers pass live values when they
@@ -61,8 +72,9 @@ def fuel_passthrough_anchor(
     usd_pct: float,
     brent_usd: float = _BRENT_DEFAULT_USD,
     fx_php_per_usd: float = _FX_DEFAULT_PHP_USD,
+    calibrated: bool = True,
 ) -> float:
-    """Mechanical pump-price change in ₱/L implied by an oil and FX shock.
+    """Pump-price change in ₱/L implied by an oil and FX shock.
 
     The crude cost embedded in one litre of fuel is ``brent / litres_per_barrel``
     dollars, or ``brent * fx / litres_per_barrel`` pesos. Both shocks act on that
@@ -72,11 +84,14 @@ def fuel_passthrough_anchor(
 
     A weaker peso raises the peso cost of the crude already in the fuel, which is
     why the FX shock enters on equal footing with the oil shock rather than as an
-    afterthought.
+    afterthought. By default the result is scaled by the empirically-fitted
+    `_FUEL_PASSTHROUGH_CALIBRATION`; pass ``calibrated=False`` for the raw
+    textbook value (used by the backtest that fits the calibration).
     """
     base_landed_php_per_l = brent_usd * fx_php_per_usd / _LITRES_PER_BARREL
     delta_landed = base_landed_php_per_l * (oil_pct + usd_pct) / 100.0
-    return delta_landed * (1 + _VAT)
+    mechanical = delta_landed * (1 + _VAT)
+    return mechanical * _FUEL_PASSTHROUGH_CALIBRATION if calibrated else mechanical
 
 
 # ── Electricity: a *validated* physical anchor ────────────────────────────────

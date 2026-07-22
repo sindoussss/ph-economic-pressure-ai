@@ -1,0 +1,26 @@
+{
+  "robustness": {
+    "checks": 10357,
+    "failures": [],
+    "passed": true
+  },
+  "panel_months": 79,
+  "backtest": {
+    "n_months": 78,
+    "correlation": 0.6,
+    "ols_slope": 0.789,
+    "ols_intercept": 0.157,
+    "r_squared": 0.36,
+    "mae_anchor_php_l": 2.21,
+    "mae_naive_php_l": 2.643,
+    "anchor_beats_naive": true,
+    "directional_accuracy": 0.744,
+    "calibrated_multiplier": 0.789,
+    "actual_change_std_php_l": 3.566
+  },
+  "weak_model_benefit": {
+    "mae_raw_model_php_l": 3.794,
+    "mae_anchored_php_l": 1.582,
+    "improvement_pct": 58.3
+  }
+}
