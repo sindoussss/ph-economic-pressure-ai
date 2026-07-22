@@ -8,12 +8,33 @@
   "backtest": {
     "n_months": 78,
     "correlation": 0.6,
+    "correlation_significance": {
+      "r": 0.6,
+      "n": 78,
+      "p_value": 0.0,
+      "ci95": [
+        0.436,
+        0.726
+      ],
+      "significant": true
+    },
     "ols_slope": 0.789,
     "ols_intercept": 0.157,
+    "slope_significance": {
+      "slope": 0.789,
+      "stderr": 0.121,
+      "p_slope_ne_0": 0.0,
+      "p_slope_ne_1": 0.0841
+    },
     "r_squared": 0.36,
     "mae_anchor_php_l": 2.21,
     "mae_naive_php_l": 2.643,
     "anchor_beats_naive": true,
+    "dm_vs_naive": {
+      "dm_stat": -1.873,
+      "p_value": 0.0649,
+      "significant": false
+    },
     "directional_accuracy": 0.744,
     "calibrated_multiplier": 0.789,
     "actual_change_std_php_l": 3.566
@@ -32,6 +53,16 @@
     },
     "best_correlation": 0.133,
     "best_lag": 2,
+    "best_correlation_significance": {
+      "r": 0.133,
+      "n": 173,
+      "p_value": 0.0811,
+      "ci95": [
+        -0.017,
+        0.277
+      ],
+      "significant": false
+    },
     "is_predictive": false,
     "scale_ratio": 1.02,
     "finding": "the fuel-price anchor does NOT predict monthly electricity CPI at this resolution (the benchmark result used the formulaic generation-charge nowcast, not raw commodity changes); it functions as a magnitude guard, not a predictor"
@@ -39,7 +70,27 @@
   "food": {
     "n_months": 172,
     "persistence_correlation": 0.183,
+    "persistence_significance": {
+      "r": 0.183,
+      "n": 172,
+      "p_value": 0.016,
+      "ci95": [
+        0.035,
+        0.324
+      ],
+      "significant": true
+    },
     "oil_correlation": 0.209,
+    "oil_significance": {
+      "r": 0.209,
+      "n": 172,
+      "p_value": 0.0059,
+      "ci95": [
+        0.062,
+        0.348
+      ],
+      "significant": true
+    },
     "correlation_se": 0.076,
     "indistinguishable": true,
     "persistence_mae": 0.577,
