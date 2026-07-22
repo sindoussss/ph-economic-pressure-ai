@@ -7,10 +7,12 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
+from ph_economic_ai.engine import anchoring, llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
     DEFAULT_AGENTS, FOOD_AGENTS, ELECTRICITY_AGENTS,
     SynthesizerThread, DebateEngine, DebateThread, _extract_percent,
+    _extract_electricity_change,
 )
 from ph_economic_ai.engine.swarm import SwarmThread, fetch_live_retail_price, derive_regional_estimates, build_swarm_agents
 from ph_economic_ai.engine.live_data import (
@@ -30,6 +32,7 @@ from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
 from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
 from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
 from ph_economic_ai.ui.accuracy_view import AccuracyView
+from ph_economic_ai.ui.learning_view import LearningView
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +57,7 @@ class _TopNavBar(QFrame):
         (0, 'Home',        False),
         (2, 'Simulation',  True),
         (3, 'Report',      True),
+        (6, 'Learning',    False),
     ]
 
     def __init__(self, parent=None):
@@ -157,6 +161,40 @@ class _TopNavBar(QFrame):
         self._refresh_styles()
 
 
+def _format_gas_verdict(
+    estimate: float | None,
+    agreement_pct: float | None = None,
+    low: float | None = None,
+    high: float | None = None,
+    regional: list | None = None,
+) -> str:
+    """Human-readable gas verdict for the downstream LLM prompts.
+
+    This used to be `str(master_verdict)` — a raw dataclass repr. Two things
+    went wrong with that. The BSP banner regexed it for a peso figure and hit a
+    nested regional verdict instead of the consensus, and the causal-chain
+    prompt truncates its input to 600 characters, so the model was handed a
+    mangled Python object and invented its own numbers (+₱13.70/L against a
+    +₱2.54/L consensus). Food and electricity always formatted prose here; gas
+    was the odd one out.
+    """
+    if estimate is None:
+        return '(Gas sector verdict unavailable.)'
+    parts = [f'Retail gasoline monthly change: {estimate:+.2f} ₱/L']
+    if agreement_pct is not None:
+        parts.append(f'agent agreement {agreement_pct:.0f}%')
+    if low is not None and high is not None:
+        parts.append(f'range {low:+.2f} to {high:+.2f} ₱/L')
+    summary = f'{parts[0]} ({", ".join(parts[1:])})' if len(parts) > 1 else parts[0]
+
+    for pair, value in (regional or []):
+        if value is None:
+            continue
+        name = ' & '.join(pair) if isinstance(pair, (tuple, list)) else str(pair)
+        summary += f'\n  {name}: {value:+.2f} ₱/L'
+    return summary
+
+
 class SimMainWindow(QMainWindow):
     def __init__(self, df, regressor, data_source: str = 'Live Data',
                  cv_rmse: float = 0.0, regressors: dict | None = None,
@@ -231,6 +269,7 @@ class SimMainWindow(QMainWindow):
 
         self._agent_perf = AgentPerformancePanel(self._store)
         self._accuracy_view = AccuracyView()
+        self._learning = LearningView(self._store)
 
         # ── Wrap the landing in a vertical scroll area (website-style) ──────
         landing_scroll = QScrollArea()
@@ -249,10 +288,10 @@ class SimMainWindow(QMainWindow):
         self._landing_scroll = landing_scroll
 
         # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report(workbench),
-        #              4=AgentPerf, 5=Methodology & Accuracy
+        #              4=AgentPerf, 5=Methodology & Accuracy, 6=Learning
         for widget in (landing_scroll, self._economy_overview,
                        self._stage3_container, self._stage4,
-                       self._agent_perf, self._accuracy_view):
+                       self._agent_perf, self._accuracy_view, self._learning):
             self._stack.addWidget(widget)
 
         # Wire DOE checker → agent perf panel refresh
@@ -285,6 +324,8 @@ class SimMainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
         if idx == 4:        # Agent Performance is now index 4
             self._agent_perf.refresh()
+        if idx == 6:
+            self._learning.refresh(getattr(self, '_current_run_id', None))
 
     def _on_landing_run(self):
         """Click on the landing 'RUN SIMULATION' button — auto-derive a scenario
@@ -435,12 +476,52 @@ class SimMainWindow(QMainWindow):
         except Exception:
             return ''
 
+    def _recent_food_mom_pcts(self) -> list:
+        """Trailing month-on-month food inflation, %, for the persistence anchor."""
+        if 'food_price_idx' not in self._df.columns:
+            return []
+        s = self._df['food_price_idx'].dropna()
+        return (s.pct_change().dropna().tail(6) * 100.0).tolist()
+
+    def _food_anchor(self, scenario: dict) -> float:
+        return anchoring.food_persistence_anchor(
+            self._recent_food_mom_pcts(), oil_pct=scenario.get('oil_pct', 0.0))
+
+    def _elec_anchor(self, scenario: dict) -> float:
+        return anchoring.electricity_passthrough_anchor(
+            scenario.get('oil_pct', 0.0), scenario.get('usd_pct', 0.0))
+
     def _start_sector_debates(self, scenario_dict: dict):
-        """Run food and electricity sector debates in parallel with the gas simulation."""
+        """Run food and electricity sector debates in parallel with the gas simulation.
+
+        Each sector is anchored to what its own benchmark found predictable: food
+        to its recent own-trend (commodity drivers are a null for it), electricity
+        to the formulaic fuel pass-through in its generation charge. The anchor is
+        injected as a prior so the weak agents start from the right scale.
+        """
         brief = self._live_brief  # may be None if still fetching — that's OK
+
+        food_anchor = self._food_anchor(scenario_dict)
+        elec_anchor = self._elec_anchor(scenario_dict)
+        # Seed the sector forecasts with their anchors immediately. The anchor is
+        # deterministic and known before the debate runs, so food/electricity
+        # show a grounded provisional number right away instead of a blank dash
+        # for the minute or two the debates take; each is refined in place when
+        # its debate completes.
+        self._food_estimate = food_anchor
+        self._elec_estimate = elec_anchor
+        self._push_sector_forecasts()
+
+        food_note = (
+            f"BASELINE: recent food inflation runs about {food_anchor:+.2f}% per "
+            f"month (its own trend — commodity/oil prices are a poor predictor of "
+            f"food here). Start from this and adjust only for a clear harvest, "
+            f"weather, or import-price signal. Monthly food moves are rarely more "
+            f"than ~1.5 percentage points from this trend."
+        )
         self._food_engine = DebateEngine(FOOD_AGENTS, self._rag, scenario_dict,
                                           price_extractor=_extract_percent,
-                                          data_brief=brief)
+                                          data_brief=brief, anchor_note=food_note)
         self._food_thread = DebateThread(self._food_engine, rounds=1)
         self._food_thread.debate_complete.connect(self._on_food_complete)
         self._food_thread.error_occurred.connect(
@@ -448,8 +529,16 @@ class SimMainWindow(QMainWindow):
         )
         self._food_thread.start()
 
+        elec_note = (
+            f"MECHANICAL PASS-THROUGH: the fuel-indexed part of the Meralco "
+            f"generation charge implies a rate change of about {elec_anchor:+.4f} "
+            f"₱/kWh from this oil and FX move. This is a formulaic, observable "
+            f"pass-through — start from it and adjust only for a demand or "
+            f"regulatory factor it misses."
+        )
         self._elec_engine = DebateEngine(ELECTRICITY_AGENTS, self._rag, scenario_dict,
-                                          data_brief=brief)
+                                          price_extractor=_extract_electricity_change,
+                                          data_brief=brief, anchor_note=elec_note)
         self._elec_thread = DebateThread(self._elec_engine, rounds=1)
         self._elec_thread.debate_complete.connect(self._on_elec_complete)
         self._elec_thread.error_occurred.connect(
@@ -471,29 +560,35 @@ class SimMainWindow(QMainWindow):
             pass
 
     def _on_food_complete(self, responses):
+        scenario = self._last_scenario or {}
+        anchor = self._food_anchor(scenario)
+        raw_avg, conf = None, 0
         if responses and self._food_engine:
             c = self._food_engine.consensus()
-            avg = c.get('weighted_avg')
-            self._food_estimate = avg
+            raw_avg = c.get('weighted_avg')
             conf = c.get('confidence_pct', 0)
-            avg_str = f'{avg:+.2f}%' if avg is not None else 'N/A'
-            self._food_verdict = (
-                f'Food price index monthly change: {avg_str} '
-                f'(confidence {conf}%, range {c.get("low", 0):+.2f}% to {c.get("high", 0):+.2f}%)'
-            )
-            if avg is not None and 'food_price_idx' in self._df.columns:
-                food_hist = self._df['food_price_idx'].dropna().tail(6).tolist()
-                current_food = food_hist[-1] if food_hist else 100.0
-                delta_pts = current_food * avg / 100.0
-                self._economy_overview.update_food({
-                    'value': current_food + delta_pts,
-                    'delta': delta_pts,
-                    'history': food_hist,
-                    'signal_text': f'Monthly est.: {avg:+.2f}%',
-                    'pressure': 'Rising' if avg > 0 else 'Stable',
-                })
-        else:
-            self._food_verdict = '(Food sector debate unavailable.)'
+        # Persistence-anchored: trust the agents near their own trend, clamp a
+        # drift, and fall back to the trend outright when the debate produced
+        # nothing — so food is never a blank, even on total debate failure.
+        rec = anchoring.reconcile_estimate(
+            raw_avg, anchor, tolerance=anchoring.FOOD_TOLERANCE_PCT)
+        self._food_estimate = rec.value
+        note = anchoring.explain(rec, unit='%', anchor_label='own-trend persistence')
+        self._food_verdict = (
+            f'Food price index monthly change: {rec.value:+.2f}% '
+            f'(confidence {conf}%). {note}'
+        )
+        if 'food_price_idx' in self._df.columns:
+            food_hist = self._df['food_price_idx'].dropna().tail(6).tolist()
+            current_food = food_hist[-1] if food_hist else 100.0
+            delta_pts = current_food * rec.value / 100.0
+            self._economy_overview.update_food({
+                'value': current_food + delta_pts,
+                'delta': delta_pts,
+                'history': food_hist,
+                'signal_text': f'Monthly est.: {rec.value:+.2f}%',
+                'pressure': 'Rising' if rec.value > 0 else 'Stable',
+            })
         self._stage5.update_food_verdict(self._food_verdict)
         self._push_sector_forecasts()
         if self._store is not None and self._current_run_id is not None:
@@ -505,27 +600,33 @@ class SimMainWindow(QMainWindow):
         self._run_synthesizer_if_ready()
 
     def _on_elec_complete(self, responses):
+        scenario = self._last_scenario or {}
+        anchor = self._elec_anchor(scenario)
+        raw_avg, conf = None, 0
         if responses and self._elec_engine:
             c = self._elec_engine.consensus()
-            avg = c.get('weighted_avg')
-            self._elec_estimate = avg
+            raw_avg = c.get('weighted_avg')
             conf = c.get('confidence_pct', 0)
-            avg_str = f'+₱{avg:.4f}/kWh' if avg is not None else 'N/A'
-            self._elec_verdict = (
-                f'Electricity rate monthly change: {avg_str} '
-                f'(confidence {conf}%, range {c.get("low", 0):+.4f} to {c.get("high", 0):+.4f} ₱/kWh)'
-            )
-            if avg is not None and 'electricity_rate' in self._df.columns:
-                elec_hist = self._df['electricity_rate'].dropna().tail(6).tolist()
-                current_elec = elec_hist[-1] if elec_hist else 11.20
-                self._economy_overview.update_electricity({
-                    'value': current_elec + avg,
-                    'delta': avg,
-                    'history': elec_hist,
-                    'pressure': 'Rising' if avg > 0 else 'Stable',
-                })
-        else:
-            self._elec_verdict = '(Electricity sector debate unavailable.)'
+        # Electricity's fuel pass-through is the one sector channel the benchmark
+        # confirmed as genuinely predictive, so the anchor is a validated signal,
+        # not just a scale. Reconcile against it exactly as fuel does.
+        rec = anchoring.reconcile_estimate(
+            raw_avg, anchor, tolerance=anchoring.ELECTRICITY_TOLERANCE_PHP_KWH)
+        self._elec_estimate = rec.value
+        note = anchoring.explain(rec, unit='₱/kWh', anchor_label='fuel pass-through')
+        self._elec_verdict = (
+            f'Electricity rate monthly change: {rec.value:+.4f} ₱/kWh '
+            f'(confidence {conf}%). {note}'
+        )
+        if 'electricity_rate' in self._df.columns:
+            elec_hist = self._df['electricity_rate'].dropna().tail(6).tolist()
+            current_elec = elec_hist[-1] if elec_hist else 11.20
+            self._economy_overview.update_electricity({
+                'value': current_elec + rec.value,
+                'delta': rec.value,
+                'history': elec_hist,
+                'pressure': 'Rising' if rec.value > 0 else 'Stable',
+            })
         self._stage5.update_elec_verdict(self._elec_verdict)
         self._push_sector_forecasts()
         if self._store is not None and self._current_run_id is not None:
@@ -538,7 +639,12 @@ class SimMainWindow(QMainWindow):
 
     def _on_simulation_complete(self, responses):
         consensus = self._stage3.engine.consensus()
-        self._gas_verdict = str(consensus)
+        self._gas_verdict = _format_gas_verdict(
+            estimate=consensus.get('weighted_avg') if isinstance(consensus, dict) else None,
+            agreement_pct=consensus.get('confidence_pct') if isinstance(consensus, dict) else None,
+            low=consensus.get('low') if isinstance(consensus, dict) else None,
+            high=consensus.get('high') if isinstance(consensus, dict) else None,
+        )
         if responses:
             estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
             scores = QualityScorer.score_responses(responses, estimates)
@@ -559,7 +665,8 @@ class SimMainWindow(QMainWindow):
                     'has_causal_chain': sc.get('has_causal_chain', 0),
                     'internal_score': sc.get('overall', 0.5),
                     'model_used': next(
-                        (a.model for a in self._agents if a.name == r.agent_name), ''),
+                        (llm.describe_model(a.tier) for a in self._agents
+                         if a.name == r.agent_name), ''),
                 })
             self._store.save_agent_responses(self._current_run_id, response_dicts)
             for agent_name, sc in scores.items():
@@ -616,8 +723,20 @@ class SimMainWindow(QMainWindow):
             self._store.save_agent_responses(self._current_run_id, response_dicts)
             for agent_name, sc in scores.items():
                 self._store.update_trust(agent_name, internal_score=sc['overall'])
-        self._gas_verdict = str(master_verdict)
+        try:
+            self._learning.refresh(self._current_run_id)
+        except Exception:
+            pass
         self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
+        regional = [
+            (rv.region_pair, rv.estimate)
+            for rv in getattr(master_verdict, 'regional_verdicts', []) or []
+        ]
+        self._gas_verdict = _format_gas_verdict(
+            estimate=self._gas_estimate,
+            agreement_pct=getattr(master_verdict, 'confidence_pct', None),
+            regional=regional,
+        )
         self._push_sector_forecasts()
         self._stage4.populate_swarm(
             master_verdict, self._regressor, self._df, self._cv_rmse,
@@ -684,8 +803,11 @@ class SimMainWindow(QMainWindow):
         self._synth_thread.finished.connect(self._economy_overview.update_summary)
         self._synth_thread.start()
 
-        # BSP alert — compute CPI basket impact from all three verdicts
-        self._run_bsp_alert()
+        # BSP alert — compute CPI basket impact from all three verdicts. Reuse
+        # the same deterministic projected CPI for the causal chain so the two
+        # never disagree.
+        alert = self._run_bsp_alert()
+        projected_cpi = alert.get('projected_cpi') if alert else None
 
         # Causal chain synthesis
         self._chain_thread = CausalChainThread(
@@ -693,6 +815,7 @@ class SimMainWindow(QMainWindow):
             food_verdict=self._food_verdict,
             elec_verdict=self._elec_verdict,
             scenario=self._last_scenario,
+            projected_cpi=projected_cpi,
         )
         self._chain_thread.chain_ready.connect(self._stage4.set_chain)
         self._chain_thread.error.connect(lambda msg: print(f'Chain error: {msg}'))
@@ -711,20 +834,20 @@ class SimMainWindow(QMainWindow):
         self._chain_thread.start()
 
     def _run_bsp_alert(self):
-        """Compute CPI basket impact and push BSP alert to Stage 4."""
+        """Compute CPI basket impact and push BSP alert to Stage 4.
+
+        Uses the numeric estimates directly. This previously re-derived them by
+        regexing the verdict *strings* — and `_gas_verdict` is `str(master_verdict)`,
+        a dataclass repr that embeds every regional verdict, so a first-match
+        scan picked up whichever region happened to appear first rather than the
+        consensus. The banner then disagreed with the headline it sits above:
+        a +₱2.54/L consensus was reported as +₱6.19/L worth of CPI impact.
+        """
         try:
-            # Extract numeric estimates from stored verdict strings
-            import re
-            gas_m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', self._gas_verdict)
-            gas_v = (1 if gas_m.group(1) == '+' else -1) * float(gas_m.group(2)) if gas_m else None
-
-            food_m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', self._food_verdict)
-            food_v = (1 if food_m.group(1) == '+' else -1) * float(food_m.group(2)) if food_m else None
-
-            elec_m = re.search(r'([+\-])\s*₱(\d+\.?\d*)\s*/\s*kWh', self._elec_verdict)
-            elec_v = (1 if elec_m.group(1) == '+' else -1) * float(elec_m.group(2)) if elec_m else None
-
-            alert = LiveDataBrief.check_bsp_alert(gas_v, food_v, elec_v)
+            alert = LiveDataBrief.check_bsp_alert(
+                self._gas_estimate, self._food_estimate, self._elec_estimate,
+            )
             self._stage4.set_bsp_alert(alert)
+            return alert
         except Exception:
-            pass
+            return None

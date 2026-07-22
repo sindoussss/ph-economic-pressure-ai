@@ -5,7 +5,97 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.debate import Agent, DEFAULT_AGENTS
+from ph_economic_ai.engine.swarm import (
+    REGIONS, expected_call_counts, group_critical_path,
+)
+
+# Streamed-completion latency per call. Local inference is slower per call than
+# hosted but has no quota, so which one dominates flips by provider.
+_HOSTED_FAST_SECS = 3
+_HOSTED_DEEP_SECS = 7
+
+# Measured on an 8GB GPU, not estimated. qwen2.5:3b answers an agent-shaped
+# call (~650 token prompt, 750 max_tokens) in ~4s once warm; qwen2.5:7b, the
+# judge model, in ~9s. Both fit VRAM together, so there is no per-call model
+# swap. (A deepseek-r1:14b judge measured ~55s but forced 9GB swaps on this
+# card — see engine/anchoring.py for why a bigger judge is not the fix.)
+_LOCAL_FAST_SECS = 4
+_LOCAL_DEEP_SECS = 9
+
+# Loading a model into VRAM costs ~50s and is not inference. A run pays it
+# once per tier: all group calls use the fast model, then the judges swap in
+# the deep one. Ignoring this made the first run look mysteriously slow.
+_LOCAL_MODEL_LOAD_SECS = 50
+
+# Reserved completion budget per call, mirroring the max_tokens the engine
+# passes. Completions, not prompts, dominate the token bill.
+_FAST_MAX_TOKENS = 750
+_DEEP_MAX_TOKENS = 900
+_TYPICAL_PROMPT_TOKENS = 650      # measured against a populated RAG index
+
+
+def estimate_swarm_seconds(parallel_n: int) -> int:
+    """Estimated wall-clock for one swarm run, in seconds.
+
+    Three things can dominate, so the estimate takes whichever is worst:
+
+    * **latency** — groups run `parallel_n` at a time; inside a group round 1
+      is sequential (agents read each other) and later rounds are parallel.
+      The judges then run sequentially.
+    * **the request cap** — a free tier caps requests per minute, so a run
+      cannot finish faster than `total_calls / RPM`.
+    * **the token cap** — and usually this is the one that bites. A run spends
+      roughly 44K fast-tier tokens against a 6K/min free-tier ceiling, so the
+      token budget alone can set a multi-minute floor however fast the model
+      responds.
+    """
+    counts = expected_call_counts()
+    n_groups = max(1, len(REGIONS))
+    parallel_n = max(1, parallel_n)
+
+    fast_secs, deep_secs = call_latencies()
+    batches = -(-n_groups // parallel_n)                      # ceil div
+    group_secs = group_critical_path() * fast_secs
+    latency_secs = batches * group_secs + counts['deep'] * deep_secs
+    if llm.is_local():
+        # One model load per tier — see _LOCAL_MODEL_LOAD_SECS.
+        latency_secs += 2 * _LOCAL_MODEL_LOAD_SECS
+
+    # rpm of 0 means no quota (local inference) — no rate floor applies.
+    rpm = llm.effective_rpm()
+    request_floor = counts['total'] / rpm * 60 if rpm else 0.0
+    token_floor = _token_floor_seconds(counts)
+
+    return int(max(latency_secs, request_floor, token_floor))
+
+
+def call_latencies() -> tuple[int, int]:
+    """(fast, deep) per-call seconds for the active provider."""
+    if llm.is_local():
+        return _LOCAL_FAST_SECS, _LOCAL_DEEP_SECS
+    return _HOSTED_FAST_SECS, _HOSTED_DEEP_SECS
+
+
+def _token_floor_seconds(counts: dict) -> float:
+    """Seconds implied by the per-minute token ceiling, worst tier wins."""
+    try:
+        provider = llm.active_provider()
+    except llm.LLMError:
+        return 0.0
+
+    worst = 0.0
+    for tier, n_calls, max_tokens in (
+        (llm.FAST, counts['fast'], _FAST_MAX_TOKENS),
+        (llm.DEEP, counts['deep'], _DEEP_MAX_TOKENS),
+    ):
+        tpm = llm.tpm_for(provider, tier)
+        if not tpm:
+            continue
+        spend = n_calls * (_TYPICAL_PROMPT_TOKENS + max_tokens)
+        worst = max(worst, spend / tpm * 60)
+    return worst
 
 
 @dataclass
@@ -258,15 +348,14 @@ class Stage2SetupPanel(QWidget):
 
     def _update_time_estimate(self, *_):
         if self._swarm_btn.isChecked():
-            parallel_n = self._parallel_slider.value()
-            # ~371 ollama calls, roughly 15s each
-            batches = -(-20 // parallel_n)  # ceil div
-            secs = batches * 3 * 15 + 10 * 15 + 15
-            self._time_lbl.setText(f'~{secs // 60} min estimated (swarm)')
+            secs = estimate_swarm_seconds(self._parallel_slider.value())
         else:
             rounds = 3 if len(self._agents) <= 7 else 2
-            secs = len(self._agents) * rounds * 10
-            self._time_lbl.setText(f'~{secs // 60} min estimated')
+            secs = len(self._agents) * rounds * call_latencies()[0]
+        label = f'~{secs // 60} min estimated' if secs >= 60 else f'~{secs}s estimated'
+        if self._swarm_btn.isChecked():
+            label += ' (swarm)'
+        self._time_lbl.setText(label)
 
     def _on_swarm_toggled(self, checked: bool):
         self._parallel_slider.setEnabled(checked)
