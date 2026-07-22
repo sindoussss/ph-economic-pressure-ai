@@ -280,6 +280,13 @@ def main():
           f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
           f"over {rep['n_months']} months")
 
+    # Multiple-comparison correction over the confirmatory DM tests — reads the
+    # accuracy_report just written, so it always reflects the current run.
+    from ph_economic_ai.benchmark import multiple_testing
+    _mt = multiple_testing.run()
+    print(f"Multiple testing: {len(_mt['survive_bonferroni'])}/{_mt['n_tests']} "
+          f"confirmatory tests survive Bonferroni (FWER): {_mt['survive_bonferroni']}")
+
 
 if __name__ == '__main__':
     main()

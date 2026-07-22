@@ -1,0 +1,72 @@
+{
+  "alpha": 0.05,
+  "n_tests": 6,
+  "bonferroni_threshold": 0.00833,
+  "survive_bonferroni": [
+    "Electricity MoM inflation",
+    "MoM headline inflation (long, n=143)",
+    "Electricity within-month driver",
+    "Food MoM inflation"
+  ],
+  "survive_bh_only": [
+    "Transport within-month driver (pre-robustness)",
+    "MoM headline inflation (short, n=61)"
+  ],
+  "survive_neither": [],
+  "tests": [
+    {
+      "test": "Electricity MoM inflation",
+      "skill_vs_naive": 0.2658,
+      "dm_p": 0.0005,
+      "bonferroni_p": 0.003,
+      "survives_bonferroni": true,
+      "bh_q": 0.0022,
+      "survives_bh": true
+    },
+    {
+      "test": "MoM headline inflation (long, n=143)",
+      "skill_vs_naive": 0.1627,
+      "dm_p": 0.001,
+      "bonferroni_p": 0.006,
+      "survives_bonferroni": true,
+      "bh_q": 0.0022,
+      "survives_bh": true
+    },
+    {
+      "test": "Electricity within-month driver",
+      "skill_vs_naive": 0.2833,
+      "dm_p": 0.0011,
+      "bonferroni_p": 0.0066,
+      "survives_bonferroni": true,
+      "bh_q": 0.0022,
+      "survives_bh": true
+    },
+    {
+      "test": "Food MoM inflation",
+      "skill_vs_naive": 0.16,
+      "dm_p": 0.0046,
+      "bonferroni_p": 0.0276,
+      "survives_bonferroni": true,
+      "bh_q": 0.0069,
+      "survives_bh": true
+    },
+    {
+      "test": "Transport within-month driver (pre-robustness)",
+      "skill_vs_naive": 0.1475,
+      "dm_p": 0.0214,
+      "bonferroni_p": 0.1284,
+      "survives_bonferroni": false,
+      "bh_q": 0.0257,
+      "survives_bh": true
+    },
+    {
+      "test": "MoM headline inflation (short, n=61)",
+      "skill_vs_naive": 0.1616,
+      "dm_p": 0.0323,
+      "bonferroni_p": 0.1938,
+      "survives_bonferroni": false,
+      "bh_q": 0.0323,
+      "survives_bh": true
+    }
+  ]
+}
