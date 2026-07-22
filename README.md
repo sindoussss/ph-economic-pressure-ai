@@ -83,15 +83,21 @@ Small local models reason about *direction* well but get *magnitude* wrong: aske
 
 The novel part is that **each sector is anchored to the signal its own walk-forward backtest found real** — the anchors differ in *kind*, not just value:
 
-| Sector | Benchmark verdict | Anchor |
-|---|---|---|
-| **Fuel** | informationally efficient (RW wins) | mechanical oil→pump pass-through — a *scale*, not a forecast |
-| **Electricity** | predictable via a formulaic fuel pass-through (Ridge +28%, DM p ≈ 0.001) | fuel→generation-charge pass-through — a *validated* physical signal |
-| **Food** | clean null on commodities, but predictable own-dynamics (ARIMA +16%) | trailing own-trend **persistence** — deliberately *not* a commodity pass-through |
+| Sector | Benchmark verdict | Anchor | Regressed on real data |
+|---|---|---|---|
+| **Fuel** | informationally efficient (RW wins) | mechanical oil→pump pass-through | **predicts + right scale** — corr 0.60, beats naive |
+| **Electricity** | predictable via a *formulaic* fuel pass-through (Ridge +28%) | fuel→generation-charge proxy | **right scale, not a monthly predictor** — corr ~0.03 |
+| **Food** | clean null on commodities, predictable own-dynamics | trailing own-trend persistence | **right scale, weakly predictive** — persistence ≈ oil ≈ mean |
 
-Anchoring food to oil would be anchoring it to what the backtest proved is noise; anchoring it to its own recent trend is what the backtest says is informative. This couples the exploratory swarm directly to the validated benchmark. Verified live on 8GB hardware: with anchors injected, `qwen2.5:7b` returned **+₱2.91/L** for fuel and a food agent returned **+0.77%** — each its own refinement of the physical/statistical baseline, where the un-anchored model had produced ₱12.93 and 7.6%. This makes the exploratory layer physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
+Anchoring food to oil would be anchoring it to what the backtest proved is noise; anchoring it to its own recent trend is what the benchmark says is informative. This couples the exploratory swarm directly to the validated benchmark. Verified live on 8GB hardware: with anchors injected, `qwen2.5:7b` returned **+₱2.91/L** for fuel and a food agent returned **+0.77%** — where the un-anchored model had produced ₱12.93 and 7.6%. This makes the exploratory layer physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
 
-**The fuel anchor is itself backtested and calibrated.** `python -m ph_economic_ai.tools.anchor_backtest` pairs 78 months of real World Bank RON95 pump prices with monthly Brent/FX and asks whether the mechanical pass-through tracks *actual* pump moves: correlation **0.60**, directional accuracy **74%**, and MAE **₱2.21 vs ₱2.64** for a no-change baseline — the anchor wins. The OLS slope of **0.79** (real PH pass-through is partial — subsidy buffers, DOE averaging lag, competitive absorption) is fed back as the anchor's calibration coefficient. A robustness sweep exercises 10k+ scenarios and adversarial inputs, and a simulation shows reconciliation cuts a hallucinating model's error by **~58%**. Full result in `benchmark/artifacts/anchor_validation.json`.
+**Every anchor is regressed against real Philippine series** by `python -m ph_economic_ai.tools.anchor_backtest` (result frozen in `benchmark/artifacts/anchor_validation.json`), and the harness reports the finding honestly rather than a flattering one:
+
+- **Fuel** (78 months, WB RON95 vs Brent/FX): the mechanical pass-through tracks *actual* pump moves — correlation **0.60**, directional accuracy **74%**, MAE **₱2.21 vs ₱2.64** for a no-change baseline. The OLS slope of **0.79** (PH pass-through is partial — subsidy buffers, DOE averaging lag, competitive absorption) is fed back as the anchor's calibration coefficient.
+- **Electricity** (175 months, PSA electricity CPI): the raw fuel-price anchor does **not** predict the monthly move (corr ~0.03–0.13) — the benchmark's +28% edge needs the actual generation-charge formula, not raw commodity prices — but its **magnitude is right** (scale ratio ~1.0).
+- **Food** (172 months, PSA food CPI): persistence and oil are **both weak and statistically indistinguishable** (corr ~0.18 vs ~0.21, within ±0.15), and a plain mean is competitive — monthly food CPI is close to unpredictable here; the anchor's value is again **magnitude** (scale ~0.9).
+
+So one anchor (fuel) is a validated *predictor*; all three are validated *magnitude guards* — which is the anchor's actual job, keeping a weak local model from claiming +₱33/kWh or +7% food when reality is a tenth of that. A robustness sweep also exercises 10k+ scenarios plus adversarial inputs (NaN, inf, extremes), and a simulation shows reconciliation cuts a hallucinating model's error by **~58%**.
 
 ## Screenshots
 

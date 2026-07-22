@@ -34,8 +34,13 @@ from pathlib import Path
 import numpy as np
 import requests
 
+import pandas as pd
+
 from ph_economic_ai.engine import anchoring
 from ph_economic_ai.benchmark import ground_truth as gt
+from ph_economic_ai.benchmark import psa_cpi
+
+_ELEC_BASE_RATE_PHP_KWH = 11.2   # to express the ₱/kWh anchor as a CPI %
 
 ARTIFACT = Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts' / 'anchor_validation.json'
 _CACHE = Path(__file__).resolve().parent / '_market_monthly_cache.json'
@@ -129,6 +134,125 @@ def backtest(panel: list[dict]) -> dict:
         'directional_accuracy': round(directional, 3),
         'calibrated_multiplier': round(slope, 3),   # OLS slope IS the recalibration
         'actual_change_std_php_l': round(float(a.std()), 3),
+    }
+
+
+# ── Electricity: is its CPI driven by the anchor's fuel channel? ──────────────
+
+def _sector_panel(mom, features_csv: Path) -> list[dict]:
+    """Align a PSA CPI MoM series with monthly oil/FX drivers."""
+    feat = pd.read_csv(features_csv, dtype={'date': str}).set_index('date')
+    rows = []
+    months = sorted(set(mom.index) & set(feat.index))
+    for prev, cur in zip(months, months[1:]):
+        if feat.loc[prev, 'oil_price'] and feat.loc[prev, 'usd_php']:
+            rows.append({
+                'month': cur,
+                'mom': float(mom[cur]),
+                'oil_pct': (feat.loc[cur, 'oil_price'] - feat.loc[prev, 'oil_price'])
+                           / feat.loc[prev, 'oil_price'] * 100.0,
+                'usd_pct': (feat.loc[cur, 'usd_php'] - feat.loc[prev, 'usd_php'])
+                           / feat.loc[prev, 'usd_php'] * 100.0,
+            })
+    return rows
+
+
+def _lagged_corr(pred: np.ndarray, actual: np.ndarray, lag: int) -> float:
+    """corr between pred at t-lag and actual at t."""
+    if lag == 0:
+        p, a = pred, actual
+    else:
+        p, a = pred[:-lag], actual[lag:]
+    return float(np.corrcoef(p, a)[0, 1])
+
+
+def _scale_ratio(pred: np.ndarray, actual: np.ndarray) -> float:
+    """Median |anchor| over median |actual move|. ~1 means the anchor's typical
+    magnitude matches reality — which is what an anchor is FOR (a scale guard),
+    independent of whether it predicts direction."""
+    ma = float(np.median(np.abs(actual)))
+    return float(np.median(np.abs(pred)) / ma) if ma else 0.0
+
+
+def backtest_electricity() -> dict:
+    """Regress the electricity anchor against real PSA electricity CPI MoM.
+
+    Two different questions, kept separate honestly:
+      - does the fuel-driven anchor PREDICT monthly electricity CPI? and
+      - is its MAGNITUDE right (the anchor's actual job)?
+    """
+    panel = _sector_panel(psa_cpi.load_electricity_mom(),
+                          Path(psa_cpi.HERE) / 'data' / 'electricity_features_monthly.csv')
+    anchor_pct = np.array([
+        anchoring.electricity_passthrough_anchor(r['oil_pct'], r['usd_pct'])
+        / _ELEC_BASE_RATE_PHP_KWH * 100.0
+        for r in panel
+    ])
+    actual = np.array([r['mom'] for r in panel])
+    lag_corrs = {lag: round(_lagged_corr(anchor_pct, actual, lag), 3) for lag in (0, 1, 2)}
+    best_lag = max(lag_corrs, key=lambda k: abs(lag_corrs[k]))
+    return {
+        'n_months': len(panel),
+        'predictive_correlation_by_lag': lag_corrs,
+        'best_correlation': lag_corrs[best_lag],
+        'best_lag': best_lag,
+        'is_predictive': abs(lag_corrs[best_lag]) >= 0.2,
+        'scale_ratio': round(_scale_ratio(anchor_pct, actual), 2),
+        'finding': ('the fuel-price anchor does NOT predict monthly electricity '
+                    'CPI at this resolution (the benchmark result used the '
+                    'formulaic generation-charge nowcast, not raw commodity '
+                    'changes); it functions as a magnitude guard, not a predictor'),
+    }
+
+
+def backtest_food() -> dict:
+    """Regress the food anchor against real PSA food CPI MoM.
+
+    Tests the design choice honestly: is persistence a better predictor than the
+    commodity (oil) driver the benchmark rejected, and does either beat a plain
+    mean? The conclusion is derived from the numbers, not asserted.
+    """
+    panel = _sector_panel(psa_cpi.load_food_mom(),
+                          Path(psa_cpi.HERE) / 'data' / 'food_features_monthly.csv')
+    mom = np.array([r['mom'] for r in panel])
+    oil = np.array([r['oil_pct'] for r in panel])
+
+    persist_pred, act, oil_act = [], [], []
+    for i in range(3, len(mom)):
+        persist_pred.append(float(np.mean(mom[i - 3:i])))
+        act.append(float(mom[i]))
+        oil_act.append(float(oil[i]))
+    p, a, o = np.array(persist_pred), np.array(act), np.array(oil_act)
+
+    persist_corr = round(float(np.corrcoef(p, a)[0, 1]), 3)
+    oil_corr = round(float(np.corrcoef(o, a)[0, 1]), 3)
+    mae_persist = round(float(np.mean(np.abs(a - p))), 3)
+    mae_naive = round(float(np.mean(np.abs(a - a.mean()))), 3)
+
+    # ~SE of a correlation at this n; two corrs within 2·SE are indistinguishable.
+    se = 1.0 / math.sqrt(len(a))
+    indistinguishable = abs(persist_corr - oil_corr) < 2 * se
+    both_weak = abs(persist_corr) < 0.25 and abs(oil_corr) < 0.25
+    if both_weak and indistinguishable:
+        finding = (
+            f'monthly food CPI is only weakly related to persistence '
+            f'({persist_corr}) or oil ({oil_corr}); the two are within sampling '
+            f'noise of each other (±{2 * se:.2f}) and a plain mean is competitive '
+            f'on MAE, so the anchor is a magnitude guard, not a predictor')
+    elif abs(persist_corr) > abs(oil_corr):
+        finding = 'persistence outpredicts oil, supporting the own-trend anchor'
+    else:
+        finding = 'oil edges persistence beyond noise — worth investigating'
+    return {
+        'n_months': len(a),
+        'persistence_correlation': persist_corr,
+        'oil_correlation': oil_corr,
+        'correlation_se': round(se, 3),
+        'indistinguishable': indistinguishable,
+        'persistence_mae': mae_persist,
+        'naive_mean_mae': mae_naive,
+        'scale_ratio': round(_scale_ratio(p, a), 2),
+        'finding': finding,
     }
 
 
@@ -233,7 +357,14 @@ def main() -> int:
         result['weak_model_benefit'] = weak_model_benefit(panel)
     except Exception as exc:
         result['data_error'] = f'{type(exc).__name__}: {exc}'
-        print('Real-data backtest skipped:', result['data_error'])
+        print('Fuel backtest skipped:', result['data_error'])
+
+    try:
+        result['electricity'] = backtest_electricity()
+        result['food'] = backtest_food()
+    except Exception as exc:
+        result['sector_error'] = f'{type(exc).__name__}: {exc}'
+        print('Sector backtest skipped:', result['sector_error'])
 
     bt = result.get('backtest')
     if bt:
@@ -248,6 +379,20 @@ def main() -> int:
         print(f"\nWeak-model benefit (simulated, vs actual):")
         print(f"  MAE raw model / anchored     : {wb['mae_raw_model_php_l']} / {wb['mae_anchored_php_l']}")
         print(f"  anchoring cuts error by      : {wb['improvement_pct']}%")
+
+    ele = result.get('electricity')
+    if ele:
+        print(f"\nElectricity anchor vs real PSA electricity CPI ({ele['n_months']} months):")
+        print(f"  predictive corr by lag : {ele['predictive_correlation_by_lag']}")
+        print(f"  magnitude (scale ratio): {ele['scale_ratio']}   (~1 = right magnitude)")
+        print(f"  -> {ele['finding']}")
+    fd = result.get('food')
+    if fd:
+        print(f"\nFood anchor vs real PSA food CPI ({fd['n_months']} months):")
+        print(f"  persistence corr : {fd['persistence_correlation']}   |   oil corr : {fd['oil_correlation']}")
+        print(f"  MAE persist / naive : {fd['persistence_mae']} / {fd['naive_mean_mae']}")
+        print(f"  magnitude (scale ratio): {fd['scale_ratio']}")
+        print(f"  -> {fd['finding']}")
 
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     ARTIFACT.write_text(json.dumps(result, indent=2))
