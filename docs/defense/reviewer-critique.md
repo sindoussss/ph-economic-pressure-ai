@@ -31,7 +31,9 @@ State them early and unprompted; they neutralize whole classes of attack.
 
 ## MAJOR — rejection risk if unaddressed
 
-### M1. Multiple hypothesis testing / no correction reported
+### M1. Multiple hypothesis testing / no correction reported  ✅ ADDRESSED
+*(Done: `benchmark/multiple_testing.py` + `multiple_testing.json`; manuscript §4.9 and §5.8. Result below confirmed the plan — the four headline positives survive Bonferroni; short-sample MoM and transport survive only BH-FDR and are already down-weighted for independent reasons.)*
+
 **Attack.** "You run DM tests across ~8–10 targets and samples at α = 0.05.
 Some 'significant' results are expected by chance. Where is your
 multiple-comparison correction?" This is the single most likely rejection
