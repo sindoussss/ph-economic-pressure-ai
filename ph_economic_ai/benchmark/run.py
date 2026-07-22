@@ -287,6 +287,13 @@ def main():
     print(f"Multiple testing: {len(_mt['survive_bonferroni'])}/{_mt['n_tests']} "
           f"confirmatory tests survive Bonferroni (FWER): {_mt['survive_bonferroni']}")
 
+    # Power / minimum-detectable-effect for the flagship efficiency null.
+    from ph_economic_ai.benchmark import power
+    _pw = power.run()['fuel_one_month_forecast']
+    print(f"Power: fuel forecast min detectable skill = "
+          f"{_pw['min_detectable_skill_pct']}% at {_pw['power']:.0%} power "
+          f"(observed {_pw['observed_skill'] * 100:+.1f}%)")
+
 
 if __name__ == '__main__':
     main()

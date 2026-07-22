@@ -1,0 +1,13 @@
+{
+  "fuel_one_month_forecast": {
+    "n": 51,
+    "alpha": 0.05,
+    "power": 0.8,
+    "rmse_random_walk": 4.107,
+    "rmse_model": 4.121,
+    "observed_skill": -0.0034,
+    "min_detectable_skill": 0.2468,
+    "min_detectable_skill_pct": 24.7,
+    "interpretation": "At n=51 the test can detect a skill of ~25% over the random walk at 80% power; the observed skill is -0.3%. The efficiency finding therefore rules out an edge of roughly 25% or larger, not smaller edges \u2014 \"no detectable edge at this power\", not proven efficiency."
+  }
+}
