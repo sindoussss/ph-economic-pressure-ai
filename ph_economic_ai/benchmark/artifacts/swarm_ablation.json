@@ -1,0 +1,77 @@
+{
+  "repeats": 8,
+  "provider": "ollama",
+  "variants": [
+    {
+      "variant": "full",
+      "rationale": "The shipped configuration \u2014 the baseline every cut is judged against.",
+      "n_runs": 8,
+      "n_parsed": 8,
+      "estimate_mean": 3.28,
+      "estimate_min": 2.35,
+      "estimate_max": 4.21,
+      "estimate_stdev": 0.664,
+      "confidence_mean": 75.0,
+      "seconds_mean": 235.9,
+      "calls": {
+        "fast": 32,
+        "deep": 7,
+        "total": 39
+      }
+    },
+    {
+      "variant": "short_completions",
+      "rationale": "Same structure, max_tokens 750 -> 400. Completions are ~24K of the ~44K token bill, and agents only owe brief reasoning plus one ESTIMATE line. Cheapest possible cut if the verdict holds.",
+      "n_runs": 8,
+      "n_parsed": 8,
+      "estimate_mean": 3.597,
+      "estimate_min": 2.21,
+      "estimate_max": 4.214,
+      "estimate_stdev": 0.721,
+      "confidence_mean": 64.5,
+      "seconds_mean": 230.8,
+      "calls": {
+        "fast": 32,
+        "deep": 7,
+        "total": 39
+      },
+      "overlaps_full": true
+    },
+    {
+      "variant": "two_regions",
+      "rationale": "NCR + Davao only. Halves agent calls. Tests whether the 4-region spread carries information or just costs tokens.",
+      "n_runs": 8,
+      "n_parsed": 8,
+      "estimate_mean": 3.116,
+      "estimate_min": 2.21,
+      "estimate_max": 4.214,
+      "estimate_stdev": 0.808,
+      "confidence_mean": 72.8,
+      "seconds_mean": 127.9,
+      "calls": {
+        "fast": 16,
+        "deep": 4,
+        "total": 20
+      },
+      "overlaps_full": true
+    },
+    {
+      "variant": "one_round",
+      "rationale": "Drops the elimination round; the survivor is picked from round-1 scores. Tests whether round 2 changes who wins.",
+      "n_runs": 8,
+      "n_parsed": 8,
+      "estimate_mean": 3.246,
+      "estimate_min": 1.88,
+      "estimate_max": 4.214,
+      "estimate_stdev": 0.81,
+      "confidence_mean": 63.4,
+      "seconds_mean": 176.5,
+      "calls": {
+        "fast": 20,
+        "deep": 7,
+        "total": 27
+      },
+      "overlaps_full": true
+    }
+  ]
+}
