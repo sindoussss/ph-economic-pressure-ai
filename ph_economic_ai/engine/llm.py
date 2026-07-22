@@ -73,6 +73,33 @@ _DEFAULT_MODELS: dict[str, dict[str, str]] = {
 # Providers that run locally: no quota, no key, no rate limiting.
 _LOCAL_PROVIDERS = frozenset({'ollama'})
 
+# Local inference runs on a single GPU, which cannot genuinely serve many
+# requests at once. The swarm's parallel rounds otherwise fire ~12 concurrent
+# calls (agents x groups), each needing a chat model AND an embedding model in
+# VRAM — on an 8GB card with a 9GB judge in the mix, that thrashes memory and
+# has been observed to stall Ollama outright. Cap concurrent local calls; a
+# small GPU is effectively serial anyway. Set STRATA_OLLAMA_CONCURRENCY=1 to
+# fully serialize if a machine still struggles.
+_local_sem: Optional[threading.Semaphore] = None
+_local_sem_lock = threading.Lock()
+
+# Hard wall-clock ceiling on one local call, streaming included. The per-read
+# socket timeout only catches a fully silent connection; a model trickling one
+# token every few seconds would slip past it forever. This bounds the whole
+# call so a single stuck request surfaces as an error instead of freezing the
+# run behind a clock that ticks to infinity.
+_LOCAL_CALL_DEADLINE = float(os.getenv('STRATA_OLLAMA_CALL_DEADLINE', '300'))
+
+
+def _local_gate() -> threading.Semaphore:
+    """Process-wide limiter on concurrent local requests. Lazily sized."""
+    global _local_sem
+    with _local_sem_lock:
+        if _local_sem is None:
+            n = max(1, int(os.getenv('STRATA_OLLAMA_CONCURRENCY', '2')))
+            _local_sem = threading.Semaphore(n)
+        return _local_sem
+
 # Free-tier requests/minute, per provider. Deliberately a touch under the
 # published ceiling: the published number is a hard cutoff, not a target, and
 # clock skew between us and the provider makes the boundary fuzzy.
@@ -504,9 +531,11 @@ def _ollama_stream(
 ) -> Iterator[dict]:
     """POST to a local Ollama and yield decoded NDJSON frames.
 
-    No rate limiting and no retries: there is no quota to respect, and a local
-    failure (daemon down, model not pulled) is a setup problem the user needs
-    to see immediately rather than have masked by four slow retries.
+    No retries: a local failure (daemon down, model not pulled) is a setup
+    problem the user needs to see immediately, not have masked by slow retries.
+    But two guards apply, because "local" does not mean "reliable" on a GPU the
+    swarm over-commits: a concurrency gate so parallel agents don't thrash VRAM,
+    and a wall-clock deadline so a stalled stream fails loudly.
     """
     payload: dict = {'model': model, 'messages': messages, 'stream': True}
     if max_tokens:
@@ -514,57 +543,86 @@ def _ollama_stream(
     if json_mode:
         payload['format'] = 'json'
 
+    gate = _local_gate()
+    gate.acquire()
+    started = time.monotonic()
     try:
-        resp = requests.post(
-            f'{ollama_host()}/api/chat', json=payload,
-            stream=True, timeout=_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise LLMError(
-            f'Cannot reach Ollama at {ollama_host()} ({exc}). '
-            'Is the Ollama app running?'
-        ) from exc
+        try:
+            resp = requests.post(
+                f'{ollama_host()}/api/chat', json=payload,
+                stream=True, timeout=_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise LLMError(
+                f'Cannot reach Ollama at {ollama_host()} ({exc}). '
+                'Is the Ollama app running?'
+            ) from exc
 
-    if resp.status_code == 404:
-        resp.close()
-        raise LLMError(
-            f"Ollama has no model {model!r}. Pull it first:  ollama pull {model}"
-        )
-    if resp.status_code != 200:
-        detail = resp.text[:300]
-        resp.close()
-        raise LLMError(f'Ollama returned HTTP {resp.status_code}: {detail}')
+        if resp.status_code == 404:
+            resp.close()
+            raise LLMError(
+                f"Ollama has no model {model!r}. Pull it first:  ollama pull {model}"
+            )
+        if resp.status_code != 200:
+            detail = resp.text[:300]
+            resp.close()
+            raise LLMError(f'Ollama returned HTTP {resp.status_code}: {detail}')
 
-    with resp:
-        for raw in resp.iter_lines(decode_unicode=True):
-            if not raw:
-                continue
+        with resp:
             try:
-                yield json.loads(raw)
-            except json.JSONDecodeError:
-                continue
+                for raw in resp.iter_lines(decode_unicode=True):
+                    if time.monotonic() - started > _LOCAL_CALL_DEADLINE:
+                        raise LLMError(
+                            f'Ollama call exceeded {_LOCAL_CALL_DEADLINE:.0f}s and was '
+                            f'treated as stalled ({model}). Restarting the Ollama app '
+                            'usually clears this.'
+                        )
+                    if not raw:
+                        continue
+                    try:
+                        yield json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+            except requests.RequestException as exc:
+                # A silent connection trips the socket read-timeout mid-stream;
+                # convert it so callers see one error type, not two.
+                raise LLMError(
+                    f'Ollama stream interrupted ({model}): {exc}. '
+                    'Restarting the Ollama app usually clears this.'
+                ) from exc
+    finally:
+        gate.release()
 
 
 def _ollama_embed(texts: list[str]) -> list[list[float]]:
-    """Embed via a local Ollama. Batches natively through /api/embed."""
-    model = os.getenv('STRATA_LLM_OLLAMA_EMBED_MODEL', 'nomic-embed-text')
-    try:
-        resp = requests.post(
-            f'{ollama_host()}/api/embed',
-            json={'model': model, 'input': texts},
-            timeout=_TIMEOUT,
-        )
-    except requests.RequestException as exc:
-        raise LLMError(f'Cannot reach Ollama at {ollama_host()} ({exc}).') from exc
+    """Embed via a local Ollama. Batches natively through /api/embed.
 
-    if resp.status_code == 404:
-        raise LLMError(
-            f"Ollama has no embedding model {model!r}. "
-            f"Pull it first:  ollama pull {model}"
-        )
-    if resp.status_code != 200:
-        raise LLMError(f'Ollama embedding failed: HTTP {resp.status_code} {resp.text[:200]}')
-    return resp.json().get('embeddings', [])
+    Shares the concurrency gate with chat: embeddings and completions compete
+    for the same GPU, and mixing them under load is what stalled the swarm.
+    """
+    model = os.getenv('STRATA_LLM_OLLAMA_EMBED_MODEL', 'nomic-embed-text')
+    gate = _local_gate()
+    gate.acquire()
+    try:
+        try:
+            resp = requests.post(
+                f'{ollama_host()}/api/embed',
+                json={'model': model, 'input': texts},
+                timeout=_TIMEOUT,
+            )
+        except requests.RequestException as exc:
+            raise LLMError(f'Cannot reach Ollama at {ollama_host()} ({exc}).') from exc
+
+        if resp.status_code == 404:
+            raise LLMError(
+                f"Ollama has no embedding model {model!r}. "
+                f"Pull it first:  ollama pull {model}"
+            )
+        if resp.status_code != 200:
+            raise LLMError(f'Ollama embedding failed: HTTP {resp.status_code} {resp.text[:200]}')
+        return resp.json().get('embeddings', [])
+    finally:
+        gate.release()
 
 
 def _is_number(value: Optional[str]) -> bool:
