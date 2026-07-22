@@ -77,9 +77,10 @@ _LOCAL_PROVIDERS = frozenset({'ollama'})
 # requests at once. The swarm's parallel rounds otherwise fire ~12 concurrent
 # calls (agents x groups), each needing a chat model AND an embedding model in
 # VRAM — on an 8GB card with a 9GB judge in the mix, that thrashes memory and
-# has been observed to stall Ollama outright. Cap concurrent local calls; a
-# small GPU is effectively serial anyway. Set STRATA_OLLAMA_CONCURRENCY=1 to
-# fully serialize if a machine still struggles.
+# stalled Ollama outright twice on the reference machine. Default to fully
+# serial: a small GPU is serial in practice anyway, and the parallelism only
+# bought thrash. Raise STRATA_OLLAMA_CONCURRENCY on a card with headroom.
+_DEFAULT_LOCAL_CONCURRENCY = 1
 _local_sem: Optional[threading.Semaphore] = None
 _local_sem_lock = threading.Lock()
 
@@ -96,7 +97,8 @@ def _local_gate() -> threading.Semaphore:
     global _local_sem
     with _local_sem_lock:
         if _local_sem is None:
-            n = max(1, int(os.getenv('STRATA_OLLAMA_CONCURRENCY', '2')))
+            n = max(1, int(os.getenv('STRATA_OLLAMA_CONCURRENCY',
+                                     str(_DEFAULT_LOCAL_CONCURRENCY))))
             _local_sem = threading.Semaphore(n)
         return _local_sem
 

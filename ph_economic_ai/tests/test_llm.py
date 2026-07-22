@@ -590,6 +590,13 @@ def test_concurrency_of_one_fully_serializes(local, fresh_gate, monkeypatch):
     assert llm._local_gate()._value == 1
 
 
+def test_local_is_serial_by_default(local, fresh_gate, monkeypatch):
+    """Two hangs on the reference 8GB card make serial the safe default — a
+    small GPU is serial in practice and parallelism only bought thrash."""
+    monkeypatch.delenv('STRATA_OLLAMA_CONCURRENCY', raising=False)
+    assert llm._local_gate()._value == 1
+
+
 class _EndlessResponse:
     """Streams empty keepalive lines forever — lazily, so it is never listified.
 
