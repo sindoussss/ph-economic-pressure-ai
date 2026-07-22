@@ -55,12 +55,12 @@ def test_local_fast_tier_stays_small_enough_to_fit_vram():
     assert '14b' not in fast and '70b' not in fast and '32b' not in fast
 
 
-def test_local_deep_tier_is_a_reasoning_model():
-    """Deliberately large, unlike the fast tier: it runs only the 7 judge calls
-    and those decide the verdict. qwen2.5:7b produced fuel estimates several
-    times too large, so the plausibility guard was discarding entire regional
-    verdicts."""
-    assert 'deepseek-r1' in llm.model_for(llm.DEEP, 'ollama')
+def test_local_deep_tier_also_fits_vram():
+    """The judge model must sit in VRAM alongside the fast model without the
+    swaps a 9GB judge forced. Magnitude errors are corrected in anchoring.py,
+    not by an oversized model the 8GB card cannot hold."""
+    deep = llm.model_for(llm.DEEP, 'ollama')
+    assert '14b' not in deep and '32b' not in deep and '70b' not in deep
 
 
 def test_unknown_provider_is_rejected(monkeypatch):
