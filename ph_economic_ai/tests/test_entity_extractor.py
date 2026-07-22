@@ -22,13 +22,32 @@ def test_parse_extraction_empty_on_garbage():
 
 
 def test_extract_degrades_to_empty(monkeypatch):
-    # model raising -> empty, never propagates
+    """This layer is optional enrichment — it must never break the graph."""
+    monkeypatch.setattr(ee.llm, 'is_configured', lambda: True)
+
+    # provider raising -> empty, never propagates
     def boom(*a, **k):
-        raise RuntimeError('ollama down')
-    monkeypatch.setattr(ee, 'ollama', type('M', (), {'chat': staticmethod(boom)}))
+        raise RuntimeError('provider down')
+    monkeypatch.setattr(ee.llm, 'complete', boom)
     assert ee.extract('some real chunk text', 'DOE') == {'entities': [], 'relations': []}
-    # no ollama at all -> empty
-    monkeypatch.setattr(ee, 'ollama', None)
+
+    # no provider configured at all -> empty, and no call attempted
+    monkeypatch.setattr(ee.llm, 'is_configured', lambda: False)
+    monkeypatch.setattr(ee.llm, 'complete', _never_called)
     assert ee.extract('text', 'DOE') == {'entities': [], 'relations': []}
+
     # empty input -> empty (no call)
     assert ee.extract('   ', 'DOE') == {'entities': [], 'relations': []}
+
+
+def test_extract_parses_a_successful_response(monkeypatch):
+    monkeypatch.setattr(ee.llm, 'is_configured', lambda: True)
+    monkeypatch.setattr(ee.llm, 'complete',
+                        lambda *a, **k: 'ENTITY: diesel | commodity\n')
+    assert ee.extract('chunk', 'DOE')['entities'] == [
+        {'name': 'diesel', 'type': 'commodity'}
+    ]
+
+
+def _never_called(*a, **k):              # pragma: no cover - must not run
+    raise AssertionError('extract called the provider when none was configured')

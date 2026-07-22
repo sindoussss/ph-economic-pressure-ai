@@ -1,4 +1,5 @@
 import concurrent.futures
+import hashlib
 import json
 import logging
 import os
@@ -13,11 +14,20 @@ import requests
 from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Embedding model pulled via ollama for semantic search.
-# Pull once with: ollama pull nomic-embed-text
-_EMBED_MODEL = 'nomic-embed-text'
-_EMBED_WORKERS = 8   # parallel embedding requests
+from ph_economic_ai.engine import llm
+
 _EMBED_MAX_CHARS = 2000  # truncate chunk text before embedding
+# Gemini's batchEmbedContents takes many texts per request, so the corpus costs
+# a handful of calls instead of one per chunk. Kept modest to stay well inside
+# the free tier's per-request payload limits.
+_EMBED_BATCH = 64
+
+# Embeddings are cached on disk keyed by content hash. Previously this cache
+# was in-memory and keyed by id(chunk), which meant (a) every launch re-embedded
+# the whole corpus — the dominant startup cost — and (b) once a Chunk was
+# garbage-collected CPython could reuse its address, silently serving another
+# chunk's vector. Hashing the text fixes both.
+_EMBED_CACHE_PATH = Path(__file__).resolve().parents[1] / 'cache' / 'embeddings.npz'
 
 _CHUNK_SIZE = 2048    # ~512 tokens at 4 chars/token
 _CHUNK_OVERLAP = 256  # ~64 tokens overlap
@@ -245,6 +255,30 @@ def _eia_api_key() -> Optional[str]:
     return None
 
 
+def _embed_model_name() -> str:
+    """The model the cache is keyed against — must match what llm.embed uses."""
+    return os.getenv('STRATA_LLM_EMBED_MODEL', 'gemini-embedding-001')
+
+
+def _embed_key(text: str) -> str:
+    """Stable content key for one chunk.
+
+    Truncates before hashing so callers can pass either the full or the already
+    truncated text and still land on the same entry — only the truncated prefix
+    is ever actually sent to the embedding model.
+    """
+    return hashlib.sha256(text[:_EMBED_MAX_CHARS].encode('utf-8')).hexdigest()
+
+
+def _normalise(values) -> np.ndarray:
+    """L2-normalise so cosine similarity reduces to a dot product."""
+    vec = np.asarray(values, dtype=np.float32)
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
+    return vec
+
+
 class RagEngine:
     SOURCES = SOURCES
 
@@ -254,8 +288,9 @@ class RagEngine:
         # Semantic index (primary)
         self._embed_vecs: Optional[np.ndarray] = None   # (n_active, dim) float32, L2-normalised
         self._embed_active: list[Chunk] = []            # active chunks matching _embed_vecs rows
-        self._embed_cache: dict[int, np.ndarray] = {}   # id(chunk) → normalised vector
+        self._embed_cache: dict[str, np.ndarray] = {}   # sha256(text) → normalised vector
         self._use_embeddings: bool = True               # flipped False if model unavailable
+        self._load_embed_cache()
         # TF-IDF fallback (always built as safety net)
         self._vectorizer: Optional[TfidfVectorizer] = None
         self._matrix = None  # scipy sparse
@@ -329,12 +364,14 @@ class RagEngine:
         return self._query_tfidf(text, top_k, sources)
 
     def _query_embeddings(self, text: str, top_k: int, sources: Optional[list[str]]) -> list[dict]:
-        import ollama as _ol
-        resp = _ol.embeddings(model=_EMBED_MODEL, prompt=text[:_EMBED_MAX_CHARS])
-        q_vec = np.array(resp['embedding'], dtype=np.float32)
-        norm = np.linalg.norm(q_vec)
-        if norm > 0:
-            q_vec /= norm
+        # Queries go through the same content-keyed cache as chunks: agents ask
+        # overlapping questions every round, so this removes a per-agent
+        # per-round request from an already tight free-tier budget.
+        key = _embed_key(text)
+        q_vec = self._embed_cache.get(key)
+        if q_vec is None:
+            q_vec = _normalise(llm.embed([text[:_EMBED_MAX_CHARS]])[0])
+            self._embed_cache[key] = q_vec
 
         active = self._embed_active
         if sources:
@@ -491,11 +528,12 @@ class RagEngine:
         if not self._use_embeddings:
             return
         try:
-            new_chunks = [c for c in active if id(c) not in self._embed_cache]
-            if new_chunks:
-                self._embed_chunks_parallel(new_chunks)
+            missing = [c for c in active if _embed_key(c.text) not in self._embed_cache]
+            if missing:
+                self._embed_chunks_batched(missing)
+                self._save_embed_cache()
             # Build matrix from cache in active order
-            vecs = [self._embed_cache[id(c)] for c in active]
+            vecs = [self._embed_cache[_embed_key(c.text)] for c in active]
             self._embed_vecs = np.stack(vecs).astype(np.float32)
             self._embed_active = active
         except Exception as e:
@@ -504,20 +542,47 @@ class RagEngine:
             self._embed_vecs = None
             self._embed_active = []
 
-    def _embed_chunks_parallel(self, chunks: list[Chunk]) -> None:
-        """Embed chunks in parallel and store in cache. Raises on first failure."""
-        import ollama as _ol
+    # ── Embedding cache ───────────────────────────────────────────────────────
 
-        def _embed_one(chunk: Chunk) -> tuple[int, np.ndarray]:
-            resp = _ol.embeddings(model=_EMBED_MODEL, prompt=chunk.text[:_EMBED_MAX_CHARS])
-            vec = np.array(resp['embedding'], dtype=np.float32)
-            norm = np.linalg.norm(vec)
-            if norm > 0:
-                vec /= norm
-            return id(chunk), vec
+    def _load_embed_cache(self) -> None:
+        """Load persisted vectors, discarding any written by a different model.
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=_EMBED_WORKERS) as pool:
-            futs = {pool.submit(_embed_one, c): c for c in chunks}
-            for fut in concurrent.futures.as_completed(futs):
-                chunk_id, vec = fut.result()   # raises on error → caught in _refit
-                self._embed_cache[chunk_id] = vec
+        Embedding dimensions and geometry are model-specific, so mixing vectors
+        across models would corrupt retrieval silently rather than erroring.
+        """
+        if not _EMBED_CACHE_PATH.exists():
+            return
+        try:
+            with np.load(_EMBED_CACHE_PATH, allow_pickle=False) as data:
+                if str(data['model']) != _embed_model_name():
+                    logging.info('RagEngine: embedding cache is from another model; ignoring')
+                    return
+                keys = data['keys']
+                vecs = data['vecs']
+            self._embed_cache = {str(k): vecs[i] for i, k in enumerate(keys)}
+            logging.info('RagEngine: loaded %d cached embeddings', len(self._embed_cache))
+        except Exception as e:                      # corrupt/partial file is not fatal
+            logging.warning('RagEngine: could not read embedding cache (%s)', e)
+
+    def _save_embed_cache(self) -> None:
+        if not self._embed_cache:
+            return
+        try:
+            _EMBED_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            keys = list(self._embed_cache)
+            np.savez_compressed(
+                _EMBED_CACHE_PATH,
+                model=np.array(_embed_model_name()),
+                keys=np.array(keys),
+                vecs=np.stack([self._embed_cache[k] for k in keys]),
+            )
+        except Exception as e:                      # caching is best-effort
+            logging.warning('RagEngine: could not write embedding cache (%s)', e)
+
+    def _embed_chunks_batched(self, chunks: list[Chunk]) -> None:
+        """Embed uncached chunks in batches. Raises on failure → caught in _refit."""
+        for start in range(0, len(chunks), _EMBED_BATCH):
+            batch = chunks[start:start + _EMBED_BATCH]
+            texts = [c.text[:_EMBED_MAX_CHARS] for c in batch]
+            for text, raw in zip(texts, llm.embed(texts)):
+                self._embed_cache[_embed_key(text)] = _normalise(raw)

@@ -13,8 +13,59 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
 from ph_economic_ai.engine.debate import AgentResponse
+from ph_economic_ai.engine.swarm import _MAX_REALISTIC_FUEL_CHANGE
 from ph_economic_ai.utils.preprocessing import build_features
 from ph_economic_ai import model as ml
+
+
+def _signed_php(value: float, suffix: str = '') -> str:
+    """Peso change with a leading sign: +₱0.35, -₱0.25.
+
+    Replaces a hardcoded '+₱' that rendered a fall as '+₱-0.25'."""
+    sign = '-' if value < 0 else '+'
+    return f'{sign}₱{abs(value):.2f}{suffix}'
+
+
+def _physics_anchor_label(master_verdict):
+    """A small line showing how the headline related to the physical anchor.
+
+    Transparency is the point of the anchoring experiment: the reader should be
+    able to see when the number is the model's own, when it was pulled back to
+    physics, and when physics stood in entirely. Returns a configured QLabel, or
+    None when there is no anchor to show (e.g. debate mode).
+    """
+    anchor = getattr(master_verdict, 'physical_anchor', None)
+    if anchor is None:
+        return None
+    source = getattr(master_verdict, 'estimate_source', 'agent')
+    text = {
+        'agent':   f'✓ Consistent with the {anchor:+.2f} ₱/L mechanical pass-through',
+        'clamped': f'⟐ Clamped toward the {anchor:+.2f} ₱/L mechanical pass-through',
+        'anchor':  f'⚑ No usable agent estimate — using the {anchor:+.2f} ₱/L physical anchor',
+    }.get(source, f'Mechanical pass-through: {anchor:+.2f} ₱/L')
+    color = {'agent': '#1C7C54', 'clamped': '#B45309', 'anchor': '#B45309'}.get(source, '#6B7280')
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+    lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{color};')
+    return lbl
+
+
+def _missing_estimate_note(estimate, rejected) -> str:
+    """Explain a blank estimate. Empty string when there is nothing to explain.
+
+    "Discarded because the model said something impossible" and "the model
+    never answered" are very different failures, and a reader who sees only a
+    dash cannot tell either of them from a crash.
+    """
+    if estimate is not None:
+        return ''
+    if rejected is not None:
+        return (
+            f'Judge proposed {rejected:+.2f} ₱/L — discarded as implausible '
+            f'(outside ±₱{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L). Not counted toward '
+            f'the consensus.'
+        )
+    return 'Judge produced no parseable estimate. Not counted toward the consensus.'
 from ph_economic_ai.ui.causal_chain_widget import CausalChainWidget, BSPAlertBanner
 from ph_economic_ai.ui.regional_map import RegionalMapWidget
 from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
@@ -370,7 +421,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
-        val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
+        val_str = _signed_php(avg, '/L') if avg is not None else 'No consensus'
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
@@ -382,7 +433,7 @@ class Stage4ReportPanel(QWidget):
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
-                v_str = f'+₱{value:.2f}'
+                v_str = _signed_php(value)
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
@@ -392,6 +443,9 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        _anchor_lbl = _physics_anchor_label(master_verdict)
+        if _anchor_lbl is not None:
+            cf_layout.addWidget(_anchor_lbl)
         _note = QLabel(_honesty.consensus_note())
         _note.setWordWrap(True)
         _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')
@@ -426,7 +480,13 @@ class Stage4ReportPanel(QWidget):
             pair_str = ' & '.join(rv.region_pair)
             name_lbl = QLabel(pair_str[:50])
             name_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
-            est_str = f'+₱{rv.estimate:.2f}/L' if rv.estimate is not None else '—'
+            rejected = getattr(rv, 'rejected_estimate', None)
+            if rv.estimate is not None:
+                est_str = f'{rv.estimate:+.2f} ₱/L'
+            elif rejected is not None:
+                est_str = 'discarded'
+            else:
+                est_str = 'no estimate'
             est_lbl = QLabel(est_str)
             est_lbl.setStyleSheet('font-size:10px;font-weight:700;color:#1C1E26;')
             head_row.addWidget(name_lbl)
@@ -437,6 +497,14 @@ class Stage4ReportPanel(QWidget):
             conf_lbl = QLabel(f'Agent agreement: {rv.confidence:.0%}')
             conf_lbl.setStyleSheet('font-size:8px;color:#9EA3AE;')
             rvfl.addWidget(conf_lbl)
+
+            # A blank estimate reads as a crash unless we say what happened.
+            note = _missing_estimate_note(rv.estimate, rejected)
+            if note:
+                note_lbl = QLabel(note)
+                note_lbl.setWordWrap(True)
+                note_lbl.setStyleSheet('font-size:8px;color:#B45309;')
+                rvfl.addWidget(note_lbl)
 
             rvcl.addWidget(rvf)
 
@@ -467,7 +535,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout = QVBoxLayout(consensus_frame)
         cf_layout.setContentsMargins(12, 10, 12, 10)
 
-        val_str = f'+₱{avg:.2f}/L' if avg is not None else 'No consensus'
+        val_str = _signed_php(avg, '/L') if avg is not None else 'No consensus'
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
@@ -479,7 +547,7 @@ class Stage4ReportPanel(QWidget):
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
-                v_str = f'+₱{value:.2f}'
+                v_str = _signed_php(value)
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
@@ -515,7 +583,7 @@ class Stage4ReportPanel(QWidget):
             head_row = QHBoxLayout()
             name_lbl = QLabel(resp.agent_name)
             name_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
-            est = f'+₱{resp.price_estimate:.2f}' if resp.price_estimate is not None else '—'
+            est = _signed_php(resp.price_estimate) if resp.price_estimate is not None else '—'
             est_lbl = QLabel(est)
             est_lbl.setStyleSheet('font-size:10px;font-weight:700;color:#1C1E26;')
             head_row.addWidget(name_lbl)

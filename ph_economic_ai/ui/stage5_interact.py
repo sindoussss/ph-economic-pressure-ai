@@ -41,8 +41,8 @@ class _AskContextThread(QThread):
         self._question = question
 
     def run(self):
-        import ollama
-        from ph_economic_ai.engine.debate import _MAIN_MODEL
+        from ph_economic_ai.engine import llm
+        from ph_economic_ai.engine.debate import _MAIN_TIER
         system = (
             'You are a Philippine macroeconomic analyst with access to the latest '
             'multi-agent simulation results for gas, food, and electricity prices. '
@@ -59,16 +59,13 @@ class _AskContextThread(QThread):
         context = '\n\n'.join(parts)
         user_msg = f'{context}\n\nQuestion: {self._question}' if context else self._question
         full_text = ''
-        for chunk in ollama.chat(
-            model=_MAIN_MODEL,
-            messages=[
+        for token in llm.stream(
+            [
                 {'role': 'system', 'content': system},
                 {'role': 'user',   'content': user_msg},
             ],
-            stream=True,
-            think=False,
+            tier=_MAIN_TIER,
         ):
-            token = chunk['message']['content']
             full_text += token
             self.token_received.emit(token)
         self.done.emit(full_text)

@@ -1,0 +1,34 @@
+# Strata — interactive app dependencies (Python 3.10)
+#
+# This is the EXPLORATORY half: the 20-agent swarm, the knowledge-graph
+# simulation and the PyQt6 workbench. It is an interface and explanation
+# layer, not a validated predictor.
+#
+#     pip install -r requirements-app.txt
+#     python -m ph_economic_ai.main
+#
+# The app talks to a local Ollama by default — no API key, no quota, no
+# internet. Install Ollama from https://ollama.com, then pull the two models
+# the tiers map onto:
+#
+#     ollama pull qwen2.5:3b        # fast tier — the 20 bulk swarm agents
+#     ollama pull qwen2.5:7b        # deep tier — judges and synthesis
+#     ollama pull nomic-embed-text  # RAG embeddings (optional)
+#
+# Those sizes are deliberate: they fit in 8GB of VRAM alongside their context.
+# A 14b model is ~9GB and will spill to CPU on an 8GB card, which is slow
+# enough to look broken.
+#
+# Hosted providers are optional. Setting either key switches to it
+# automatically, no code change:
+#
+#     GROQ_API_KEY    — https://console.groq.com
+#     GEMINI_API_KEY  — https://aistudio.google.com
+#
+# No LLM at all still runs: retrieval falls back to TF-IDF and the swarm
+# reports that the provider is unreachable.
+
+-r requirements.txt
+
+PyQt6
+beautifulsoup4

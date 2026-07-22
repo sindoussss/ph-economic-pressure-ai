@@ -2,15 +2,17 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import ollama
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from ph_economic_ai.engine import llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.live_data import LiveDataBrief
 
 
-_MAIN_MODEL = 'deepseek-r1:8b'
-_MINI_MODEL  = 'qwen2.5:3b'
+# The debate path runs far fewer calls than the swarm, so its main agents can
+# afford the deep tier; the mini agents stay fast.
+_MAIN_TIER = llm.DEEP
+_MINI_TIER = llm.FAST
 
 # ── Current Philippine economic baselines ─────────────────────────────────────
 # Gas: see swarm.fetch_live_retail_price() — auto-fetches on every swarm run.
@@ -27,7 +29,7 @@ class Agent:
     role: str
     system_prompt: str
     rag_sources: list[str]
-    model: str = _MAIN_MODEL   # LLM to use for this agent
+    tier: str = _MAIN_TIER      # llm.FAST | llm.DEEP — resolved at call time
     is_mini: bool = False       # True → smaller circle, lightweight model
 
 
@@ -41,7 +43,7 @@ class AgentResponse:
 
 
 DEFAULT_AGENTS: list[Agent] = [
-    # ── 10 main agents (deepseek-r1:8b) ──────────────────────────────────────
+    # ── 10 main agents (deep tier) ───────────────────────────────────────────
     Agent(
         name='Market Analyst',
         role='Price signals, news, short-term pass-through',
@@ -153,7 +155,7 @@ DEFAULT_AGENTS: list[Agent] = [
         rag_sources=['neda_2024_2026', 'ManilaBulletin'],
     ),
 
-    # ── 5 mini validator agents (neural-chat:7b) ──────────────────────────────
+    # ── 5 mini validator agents (fast tier) ───────────────────────────────────
     Agent(
         name='Data Validator',
         role='Sanity-checks estimates vs historical price change range',
@@ -165,7 +167,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
         ),
         rag_sources=['YahooFinanceCrude', 'YahooFinanceForex'],
-        model=_MINI_MODEL,
+        tier=_MINI_TIER,
         is_mini=True,
     ),
     Agent(
@@ -178,7 +180,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
         ),
         rag_sources=['ManilaBulletin', 'BusinessWorld'],
-        model=_MINI_MODEL,
+        tier=_MINI_TIER,
         is_mini=True,
     ),
     Agent(
@@ -191,7 +193,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
         ),
         rag_sources=[],
-        model=_MINI_MODEL,
+        tier=_MINI_TIER,
         is_mini=True,
     ),
     Agent(
@@ -204,7 +206,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
         ),
         rag_sources=['neda_2024_2026'],
-        model=_MINI_MODEL,
+        tier=_MINI_TIER,
         is_mini=True,
     ),
     Agent(
@@ -218,7 +220,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
         ),
         rag_sources=[],
-        model=_MINI_MODEL,
+        tier=_MINI_TIER,
         is_mini=True,
     ),
 ]
@@ -336,7 +338,7 @@ ELECTRICITY_AGENTS: list[Agent] = [
 ]
 
 
-_SYNTHESIZER_MODEL = 'qwen2.5:7b'
+_SYNTHESIZER_TIER = llm.DEEP
 
 
 class SynthesizerThread(QThread):
@@ -370,8 +372,7 @@ class SynthesizerThread(QThread):
             },
         ]
         full_text = ''
-        for chunk in ollama.chat(model=_SYNTHESIZER_MODEL, messages=messages, stream=True):
-            token = chunk['message']['content']
+        for token in llm.stream(messages, tier=_SYNTHESIZER_TIER):
             full_text += token
             self.token_ready.emit(token)
         self.finished.emit(full_text)
@@ -395,9 +396,44 @@ def _parse_think(text: str) -> tuple[str, str]:
     return ' '.join(thinking_parts).strip(), statement.strip()
 
 
+# Parse-sanity bounds. These are not economic claims — they reject values that
+# can only be a misparse. PSA month-on-month food CPI moves within a couple of
+# percent, so a double-digit "monthly" figure is a year-on-year number that
+# leaked out of the surrounding prose. Meralco's residential rate is ~₱14/kWh
+# and moves by tenths of a peso month to month.
+_MAX_REALISTIC_FOOD_PCT = 10.0
+_MAX_REALISTIC_ELEC_PHP_KWH = 3.0
+
+
+def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
+    """Read the value off the agent's final `ESTIMATE:` line.
+
+    Every agent prompt ends with an explicit "End with: ESTIMATE: ..."
+    instruction, so that line — not the surrounding reasoning — is the answer.
+    Taking the last match matters because agents restate and revise; taking the
+    first would lock in a number the agent went on to reject.
+    """
+    hits = re.findall(
+        rf'ESTIMATE\s*:\s*([+\-])\s*{unit_pattern}',
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not hits:
+        return None
+    sign, raw = hits[-1]
+    return (-1 if sign == '-' else 1) * float(raw)
+
+
 def _extract_price(text: str) -> Optional[float]:
-    """Extract signed price change: +₱X.XX or -₱X.XX. Requires explicit sign to avoid
-    matching baseline price mentions like 'a base of ₱60/L'."""
+    """Extract a signed price change: +₱X.XX or -₱X.XX.
+
+    Prefers the explicit ESTIMATE line; only falls back to scanning the prose
+    when the agent did not produce one. Requires an explicit sign either way,
+    so baseline mentions like 'a base of ₱60/L' are not mistaken for a change.
+    """
+    anchored = _last_estimate_match(text, r'(?:₱|PHP|P)?\s*(\d+\.?\d*)')
+    if anchored is not None:
+        return anchored
     m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', text)
     if m:
         sign = -1 if m.group(1) == '-' else 1
@@ -405,23 +441,47 @@ def _extract_price(text: str) -> Optional[float]:
     return None
 
 
+def _extract_electricity_change(text: str) -> Optional[float]:
+    """Electricity rate change in ₱/kWh, with a parse-sanity bound."""
+    value = _extract_price(text)
+    if value is None or abs(value) > _MAX_REALISTIC_ELEC_PHP_KWH:
+        return None
+    return value
+
+
 def _extract_percent(text: str) -> Optional[float]:
-    """Extract signed percentage change: +X.X% or -X.X% (for food index estimates)."""
-    m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', text)
-    if m:
-        sign = -1 if m.group(1) == '-' else 1
-        return sign * float(m.group(2))
-    return None
+    """Extract a signed percentage change: +X.X% or -X.X%.
+
+    Anchored to the ESTIMATE line for a specific reason: agents routinely cite
+    a year-on-year figure while reasoning ("food inflation ran 6.1% YoY, so I
+    expect +0.4% this month"). A first-match scan of the prose returns the
+    citation instead of the forecast — and that number then flows through the
+    0.388 food basket weight straight into the projected-CPI headline.
+    """
+    value = _last_estimate_match(text, r'(\d+\.?\d*)\s*%')
+    if value is None:
+        m = re.search(r'([+\-])\s*(\d+\.?\d*)\s*%', text)
+        if not m:
+            return None
+        value = (-1 if m.group(1) == '-' else 1) * float(m.group(2))
+    if abs(value) > _MAX_REALISTIC_FOOD_PCT:
+        return None
+    return value
 
 
 class DebateEngine:
     def __init__(self, agents: list[Agent], rag: RagEngine, scenario: dict,
-                 price_extractor=None, data_brief: Optional['LiveDataBrief'] = None):
+                 price_extractor=None, data_brief: Optional['LiveDataBrief'] = None,
+                 anchor_note: str = ''):
         """
         scenario keys: oil_pct, usd_pct, bsp_rate, demand_index
         price_extractor: callable(text) -> Optional[float]. Defaults to _extract_price.
                          Pass _extract_percent for food agents.
         data_brief: LiveDataBrief instance injected into every agent prompt.
+        anchor_note: optional physical/statistical baseline injected into every
+                     prompt so a weak model reasons from the right scale rather
+                     than inventing one — the sector equivalent of the master
+                     judge's mechanical pass-through line.
         """
         self._agents = agents
         self._rag = rag
@@ -429,6 +489,7 @@ class DebateEngine:
         self._history: list[AgentResponse] = []
         self._price_extractor = price_extractor or _extract_price
         self._data_brief = data_brief
+        self._anchor_note = anchor_note
 
     def _scenario_text(self) -> str:
         s = self._scenario
@@ -459,9 +520,11 @@ class DebateEngine:
             except Exception:
                 pass
 
+        anchor_block = f"{self._anchor_note}\n\n" if self._anchor_note else ''
         user_content = (
             f"{brief_block}"
             f"{scenario_text}\n\n"
+            f"{anchor_block}"
             f"Relevant context:\n{rag_text}\n\n"
             + (f"Previous agent responses:\n{prior}\n\n" if prior else '')
             + "Give your analysis. You MUST cite specific data from the DATA BRIEF "
@@ -486,15 +549,7 @@ class DebateEngine:
             for agent in self._agents:
                 messages = self._build_prompt(agent, round_num)
                 full_text = ''
-                stream = ollama.chat(
-                    model=agent.model,
-                    messages=messages,
-                    stream=True,
-                    think=False,
-                    options={'num_predict': 750},
-                )
-                for chunk in stream:
-                    token = chunk['message']['content']
+                for token in llm.stream(messages, tier=agent.tier, max_tokens=750):
                     full_text += token
                     if on_token:
                         on_token(agent.name, token)
@@ -532,8 +587,7 @@ class DebateEngine:
             )},
         ]
         full_text = ''
-        for chunk in ollama.chat(model=agent.model, messages=messages, stream=True, think=False):
-            token = chunk['message']['content']
+        for token in llm.stream(messages, tier=agent.tier):
             full_text += token
             if on_token:
                 on_token(token)

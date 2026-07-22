@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import re
 import statistics
 import threading
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-import ollama
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from ph_economic_ai.engine import anchoring, llm
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import AgentResponse, _parse_think, _extract_price
 from ph_economic_ai.engine.live_data import LiveDataBrief
@@ -66,15 +67,40 @@ REGIONS: list[str] = [
 # Pairs: (0,1) and (2,3) → 2 regional judges
 REGION_PAIRS: list[tuple[int, int]] = [(0, 1), (2, 3)]
 
-# ── Model assignments — light mode ────────────────────────────────────────────
-_ROLE_MODELS: dict[str, str] = {
-    'Forecaster':        'qwen2.5:7b',
-    'DataExtractor':     'qwen2.5:3b',
-    'Synthesizer':       'qwen2.5:3b',
-    'Critic':            'qwen2.5:7b',
-    'ConfidenceScorer':  'qwen2.5:3b',
+# ── Tier assignments ──────────────────────────────────────────────────────────
+# Every bulk agent runs on the fast tier and only the judges get the deep one.
+# That looks blunter than the old five-way 3b/7b/14b split, but free-tier
+# tokens-per-minute — not requests-per-day — is the binding constraint, and the
+# deep tier's TPM ceiling cannot absorb 32 agent calls carrying RAG context.
+# Spending it on the 7 judge calls buys more: the judges are what actually
+# determine the master verdict.
+_ROLE_TIERS: dict[str, str] = {
+    'Forecaster':        llm.FAST,
+    'DataExtractor':     llm.FAST,
+    'Synthesizer':       llm.FAST,
+    'Critic':            llm.FAST,
+    'ConfidenceScorer':  llm.FAST,
 }
-_JUDGE_MODEL = 'qwen2.5:14b'
+_JUDGE_TIER = llm.DEEP
+
+# RegionalJudge.run makes three calls (two defences + a synthesis); MasterJudge
+# makes one. Named so expected_call_counts() stays honest if either changes.
+_REGIONAL_JUDGE_CALLS = 3
+_MASTER_JUDGE_CALLS = 1
+
+# Reserved completion length per call. Module-level so the ablation harness can
+# vary it: completions are ~24K of a run's ~44K fast-tier tokens, making this
+# the single biggest lever on free-tier run time.
+#
+# The judge budgets are deliberately generous. A reasoning model on the deep
+# tier (deepseek-r1 and friends) spends hundreds of tokens thinking before it
+# writes anything, and if the cap lands mid-thought the reply is truncated
+# before the ESTIMATE line — which does not error, it just silently yields a
+# verdict with no estimate. This is a cap, not a target: models that finish
+# early cost nothing extra.
+_AGENT_MAX_TOKENS = 750
+_JUDGE_MAX_TOKENS = 1800
+_MASTER_MAX_TOKENS = 2000
 _MAX_REALISTIC_FUEL_CHANGE = 8.0
 
 # Role processing order within a round (Critic and ConfidenceScorer last so they
@@ -82,12 +108,51 @@ _MAX_REALISTIC_FUEL_CHANGE = 8.0
 _ROLE_ORDER = ['Forecaster', 'DataExtractor', 'Synthesizer', 'Critic', 'ConfidenceScorer']
 
 
+def expected_call_counts() -> dict[str, int]:
+    """How many LLM calls one swarm run costs, derived from the swarm's shape.
+
+    Single source of truth for anything that needs the number — the setup
+    screen's time estimate, and free-tier quota planning. Derived rather than
+    hardcoded because a stale constant is exactly how the old estimate came to
+    claim "~371 calls" for a run that actually makes 39.
+    """
+    alive = len(_ROLE_ORDER)
+    per_group = 0
+    for _round_num, n_eliminate in _BRACKET:
+        per_group += alive
+        alive -= n_eliminate
+
+    fast = per_group * len(REGIONS)
+    deep = len(REGION_PAIRS) * _REGIONAL_JUDGE_CALLS + _MASTER_JUDGE_CALLS
+    return {'fast': fast, 'deep': deep, 'total': fast + deep}
+
+
+def group_critical_path() -> int:
+    """Sequential call-depth of one group, in call durations.
+
+    Round 1 is sequential by design (each agent reads its peers' answers in
+    order), so it costs one duration per agent. Later rounds fan out across a
+    thread pool and cost roughly one duration each regardless of width.
+    """
+    if not _BRACKET:
+        return 0
+    first_round_agents = len(_ROLE_ORDER)
+    later_rounds = len(_BRACKET) - 1
+    return first_round_agents + later_rounds
+
+
 def _is_realistic_fuel_change(value: Optional[float]) -> bool:
     return value is not None and abs(value) <= _MAX_REALISTIC_FUEL_CHANGE
 
 
-def _extract_fuel_change(text: str) -> Optional[float]:
-    """Extract a signed PHP/L fuel price change, rejecting absolute-price parses."""
+def parse_fuel_estimate(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Parse a PHP/L fuel change into (accepted, rejected).
+
+    Returns the value in the first slot if it survives the plausibility guard,
+    otherwise in the second. Separating the two lets callers tell "the judge
+    never gave a number" apart from "the judge gave one and we threw it away" —
+    a distinction the report previously collapsed into a bare em dash.
+    """
     estimate = None
     estimate_lines = re.findall(
         r'ESTIMATE\s*:\s*([+\-])\s*(?:₱|PHP|P|â‚±)?\s*(\d+(?:\.\d+)?)\s*/?\s*L?',
@@ -99,9 +164,22 @@ def _extract_fuel_change(text: str) -> Optional[float]:
         estimate = (-1 if sign == '-' else 1) * float(raw)
     else:
         estimate = _extract_price(text)
+
+    if estimate is None:
+        return None, None
     if not _is_realistic_fuel_change(estimate):
-        return None
-    return estimate
+        logging.info(
+            'swarm: rejected fuel estimate %+.2f PHP/L (outside +/-%.0f)',
+            estimate, _MAX_REALISTIC_FUEL_CHANGE,
+        )
+        return None, estimate
+    return estimate, None
+
+
+def _extract_fuel_change(text: str) -> Optional[float]:
+    """Extract a signed PHP/L fuel price change, rejecting absolute-price parses."""
+    accepted, _ = parse_fuel_estimate(text)
+    return accepted
 
 
 def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[float]) -> int:
@@ -140,7 +218,7 @@ def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[floa
 class SwarmAgent:
     name: str
     role: str
-    model: str
+    tier: str                  # llm.FAST | llm.DEEP — resolved to a model at call time
     group_id: int
     region_name: str
     system_prompt: str
@@ -167,6 +245,10 @@ class RegionalVerdict:
     confidence: float
     reasoning: str
     survivor_names: tuple[str, str]
+    # Set when the judge did produce a number but it failed the plausibility
+    # guard. Lets the report explain a missing estimate instead of showing a
+    # bare dash that reads as a crash.
+    rejected_estimate: Optional[float] = None
 
 
 @dataclass
@@ -178,6 +260,12 @@ class MasterVerdict:
     regional_verdicts: list[RegionalVerdict]
     regional_estimates: Optional[dict] = None  # {region_name: Optional[float]}
     all_responses: list = None   # list[AgentResponse] from all group arenas
+    # Physics-anchored reconciliation (engine/anchoring.py): the mechanical
+    # pass-through the estimate was checked against, and how the final number
+    # was arrived at — 'agent' (model agreed with physics), 'clamped' (model
+    # drifted, pulled back), or 'anchor' (model unusable, physics stood in).
+    physical_anchor: Optional[float] = None
+    estimate_source: str = 'agent'
 
     def __post_init__(self):
         if self.all_responses is None:
@@ -323,7 +411,7 @@ def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> lis
             agents.append(SwarmAgent(
                 name=f"{region} {role}",
                 role=role,
-                model=_ROLE_MODELS[role],
+                tier=_ROLE_TIERS[role],
                 group_id=group_id,
                 region_name=region,
                 system_prompt=_make_system_prompt(role, region, current_price),
@@ -387,13 +475,6 @@ def eliminate_bottom_n(
     for e in eliminated:
         e.is_alive = False
     return survivors, eliminated
-
-
-# ── Ollama helper ─────────────────────────────────────────────────────────────
-
-def _ollama_extras(model: str) -> dict:
-    """think=False only for deepseek models; other models ignore or error on it."""
-    return {'think': False} if 'deepseek' in model else {}
 
 
 # ── GroupArena ────────────────────────────────────────────────────────────────
@@ -523,15 +604,8 @@ class GroupArena:
         if self._on_event:
             self._on_event('agent_typing', self._group_id, agent.name)
         full_text = ''
-        stream = ollama.chat(
-            model=agent.model,
-            messages=messages,
-            stream=True,
-            options={'num_predict': 750},
-            **_ollama_extras(agent.model),
-        )
-        for chunk in stream:
-            full_text += chunk['message']['content']
+        for token in llm.stream(messages, tier=agent.tier, max_tokens=_AGENT_MAX_TOKENS):
+            full_text += token
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
         thinking, statement = _parse_think(full_text)
@@ -627,7 +701,9 @@ class GroupArena:
             response=winner_resp,
             combined_score=winner.combined_score,
             agent_role=winner.role,
-            agent_model=winner.model,
+            # Record the concrete model, not the tier: this is provenance for
+            # the report, and 'fast' resolves differently per provider/config.
+            agent_model=llm.describe_model(winner.tier),
         )
         if self._on_event:
             self._on_event('survivor', self._group_id, survivor)
@@ -644,12 +720,16 @@ class RegionalJudge:
         rag: RagEngine,
         scenario: dict,
         data_brief: Optional['LiveDataBrief'] = None,
+        agent_estimates: Optional[list[float]] = None,
     ):
         self._judge_id = judge_id
         self._s1, self._s2 = survivors
         self._rag = rag
         self._scenario = scenario
         self._data_brief = data_brief
+        # Every estimate produced by the agents in this judge's two regions.
+        # Without them there is nothing to measure agreement over — see run().
+        self._agent_estimates = agent_estimates or []
 
     def _brief_block(self) -> str:
         if self._data_brief is None:
@@ -711,12 +791,8 @@ class RegionalJudge:
             )},
         ]
 
-    def _call(self, messages: list[dict], model: str = _JUDGE_MODEL) -> str:
-        full = ''
-        for chunk in ollama.chat(model=model, messages=messages,
-                                 stream=True, options={'num_predict': 900},
-                                 **_ollama_extras(model)):
-            full += chunk['message']['content']
+    def _call(self, messages: list[dict], tier: str = _JUDGE_TIER) -> str:
+        full = ''.join(llm.stream(messages, tier=tier, max_tokens=_JUDGE_MAX_TOKENS))
         _, statement = _parse_think(full)
         return statement
 
@@ -724,8 +800,13 @@ class RegionalJudge:
         def1 = self._call(self._defense_prompt(self._s1, self._s2))
         def2 = self._call(self._defense_prompt(self._s2, self._s1))
         synthesis = self._call(self._synthesis_prompt(def1, def2))
-        estimate = _extract_fuel_change(synthesis)
-        confidence = 0.75 if estimate is not None else 0.3
+        estimate, rejected = parse_fuel_estimate(synthesis)
+        # Measured, not assumed. This was previously a hardcoded 0.75 whenever
+        # the estimate merely parsed, which the report then displayed as "agent
+        # agreement" — a constant presented as a measurement, and identical on
+        # every card. Uses the same function as the master verdict so the word
+        # "agreement" means one thing everywhere in the report.
+        confidence = _robust_confidence_pct(self._agent_estimates, estimate) / 100
         return RegionalVerdict(
             judge_id=self._judge_id,
             region_pair=(self._s1.region_name, self._s2.region_name),
@@ -733,6 +814,7 @@ class RegionalJudge:
             confidence=confidence,
             reasoning=synthesis,
             survivor_names=(self._s1.response.agent_name, self._s2.response.agent_name),
+            rejected_estimate=rejected,
         )
 
 
@@ -755,6 +837,24 @@ class MasterJudge:
         self._scenario = scenario
         self._survivors = survivors or []
         self._data_brief = data_brief
+        self._anchor = self._compute_physical_anchor()
+
+    def _compute_physical_anchor(self) -> float:
+        """The mechanical oil→pump pass-through for this scenario, in ₱/L.
+
+        Live Brent/FX when the brief has them, reference values otherwise — the
+        anchor is a scale, not a precise forecast, so stale inputs cost cents.
+        """
+        s = self._scenario
+        kwargs = {}
+        if self._data_brief is not None:
+            if getattr(self._data_brief, 'brent', None):
+                kwargs['brent_usd'] = self._data_brief.brent
+            if getattr(self._data_brief, 'usd_php', None):
+                kwargs['fx_php_per_usd'] = self._data_brief.usd_php
+        return anchoring.fuel_passthrough_anchor(
+            s.get('oil_pct', 0.0), s.get('usd_pct', 0.0), **kwargs
+        )
 
     def _brief_block(self) -> str:
         if self._data_brief is None:
@@ -780,31 +880,50 @@ class MasterJudge:
             f"(confidence {v.confidence:.2f})\n{v.reasoning[:400]}"
             for v in self._verdicts
         )
+        anchor_text = (
+            f"MECHANICAL PASS-THROUGH: the DOE auto-pricing formula implies a pump "
+            f"change of {self._anchor:+.2f} ₱/L from this oil and FX move alone "
+            f"(crude cost per litre revalued at the exchange rate, plus 12% VAT). "
+            f"This is the physical baseline. Start from it and adjust only for "
+            f"factors it cannot see — a fuel subsidy release, an excise suspension, "
+            f"a refinery outage, competitive lag. A national monthly pump change is "
+            f"almost never more than ~₱2/L away from this number."
+        )
         return [
             {'role': 'system', 'content': (
                 "You are the Master Judge synthesizing 2 regional Philippine fuel price "
                 "estimates into a single national verdict. Give special weight to the "
                 "NCR region as it represents the majority of fuel consumption. "
-                "Cite DATA BRIEF figures when available. "
-                "Identify any dissenting regions. "
+                "Anchor your number to the MECHANICAL PASS-THROUGH provided and adjust "
+                "within a narrow band; do not restate a regional outlier that ignores it. "
+                "Cite DATA BRIEF figures when available. Identify any dissenting regions. "
                 f"Ignore estimates outside ±{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L as invalid absolute-price parses. "
-                "Apply the project confidence policy: prefer calibrated, reconciled estimates over unreconciled outliers. "
                 "End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
             )},
             {'role': 'user', 'content': (
-                f"{self._brief_block()}{scenario_text}\n\nRegional verdicts:\n{verdicts_text}"
+                f"{self._brief_block()}{scenario_text}\n\n{anchor_text}\n\n"
+                f"Regional verdicts:\n{verdicts_text}"
             )},
         ]
 
     def run(self) -> MasterVerdict:
-        full = ''
-        model = _JUDGE_MODEL
-        for chunk in ollama.chat(model=model, messages=self._build_prompt(),
-                                 stream=True, options={'num_predict': 1000},
-                                 **_ollama_extras(model)):
-            full += chunk['message']['content']
+        full = ''.join(
+            llm.stream(self._build_prompt(), tier=_JUDGE_TIER,
+                       max_tokens=_MASTER_MAX_TOKENS)
+        )
         _, statement = _parse_think(full)
-        final_estimate = _extract_fuel_change(statement)
+
+        # Physics-anchored reconciliation: the weak model supplies direction and
+        # qualitative judgement, the pass-through formula supplies scale. Feed it
+        # the model's raw number even when that number failed the ±₱8 guard — the
+        # anchor is a tighter, physics-based leash, so a +₱12.93/L reading is
+        # clamped back toward physics (keeping its upward direction) rather than
+        # discarded to a blank. Only a genuinely absent number falls back to the
+        # anchor outright.
+        accepted, rejected = parse_fuel_estimate(statement)
+        model_estimate = accepted if accepted is not None else rejected
+        reconciled = anchoring.reconcile_estimate(model_estimate, self._anchor)
+        final_estimate = reconciled.value
 
         # Collect all estimates: group survivors + regional judges + master final
         all_estimates: list[float] = [
@@ -840,6 +959,8 @@ class MasterJudge:
             reasoning=statement,
             regional_verdicts=self._verdicts,
             regional_estimates=regional_estimates,
+            physical_anchor=reconciled.anchor,
+            estimate_source=reconciled.source,
         )
 
 
@@ -872,10 +993,17 @@ class SwarmOrchestrator:
         else:
             all_agents = build_swarm_agents(live_price)
         sem = threading.Semaphore(self._parallel_n)
-        survivors: list[Optional[GroupSurvivor]] = [None] * 4
+        # Derived from the agents actually built, not a hardcoded 4: the group
+        # count follows REGIONS, so a hardcoded literal silently drops any
+        # extra region and leaves a None survivor if one is removed.
+        n_groups = len({a.group_id for a in all_agents})
+        survivors: list[Optional[GroupSurvivor]] = [None] * n_groups
         errors: list[str] = []
         lock = threading.Lock()
         all_arena_responses: list = []
+        # Kept per group, not just pooled, so each regional judge can measure
+        # agreement across exactly the agents it is judging.
+        group_histories: dict[int, list] = {}
 
         def run_group(group_id: int):
             with sem:
@@ -893,13 +1021,14 @@ class SwarmOrchestrator:
                     s = arena.run()
                     with lock:
                         survivors[group_id] = s
+                        group_histories[group_id] = list(arena._history)
                         all_arena_responses.extend(arena._history)
                 except Exception as e:
                     with lock:
                         errors.append(f"Group {group_id}: {e}")
 
         threads = [threading.Thread(target=run_group, args=(i,))
-                   for i in range(4)]
+                   for i in range(n_groups)]
         for t in threads:
             t.start()
         for t in threads:
@@ -911,6 +1040,10 @@ class SwarmOrchestrator:
         # Phase 2: regional judges (sequential)
         regional_verdicts: list[RegionalVerdict] = []
         for judge_id, (i, j) in enumerate(REGION_PAIRS):
+            # A pair can reference a group that does not exist when REGIONS is
+            # trimmed (e.g. during an ablation) — skip rather than IndexError.
+            if i >= n_groups or j >= n_groups:
+                continue
             s1, s2 = survivors[i], survivors[j]
             if s1 is None or s2 is None:
                 continue
@@ -920,6 +1053,12 @@ class SwarmOrchestrator:
                 rag=self._rag,
                 scenario=self._scenario,
                 data_brief=self._data_brief,
+                agent_estimates=[
+                    r.price_estimate
+                    for gid in (i, j)
+                    for r in group_histories.get(gid, [])
+                    if r.price_estimate is not None
+                ],
             )
             verdict = judge.run()
             regional_verdicts.append(verdict)
