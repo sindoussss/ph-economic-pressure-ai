@@ -22,5 +22,29 @@
     "mae_raw_model_php_l": 3.794,
     "mae_anchored_php_l": 1.582,
     "improvement_pct": 58.3
+  },
+  "electricity": {
+    "n_months": 175,
+    "predictive_correlation_by_lag": {
+      "0": 0.025,
+      "1": 0.0,
+      "2": 0.133
+    },
+    "best_correlation": 0.133,
+    "best_lag": 2,
+    "is_predictive": false,
+    "scale_ratio": 1.02,
+    "finding": "the fuel-price anchor does NOT predict monthly electricity CPI at this resolution (the benchmark result used the formulaic generation-charge nowcast, not raw commodity changes); it functions as a magnitude guard, not a predictor"
+  },
+  "food": {
+    "n_months": 172,
+    "persistence_correlation": 0.183,
+    "oil_correlation": 0.209,
+    "correlation_se": 0.076,
+    "indistinguishable": true,
+    "persistence_mae": 0.577,
+    "naive_mean_mae": 0.508,
+    "scale_ratio": 0.92,
+    "finding": "monthly food CPI is only weakly related to persistence (0.183) or oil (0.209); the two are within sampling noise of each other (\u00b10.15) and a plain mean is competitive on MAE, so the anchor is a magnitude guard, not a predictor"
   }
 }

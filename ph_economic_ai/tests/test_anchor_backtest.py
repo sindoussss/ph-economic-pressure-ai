@@ -56,3 +56,35 @@ def test_weak_model_benefit_is_positive_on_synthetic_data():
     wb = ab.weak_model_benefit(_synthetic_panel(n=60))
     assert wb['mae_anchored_php_l'] < wb['mae_raw_model_php_l']
     assert wb['improvement_pct'] > 0
+
+
+def test_lagged_corr_and_scale_ratio():
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    assert ab._lagged_corr(x, x, 0) == pytest.approx(1.0)
+    # a perfectly-scaled predictor has scale ratio 1
+    assert ab._scale_ratio(x, x) == pytest.approx(1.0)
+    # half-magnitude predictor
+    assert ab._scale_ratio(x * 0.5, x) == pytest.approx(0.5)
+
+
+# ── Sector backtests run on committed PSA CSVs (headless, no network) ──────────
+
+def test_electricity_backtest_reports_scale_and_predictiveness():
+    r = ab.backtest_electricity()
+    assert r['n_months'] > 100
+    assert 'scale_ratio' in r and r['scale_ratio'] > 0
+    assert isinstance(r['is_predictive'], bool)
+    assert 'finding' in r
+
+
+def test_food_finding_is_consistent_with_its_numbers():
+    """The verdict must be derived from the data, not hardcoded — this test
+    exists because an earlier version asserted a conclusion its own numbers
+    contradicted."""
+    r = ab.backtest_food()
+    if r['indistinguishable'] and abs(r['persistence_correlation']) < 0.25 \
+            and abs(r['oil_correlation']) < 0.25:
+        assert 'magnitude guard' in r['finding']
+    # never claim a winner when the two are within sampling noise
+    if r['indistinguishable']:
+        assert 'outpredicts' not in r['finding']

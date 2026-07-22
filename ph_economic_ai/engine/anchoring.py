@@ -94,12 +94,15 @@ def fuel_passthrough_anchor(
     return mechanical * _FUEL_PASSTHROUGH_CALIBRATION if calibrated else mechanical
 
 
-# ── Electricity: a *validated* physical anchor ────────────────────────────────
-# Unlike fuel, electricity is not informationally efficient. The benchmark found
-# electricity-CPI predictable within the month (Ridge +28% over the best naive,
-# DM p ≈ 0.001) precisely because its regulated generation charge is a
-# formulaic, observable fuel pass-through. So here the physical anchor is not
-# merely a scale — it is the signal the backtest identified as real.
+# ── Electricity: a fuel pass-through anchor (a magnitude guard) ───────────────
+# The generation charge is a formulaic fuel pass-through, and the benchmark found
+# electricity-CPI predictable within the month via that formula (Ridge +28%,
+# DM p ≈ 0.001). This anchor is a simpler proxy: a fuel-cost shock scaled by the
+# fuel share of the generation charge. Regressed against 175 months of real PSA
+# electricity CPI (tools/anchor_backtest.py) it does NOT predict the monthly move
+# (corr ~0.03–0.13 — the benchmark's edge needs the actual formula, not raw oil),
+# but its magnitude is right (scale ratio ~1.0). That is the anchor's job here:
+# keep a weak model's estimate physically sized, not forecast the series.
 
 # Meralco's generation charge, the fuel-driven slice of a ~₱11–14/kWh total bill.
 _GEN_CHARGE_PHP_KWH = 5.50
@@ -126,12 +129,14 @@ def electricity_passthrough_anchor(
 
 
 # ── Food: a *persistence* anchor, deliberately not a commodity one ─────────────
-# The benchmark is blunt here: food-CPI is a clean null on commodity drivers, so
-# anchoring food to oil would be anchoring it to noise. What the backtest *did*
-# find is predictable own-dynamics (ARIMA ~+16% over naive, DM p = 0.005). The
-# honest food anchor is therefore the recent trend of food inflation itself, not
-# a pass-through. Fuel enters only through a small transport-cost term, kept
-# deliberately weak because the data says it is.
+# The benchmark found food-CPI a clean null on commodity drivers, so anchoring
+# food to oil would be anchoring it to noise; what it found predictable is food's
+# own dynamics. Anchoring to the recent trend follows that. Regressed against 172
+# months of real PSA food CPI (tools/anchor_backtest.py), persistence and oil are
+# both weak and within sampling noise of each other (corr ~0.18 vs ~0.21), and a
+# plain mean is competitive — monthly food CPI is close to unpredictable here. So
+# like electricity this anchor is a magnitude guard (scale ratio ~0.9), not a
+# predictor; it still keeps a weak model from claiming +7% when the trend is <1%.
 
 _FOOD_DEFAULT_MOM_PCT = 0.4      # fallback trend when no history is available
 _FOOD_TRANSPORT_FUEL_BETA = 0.03  # ppt of monthly food inflation per 1% oil move
