@@ -545,6 +545,133 @@ def test_ollama_host_is_overridable(monkeypatch):
     assert llm.ollama_host() == 'http://192.168.1.5:11434'
 
 
+# ── Local concurrency gate + deadline ─────────────────────────────────────────
+
+@pytest.fixture
+def fresh_gate(monkeypatch):
+    """Reset the lazily-built semaphore so each test sizes it from its own env."""
+    monkeypatch.setattr(llm, '_local_sem', None)
+
+
+def test_local_gate_caps_concurrent_calls(local, fresh_gate, monkeypatch):
+    """The stall came from ~12 parallel calls thrashing one GPU. No more than
+    STRATA_OLLAMA_CONCURRENCY may be in flight at once."""
+    monkeypatch.setenv('STRATA_OLLAMA_CONCURRENCY', '2')
+
+    in_flight = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def _slow_post(*a, **k):
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        time.sleep(0.15)
+        with lock:
+            in_flight -= 1
+        return _FakeResponse(lines=[json.dumps(_frame(content='ok'))])
+
+    monkeypatch.setattr(llm.requests, 'post', _slow_post)
+
+    threads = [threading.Thread(
+        target=lambda: list(llm.stream([{'role': 'user', 'content': 'q'}])))
+        for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert peak <= 2, f'{peak} calls ran at once despite a cap of 2'
+
+
+def test_concurrency_of_one_fully_serializes(local, fresh_gate, monkeypatch):
+    monkeypatch.setenv('STRATA_OLLAMA_CONCURRENCY', '1')
+    assert llm._local_gate()._value == 1
+
+
+class _EndlessResponse:
+    """Streams empty keepalive lines forever — lazily, so it is never listified.
+
+    Models the exact failure that froze the run: a connection that stays open
+    and dribbles nothing useful. Must not be built from _FakeResponse, whose
+    __init__ eagerly list()s its lines and would hang here.
+    """
+    status_code = 200
+    text = ''
+
+    def iter_lines(self, decode_unicode=False):
+        while True:
+            time.sleep(0.02)
+            yield ''
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_stalled_stream_raises_instead_of_hanging(local, fresh_gate, monkeypatch):
+    """A model that trickles forever must hit the wall-clock deadline. This is
+    the exact failure that froze a run behind a clock ticking to 69 minutes."""
+    monkeypatch.setattr(llm, '_LOCAL_CALL_DEADLINE', 0.05)
+    monkeypatch.setattr(llm.requests, 'post', lambda *a, **k: _EndlessResponse())
+
+    with pytest.raises(llm.LLMError, match='stalled'):
+        list(llm.stream([{'role': 'user', 'content': 'q'}]))
+
+
+def test_gate_is_released_after_a_stall(local, fresh_gate, monkeypatch):
+    """A stalled call must free its slot, or the whole swarm deadlocks behind it."""
+    monkeypatch.setenv('STRATA_OLLAMA_CONCURRENCY', '1')
+    monkeypatch.setattr(llm, '_LOCAL_CALL_DEADLINE', 0.05)
+    monkeypatch.setattr(llm.requests, 'post', lambda *a, **k: _EndlessResponse())
+
+    for _ in range(3):                    # would block on iteration 2 if leaked
+        with pytest.raises(llm.LLMError):
+            list(llm.stream([{'role': 'user', 'content': 'q'}]))
+    assert llm._local_gate()._value == 1
+
+
+def test_gate_is_released_on_http_error(local, fresh_gate, monkeypatch):
+    monkeypatch.setenv('STRATA_OLLAMA_CONCURRENCY', '1')
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda *a, **k: _FakeResponse(status_code=404))
+    with pytest.raises(llm.LLMError):
+        list(llm.stream([{'role': 'user', 'content': 'q'}]))
+    assert llm._local_gate()._value == 1, 'slot leaked on error path'
+
+
+def test_mid_stream_read_timeout_becomes_an_llm_error(local, fresh_gate, monkeypatch):
+    class _Flaky:
+        status_code = 200
+        text = ''
+        def iter_lines(self, decode_unicode=False):
+            raise llm.requests.exceptions.ReadTimeout('silent socket')
+        def close(self): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    monkeypatch.setattr(llm.requests, 'post', lambda *a, **k: _Flaky())
+    with pytest.raises(llm.LLMError, match='interrupted'):
+        list(llm.stream([{'role': 'user', 'content': 'q'}]))
+
+
+def test_hosted_path_never_touches_the_local_gate(monkeypatch, fresh_gate):
+    """The gate is a local-GPU concern; hosted providers must not serialize
+    through it (they have their own rate limiter)."""
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'groq')
+    monkeypatch.setenv('GROQ_API_KEY', 'k')
+    monkeypatch.setattr(llm, '_local_gate', _must_not_be_called)
+    monkeypatch.setattr(llm, '_post_sse',
+                        lambda *a, **k: iter([{'choices': [{'delta': {'content': 'x'}}]}]))
+    assert ''.join(llm.stream([{'role': 'user', 'content': 'q'}])) == 'x'
+
+
 def _must_not_be_called(*a, **k):        # pragma: no cover - must not run
     raise AssertionError('local inference must not go through the rate limiter')
 
