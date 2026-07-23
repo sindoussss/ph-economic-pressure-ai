@@ -55,5 +55,40 @@
     },
     "driver_edge": true
   },
-  "driver_edge_robust": true
+  "driver_edge_robust": true,
+  "sub_sample_stability": {
+    "le_2023_12": {
+      "span": [
+        "2007-09",
+        "2023-12"
+      ],
+      "verdict": "beats_best_naive",
+      "best_skill_vs_naive": 0.2631,
+      "dm_p": 0.0057,
+      "driver_edge": true,
+      "n": 129
+    },
+    "first_half": {
+      "span": [
+        "2007-09",
+        "2017-02"
+      ],
+      "verdict": "beats_best_naive",
+      "best_skill_vs_naive": 0.2994,
+      "dm_p": 0.0203,
+      "driver_edge": true,
+      "n": 63
+    },
+    "second_half": {
+      "span": [
+        "2017-03",
+        "2026-05"
+      ],
+      "verdict": "beats_best_naive",
+      "best_skill_vs_naive": 0.2868,
+      "dm_p": 0.0348,
+      "driver_edge": true,
+      "n": 64
+    }
+  }
 }

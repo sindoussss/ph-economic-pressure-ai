@@ -21,9 +21,16 @@ def test_run_electricity_nowcast_wires_through(monkeypatch):
     monkeypatch.setattr(en, 'load_electricity_mom', lambda: mom)
     res = en.run_electricity_nowcast(min_train=24, features=feats, prelim_months=6)
     assert set(res) >= {'n', 'mom', 'driver_ablation', 'driver_edge',
-                        'robust', 'driver_edge_robust'}
+                        'robust', 'driver_edge_robust', 'sub_sample_stability'}
     assert res['n'] > 60
     assert 'verdict' in res['mom'] and 'verdict' in res['driver_ablation']
     assert isinstance(res['driver_edge_robust'], bool)
     assert res['robust']['n'] < res['n']
     assert 'panel' not in res['mom']
+    # sub-sample stability: three date-bounded cuts, each self-documenting.
+    ss = res['sub_sample_stability']
+    assert set(ss) == {'le_2023_12', 'first_half', 'second_half'}
+    for cut in ss.values():
+        assert 'verdict' in cut and 'n' in cut
+        if cut['verdict'] != 'insufficient_data':
+            assert len(cut['span']) == 2 and cut['span'][0] <= cut['span'][1]
