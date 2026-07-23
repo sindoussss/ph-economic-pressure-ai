@@ -36,21 +36,35 @@ _EST_LINE = {
     'electricity': 'ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh',
 }
 
-# Capability channels — the same three agents per sector, RAG-scoped by channel.
-_CHANNEL_SPECS = {
-    'social': ('Social Sentiment',
-               'Reads public mood from Reddit and search interest',
-               'You gauge how Filipinos are reacting RIGHT NOW to {sector} prices, '
+# Capability channels: the instruction each channel follows (persona-agnostic).
+_CHANNEL_TEMPLATES = {
+    'social': ('You gauge how Filipinos are reacting RIGHT NOW to {sector} prices, '
                'using the frozen social posts and search-interest snapshot. State the '
                'CURRENT direction of pressure and why.'),
-    'news': ('News Desk',
-             'Tracks reported events and official announcements',
-             'You summarise what the news is reporting RIGHT NOW about Philippine '
+    'news': ('You summarise what the news is reporting RIGHT NOW about Philippine '
              '{sector} prices — announcements, rate changes, events. Present pressure only.'),
-    'market': ('Market Watch',
-               'Reads the underlying commodity and FX moves',
-               'You read the underlying market drivers (oil, FX, spot rates) behind '
+    'market': ('You read the underlying market drivers (oil, FX, spot rates) behind '
                'the CURRENT {sector} pressure. Present read, not a forecast.'),
+}
+
+# The named cast — (name, occupation) per sector x channel. Display/flavour only;
+# it does not change what an agent does, only who the user sees speaking.
+_PERSONAS: dict[str, dict[str, tuple[str, str]]] = {
+    'gas': {
+        'social': ('Andrea Lim', 'Commuter Sentiment Analyst'),
+        'news':   ('Rafael Cruz', 'Energy Desk Reporter'),
+        'market': ('Diego Ocampo', 'Crude & FX Trader'),
+    },
+    'food': {
+        'social': ('Bea Villanueva', 'Palengke Sentiment Analyst'),
+        'news':   ('Marco Reyes', 'Agriculture Correspondent'),
+        'market': ('Nadia Chua', 'Agri-Commodities Analyst'),
+    },
+    'electricity': {
+        'social': ('Paolo Mendoza', 'Household Bill Watcher'),
+        'news':   ('Ligaya Torres', 'Utilities Correspondent'),
+        'market': ('Enzo Garcia', 'Power Market Analyst'),
+    },
 }
 
 _MODERATOR_SYSTEM = (
@@ -68,12 +82,16 @@ _SYNTH_SYSTEM = (
 
 def _capability_agents(sector: str) -> list[Agent]:
     srcs = SECTOR_SOURCES.get(sector, {})
+    personas = _PERSONAS.get(sector, {})
     agents = []
-    for channel, (name, role, tmpl) in _CHANNEL_SPECS.items():
+    for channel, tmpl in _CHANNEL_TEMPLATES.items():
+        name, occupation = personas.get(channel, (channel.title(), 'Analyst'))
         agents.append(Agent(
-            name=f'{name} ({sector})', role=role,
-            system_prompt=(tmpl.format(sector=sector) + ' End your response with a '
-                           'CAUSAL CHAIN line and then: ' + _EST_LINE[sector]),
+            name=name, role=occupation,
+            system_prompt=(f'You are {name}, a {occupation} in the Philippines. '
+                           + tmpl.format(sector=sector)
+                           + ' End your response with a CAUSAL CHAIN line and then: '
+                           + _EST_LINE[sector]),
             rag_sources=srcs.get(channel, []),
             tier=llm.FAST, is_mini=(channel != 'market')))
     return agents
@@ -98,6 +116,7 @@ class Forum:
         self._window = window
         self._rounds = max(1, rounds)
         self._deep = deep_tier
+        self._on_event = None
 
     # ── prompts ───────────────────────────────────────────────────────────────
 
@@ -146,14 +165,22 @@ class Forum:
         except Exception:
             return ''
 
-    def _run_sector(self, ctx: SectorContext,
-                    on_event: Optional[Callable[[str, str], None]]) -> SectorReading:
+    def _emit(self, kind: str, data: dict):
+        if self._on_event:
+            try:
+                self._on_event(kind, data)
+            except Exception:
+                pass
+
+    def _run_sector(self, ctx: SectorContext) -> SectorReading:
         agents = _capability_agents(ctx.sector)
         extractor = _EXTRACTORS[ctx.sector]
         history: list[AgentResponse] = []
         steer = ''
         for rnd in range(1, self._rounds + 1):
             for agent in agents:
+                self._emit('agent_start', {'name': agent.name, 'occupation': agent.role,
+                                           'sector': ctx.sector, 'round': rnd})
                 try:
                     text = llm.complete(self._agent_prompt(agent, ctx, history, steer),
                                         tier=agent.tier, max_tokens=500)
@@ -164,10 +191,13 @@ class Forum:
                                      thinking=thinking, statement=statement,
                                      price_estimate=extractor(statement))
                 history.append(resp)
-                if on_event:
-                    on_event(agent.name, statement)
+                self._emit('agent_message', {
+                    'name': agent.name, 'occupation': agent.role, 'sector': ctx.sector,
+                    'round': rnd, 'message': statement,
+                    'estimate': resp.price_estimate, 'unit': ctx.unit})
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 steer = self._moderate(ctx, [r for r in history if r.round_num == rnd])
+                self._emit('moderator', {'sector': ctx.sector, 'text': steer})
         return self._aggregate(ctx, history)
 
     def _aggregate(self, ctx: SectorContext, history: list[AgentResponse]) -> SectorReading:
@@ -206,8 +236,10 @@ class Forum:
         except Exception:
             return ''
 
-    def run(self, on_event: Optional[Callable[[str, str], None]] = None) -> PressureBrief:
-        readings = [self._run_sector(ctx, on_event) for ctx in self._contexts]
+    def run(self, on_event: Optional[Callable[[str, dict], None]] = None) -> PressureBrief:
+        """on_event(kind, data): 'agent_start' / 'agent_message' / 'moderator'."""
+        self._on_event = on_event
+        readings = [self._run_sector(ctx) for ctx in self._contexts]
         return PressureBrief(as_of=self._as_of, window=self._window,
                              readings=readings, narrative=self._synthesize(readings))
 
