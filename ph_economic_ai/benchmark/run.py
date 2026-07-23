@@ -196,6 +196,15 @@ def main():
     )
     report.write_report(rep)
 
+    # Publication predictability-map figure (manuscript Fig. 3) — regenerated here
+    # from the report just written, so a single `benchmark.run` reproduces every
+    # figure the manuscript cites (not only the diagnostic ones below).
+    try:
+        from ph_economic_ai.benchmark import render_pub_figures
+        render_pub_figures.main()
+    except Exception as _fig_err:
+        print(f'predictability_map figure skipped: {type(_fig_err).__name__}: {_fig_err}')
+
     bt_dates = dates
     figures.plot_pred_vs_actual(bt_dates, yt, yp, yp - qhat90, yp + qhat90)
     figures.plot_baseline_bars(rmse_model, rmse_rw, rmse_sn)

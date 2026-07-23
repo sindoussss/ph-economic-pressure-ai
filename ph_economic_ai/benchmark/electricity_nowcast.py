@@ -30,9 +30,43 @@ def _build_electricity_frame(features: pd.DataFrame) -> pd.DataFrame:
     return base[cols].dropna()
 
 
+def _sub_sample_stability(frame: pd.DataFrame, min_train: int = 24) -> dict:
+    """Driver-only edge on date-bounded sub-samples — the evidence that the
+    electricity edge is not period-specific (manuscript §5.7 / Appendix B.8).
+
+    Each cut re-runs the *same* driver-only ablation (own-lag dropped) on a
+    windowed frame: an earlier-cutoff sample (<= 2023-12) and a first/second-half
+    split by count. Each row records the actual date span it covers, so the check
+    is self-documenting and reproducible regardless of label wording.
+    """
+    idx = frame.index
+    mid = len(frame) // 2
+    cuts = {
+        'le_2023_12': frame[idx <= '2023-12'],
+        'first_half': frame.iloc[:mid],
+        'second_half': frame.iloc[mid:],
+    }
+    out = {}
+    for name, sub in cuts.items():
+        if len(sub) < min_train + 5:
+            out[name] = {'verdict': 'insufficient_data', 'n': int(len(sub))}
+            continue
+        abl = run_driver_only_ablation(min_train, frame=sub)
+        out[name] = {
+            'span': [str(sub.index[0]), str(sub.index[-1])],
+            'verdict': abl.get('verdict'),
+            'best_skill_vs_naive': abl.get('best_skill_vs_naive'),
+            'dm_p': abl.get('dm_p'),
+            'driver_edge': bool(abl.get('driver_edge', False)),
+            'n': int(abl.get('n', 0)),
+        }
+    return out
+
+
 def run_electricity_nowcast(min_train: int = 24, features=None, prelim_months: int = 6) -> dict:
     """Electricity-MoM nowcast + driver-only ablation + trailing-preliminary
-    robustness re-test. `driver_edge_robust` is the canonical verdict."""
+    robustness re-test + sub-sample stability. `driver_edge_robust` is the
+    canonical verdict; `sub_sample_stability` backs the §5.7 period-stability claim."""
     feats = load_electricity_features() if features is None else features
     frame = _build_electricity_frame(feats)
     drop = ('panel', 'calibration')
@@ -59,4 +93,5 @@ def run_electricity_nowcast(min_train: int = 24, features=None, prelim_months: i
             'driver_edge': bool(r_abl.get('driver_edge', False)),
         },
         'driver_edge_robust': bool(r_abl.get('driver_edge', False)),
+        'sub_sample_stability': _sub_sample_stability(frame, min_train),
     }
