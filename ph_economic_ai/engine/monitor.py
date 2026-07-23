@@ -35,7 +35,7 @@ class MonitorThread(QThread):
     (paint the hero), then `outlook_ready` (fill the bounded forecast)."""
     monitor_ready = pyqtSignal(object)   # PressureBrief
     outlook_ready = pyqtSignal(object)   # Outlook
-    agent_event = pyqtSignal(str, str)   # agent_name, statement
+    forum_event = pyqtSignal(str, object)  # kind, data dict (agent_start/agent_message/moderator)
     error_occurred = pyqtSignal(str)
 
     def __init__(self, rag, window: str = 'this_week', rounds: int = 2,
@@ -49,7 +49,7 @@ class MonitorThread(QThread):
     def run(self):
         try:
             brief = run_monitor(self._rag, window=self._window, rounds=self._rounds,
-                                on_event=lambda n, s: self.agent_event.emit(n, s))
+                                on_event=lambda kind, data: self.forum_event.emit(kind, data))
             self.monitor_ready.emit(brief)
             outlook = run_outlook(brief, rag=self._rag,
                                   run_tournament=self._run_tournament)
