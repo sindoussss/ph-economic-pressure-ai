@@ -71,7 +71,7 @@ Two institutional facts make the Philippine case tractable. First, under the Dow
 
 ## 3. Data
 
-All series are committed as CSVs and regenerable via `refresh_data.py`; the benchmark reads only frozen files, so every number is reproducible offline.
+All series are committed as CSVs and regenerable via `benchmark/refresh_data.py`; the benchmark reads only frozen files, so every number is reproducible offline.
 
 ### 3.1 Fuel (ground truth)
 Premium gasoline (RON95), monthly PHP/litre, from the World Bank **Global Fuel Prices Database** (Open Database License). The committed gold series underpins the one-month forecast backtest over **2019-11 to 2025-03 (n = 79 months)**.
@@ -131,7 +131,7 @@ The fabricated "90% confidence" from the original application was removed and re
 
 ### 5.1 One-month forecasting is efficient (RQ1)
 
-**Fuel.** Over n = 79, the best ML model (HistGradientBoosting) has RMSE 4.099 vs the random walk's 4.069 — a skill of **−0.0075**: no improvement. Against the seasonal-naive baseline the model's skill is +0.64, i.e. the gain is over a *bad* baseline, not the strong one.
+**Fuel.** On the efficiency panel (n = 52 forecasts, drawn from the 79-month feature-aligned window of §3.1), the best ML model (HistGradientBoosting) has RMSE 4.099 vs the random walk's 4.069 — a skill of **−0.0075**: no improvement. Against the seasonal-naive baseline the model's skill is +0.64, i.e. the gain is over a *bad* baseline, not the strong one.
 
 On the efficiency panel (n = 52), no method significantly beats the random walk:
 
@@ -159,7 +159,7 @@ The ML methods are statistically *indistinguishable* from the random walk (DM p 
 
 All three show no detectable edge — reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for the Philippines, subject to the power bound above (which is tightest for the smallest samples, USD/PHP at n = 38).
 
-**Calibration (fuel forecast).** The conformal intervals (half-widths ₱2.56/5.88/10.42/11.86 at 50/80/90/95%) over-cover at the upper levels (measured coverage 0.58, 0.88, 1.00, 1.00 at n = 79) — i.e. conservative, honestly reported rather than tuned.
+**Calibration (fuel forecast).** The conformal intervals (half-widths ₱2.56/5.88/10.42/11.86 at 50/80/90/95%) over-cover at the upper levels (measured coverage 0.58, 0.88, 1.00, 1.00 over the disjoint 26-month validation half of the 52-forecast backtest) — i.e. conservative, honestly reported rather than tuned.
 
 ### 5.2 Mechanism (RQ2)
 A pass-through regression of the RON95 change on contemporaneous and lagged driver changes (n = 77) gives β₀ = 0.31, β₁ = 0.24, **total pass-through β = 0.56**, R² = 0.33, with a near-zero driver autocorrelation (ACF₁ = 0.16). Interpretation: domestic fuel reflects a *partial, lagged* pass-through of a driver (world product price) that is itself close to a random walk. A predictable level built on an unpredictable, near-random-walk driver is exactly what produces an efficient series — the mechanism behind RQ1.
@@ -384,7 +384,7 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 ### Appendix A — Reproducibility
 - Regenerate all artifacts: `python -m ph_economic_ai.benchmark.run`.
 - Refresh source data (network): `refresh_data.build_features_csv`, `build_long_features`, World Bank workbook loader.
-- Committed artifacts: `accuracy_report.json`, `ablation_table.json`, `audit_table.json`, `nowcast_table.json`, `nowcast_mom_table.json`, `mom_driver_ablation_table.json`, `mom_longsample_table.json`, `multiple_testing.json`, `power.json`, `backtest_predictions.csv`, `figures/*.png`.
+- Committed artifacts: `accuracy_report.json`, `ablation_table.json`, `audit_table.json`, `nowcast_table.json`, `nowcast_mom_table.json`, `mom_driver_ablation_table.json`, `mom_longsample_table.json`, `transport_nowcast_table.json`, `food_nowcast_table.json`, `electricity_nowcast_table.json` (the last including the §5.7 sub-sample stability cuts), `multiple_testing.json`, `power.json`, `backtest_predictions.csv`, `figures/*.png` (including the Fig. 3 predictability map, rendered by `run` via `render_pub_figures`).
 - Application anchoring validation (§6.6): regenerate with `python -m ph_economic_ai.tools.anchor_backtest`; committed as `anchor_validation.json` (fuel/electricity/food regressions, calibration, robustness sweep, weak-model benefit).
 - Swarm-size ablation (§6.7): regenerate with `python -m ph_economic_ai.tools.swarm_ablation --repeats 8`; committed as `swarm_ablation.json` (per-variant estimate ranges, spreads, and overlap verdicts).
 
@@ -492,7 +492,7 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 
 ### Appendix C — Calibration and pass-through
 
-**C.1 Fuel one-month forecast — split-conformal calibration** (n = 79). `qhat` = interval half-width (₱/L); measured = empirical coverage of that interval over the backtest.
+**C.1 Fuel one-month forecast — split-conformal calibration** (52-forecast backtest, split 26 calibration / 26 validation). `qhat` = interval half-width (₱/L) taken from the calibration half; measured = empirical coverage of that interval on the disjoint validation half.
 
 | Nominal | qhat (₱/L) | Measured coverage |
 |---|---|---|
