@@ -33,6 +33,7 @@ from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
 from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
 from ph_economic_ai.ui.accuracy_view import AccuracyView
 from ph_economic_ai.ui.learning_view import LearningView
+from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ class _TopNavBar(QFrame):
     # keeps working without touching index math.
     _ITEMS: list[tuple[int, str, bool]] = [
         (0, 'Home',        False),
+        (7, 'Monitor',     False),
         (2, 'Simulation',  True),
         (3, 'Report',      True),
         (6, 'Learning',    False),
@@ -270,6 +272,7 @@ class SimMainWindow(QMainWindow):
         self._agent_perf = AgentPerformancePanel(self._store)
         self._accuracy_view = AccuracyView()
         self._learning = LearningView(self._store)
+        self._monitor = PressureMonitorPanel(self._rag)
 
         # ── Wrap the landing in a vertical scroll area (website-style) ──────
         landing_scroll = QScrollArea()
@@ -288,10 +291,11 @@ class SimMainWindow(QMainWindow):
         self._landing_scroll = landing_scroll
 
         # Stack order: 0=Home(scroll), 1=Overview, 2=Simulation, 3=Report(workbench),
-        #              4=AgentPerf, 5=Methodology & Accuracy, 6=Learning
+        #              4=AgentPerf, 5=Methodology & Accuracy, 6=Learning, 7=Monitor
         for widget in (landing_scroll, self._economy_overview,
                        self._stage3_container, self._stage4,
-                       self._agent_perf, self._accuracy_view, self._learning):
+                       self._agent_perf, self._accuracy_view, self._learning,
+                       self._monitor):
             self._stack.addWidget(widget)
 
         # Wire DOE checker → agent perf panel refresh

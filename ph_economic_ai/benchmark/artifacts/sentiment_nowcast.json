@@ -1,0 +1,4 @@
+{
+  "status": "no_trends_data",
+  "note": "run `python -m ph_economic_ai.tools.refresh_social --trends` first"
+}
