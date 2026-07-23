@@ -1,0 +1,210 @@
+{
+  "note": "Corrected map: historical MEAN added to the naive baseline pool.",
+  "pool_old": [
+    "random_walk",
+    "seasonal_naive",
+    "drift"
+  ],
+  "pool_new": [
+    "random_walk",
+    "seasonal_naive",
+    "drift",
+    "mean"
+  ],
+  "forecast_efficiency": [
+    {
+      "target": "fuel",
+      "verdict_with_mean": "efficient",
+      "best_method": "random_walk",
+      "best_skill_vs_rw": 0.0,
+      "mean_skill_vs_rw": -1.7497,
+      "n": 52
+    },
+    {
+      "target": "fx",
+      "verdict_with_mean": "efficient",
+      "best_method": "random_walk",
+      "best_skill_vs_rw": 0.0,
+      "mean_skill_vs_rw": -2.0866,
+      "n": 38
+    },
+    {
+      "target": "inflation",
+      "verdict_with_mean": "efficient",
+      "best_method": "random_walk",
+      "best_skill_vs_rw": 0.0,
+      "mean_skill_vs_rw": -1.7005,
+      "n": 59
+    }
+  ],
+  "nowcast": [
+    {
+      "target": "Headline MoM inflation (short)",
+      "setup": "full nowcast",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "arima",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.1616,
+        "dm_p": 0.0323,
+        "n": 61
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 61
+      },
+      "flipped_to_null": true
+    },
+    {
+      "target": "Headline MoM inflation (long, 2007-2026)",
+      "setup": "full nowcast",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "arima",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.1627,
+        "dm_p": 0.001,
+        "n": 143
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 143
+      },
+      "flipped_to_null": true
+    },
+    {
+      "target": "Food MoM inflation",
+      "setup": "full nowcast",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "arima",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.16,
+        "dm_p": 0.0046,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": true
+    },
+    {
+      "target": "Food MoM inflation",
+      "setup": "driver-only",
+      "old": {
+        "verdict": "no_better_than_naive",
+        "best_method": "random_walk",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": false
+    },
+    {
+      "target": "Electricity MoM inflation",
+      "setup": "full nowcast",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "ridge",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.2658,
+        "dm_p": 0.0005,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": true
+    },
+    {
+      "target": "Electricity MoM inflation",
+      "setup": "driver-only (flagship edge)",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "ridge",
+        "best_naive": "random_walk",
+        "best_skill_vs_naive": 0.2833,
+        "dm_p": 0.0011,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": true
+    },
+    {
+      "target": "Transport MoM inflation",
+      "setup": "full nowcast",
+      "old": {
+        "verdict": "no_better_than_naive",
+        "best_method": "seasonal_naive",
+        "best_naive": "seasonal_naive",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": false
+    },
+    {
+      "target": "Transport MoM inflation",
+      "setup": "driver-only",
+      "old": {
+        "verdict": "beats_best_naive",
+        "best_method": "ridge",
+        "best_naive": "seasonal_naive",
+        "best_skill_vs_naive": 0.1475,
+        "dm_p": 0.0214,
+        "n": 151
+      },
+      "corrected": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 151
+      },
+      "flipped_to_null": true
+    }
+  ]
+}
