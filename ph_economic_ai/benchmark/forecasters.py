@@ -21,6 +21,15 @@ def _seasonal_naive(X_train, y_train, x_next, season: int = 12) -> float:
     return float(y_train[-season]) if len(y_train) > season else float(y_train[-1])
 
 
+def _mean(X_train, y_train, x_next) -> float:
+    """Historical-mean forecast: the expanding-window unconditional mean, using
+    only past data (no leakage). It is the optimal constant predictor and the
+    *strong* naive baseline for a mean-reverting series, where the random walk is
+    weak. Omitting it lets a mean-reverting rate series look 'beatable' when the
+    only thing beating the random walk is reversion to the mean. Ignores X."""
+    return float(np.mean(y_train))
+
+
 def _ridge(X_train, y_train, x_next) -> float:
     model = Ridge(alpha=1.0).fit(X_train, y_train)
     return float(model.predict(x_next.reshape(1, -1))[0])
@@ -54,6 +63,7 @@ FORECASTERS = {
     'random_walk':   _random_walk,
     'drift':         _drift,
     'seasonal_naive': _seasonal_naive,
+    'mean':          _mean,
     'arima':         _arima,
     'ets':           _ets,
     'ridge':         _ridge,
