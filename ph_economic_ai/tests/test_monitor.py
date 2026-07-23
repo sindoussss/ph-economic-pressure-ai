@@ -68,6 +68,57 @@ def test_panel_renders_without_thread(app):
     assert panel._outlook.count() == 1
 
 
+def test_panel_shows_live_forum_cards(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()                                  # drop the initial hint
+    panel._on_forum_event('agent_start', {
+        'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas'})
+    assert 'Andrea Lim' in panel._typing.text()
+    panel._on_forum_event('agent_message', {
+        'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas',
+        'message': 'Pump prices are climbing. ESTIMATE: +1.00/L', 'estimate': 1.0, 'unit': '₱/L'})
+    panel._on_forum_event('moderator', {'sector': 'gas', 'text': 'Stay on the present read.'})
+    assert panel._typing.text() == ''                    # cleared once the message lands
+    assert panel._feed_count() == 2                      # one chat card + one moderator card
+
+
+def test_forum_personas_have_names():
+    from ph_economic_ai.engine.forum import _capability_agents
+    agents = _capability_agents('gas')
+    names = {a.name for a in agents}
+    assert 'Andrea Lim' in names and 'Diego Ocampo' in names
+    assert all(a.role for a in agents)                   # every agent has an occupation
+
+
+def test_forum_graph_grows_with_turns():
+    from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
+    from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn
+    b = KnowledgeGraphBuilder()
+    add_forum_turn(b, 'Andrea Lim', 'Commuter Sentiment Analyst', 'gas', 1.0, 'rising')
+    add_forum_turn(b, 'Diego Ocampo', 'Crude & FX Trader', 'gas', 0.9, 'up')
+    nodes, edges = b.snapshot()
+    ids = {n.id for n in nodes}
+    kinds = {n.kind for n in nodes}
+    assert {'master', 'agent', 'claim'} <= kinds         # sector hub + agents + claims
+    assert 'sector:gas' in ids and 'agent:Andrea Lim' in ids
+    assert sum(1 for n in nodes if n.kind == 'master') == 1   # two agents, one shared hub
+    assert sum(1 for n in nodes if n.kind == 'agent') == 2
+
+
+def test_panel_updates_debate_graph(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
+    panel = PressureMonitorPanel(FakeRag())
+    panel._kg_builder = KnowledgeGraphBuilder()
+    panel._on_forum_event('agent_message', {
+        'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas',
+        'message': 'rising', 'estimate': 1.0, 'unit': '₱/L'})
+    nodes, _ = panel._kg_builder.snapshot()
+    assert any(n.id == 'agent:Andrea Lim' for n in nodes)
+    assert not panel._kg.isHidden()      # un-hidden once the first turn lands
+
+
 def test_main_window_has_monitor_tab(app):
     from ph_economic_ai.ui.main_window import SimMainWindow
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
