@@ -1,10 +1,25 @@
 # Spec — Strata Pressure Monitor (Forum → Tournament)
 
-**Status:** M1–M5 complete (engine + UI, +22 tests, full suite 643 green). Pending:
-run `refresh_social` for real snapshot/verdict; a visual UI pass with Ollama; and
-adopting the mean-baseline correction (the verdict gate tightens automatically when
-the frozen report flips). One-click, monitor-led expansion of the Strata app,
-inspired by BettaFish's moderated forum but bounded by the Strata benchmark.
+**Status:** M1–M5 complete + post-review upgrades, full suite 656 green; published to
+`origin/pressure-monitor`. Post-M5 upgrades landed:
+- **Named cast + live forum feed + debate-map graph** (`ui/forum_graph.py`) — agents
+  stream as chat cards with their RAG source nodes; the graph grows turn by turn.
+- **Anchor magnitude-guard wired** — `auto_assemble` sets a per-sector anchor and the
+  forum clamps the consensus (§6.6), so a weak-model "+5%/month" food read no longer
+  reaches the card.
+- **Differentiated, challenging agents** — each channel (social/news/market) stays in
+  its lane and is told not to repeat; confidence is corroboration-scaled.
+- **Judged deliberation** — a judge synthesises each sector's debate into one present
+  read (like the swarm's master judge), not a plain average.
+- **Hybrid social sourcing** (`engine/live_social.py`) — best-effort live Reddit/Trends
+  refresh with a frozen-snapshot fallback; the validated benchmark stays frozen.
+- **Home "Run" chains** the Monitor forum, then the tournament swarm.
+
+Pending: run `refresh_social` (or rely on the hybrid live refresh, which needs
+`pip install pytrends praw` + Reddit creds) for real social data; adopt the
+mean-baseline correction (the verdict gate tightens when the frozen report flips).
+One-click, monitor-led expansion of the Strata app, inspired by BettaFish's moderated
+forum but bounded by the Strata benchmark.
 
 ## Intent
 Add an autonomous "Run" flow that **leads with a present-pressure read** (the
