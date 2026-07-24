@@ -1,4 +1,4 @@
-# ph_economic_ai — Unified Report/Interact Workbench (Design)
+    # ph_economic_ai — Unified Report/Interact Workbench (Design)
 
 **Date:** 2026-06-11
 **Status:** Approved (design), pending implementation plan
