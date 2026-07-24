@@ -33,6 +33,36 @@ def _fake_complete(messages, tier=None, max_tokens=None, **kw):
             'CAUSAL CHAIN: oil up -> pump up -> households pay more. ' + est)
 
 
+def test_food_magnitude_is_anchor_guarded(monkeypatch, tmp_path):
+    """A weak-model +5%/month food read (a YoY-leak error) must be clamped back to
+    the anchor band, not shown as-is — the §6.6 guard the Monitor was bypassing."""
+    def high_food(messages, tier=None, max_tokens=None, **kw):
+        return 'Rising. CAUSAL CHAIN: high prices -> spending -> budgets. ESTIMATE: +5.0%'
+    monkeypatch.setattr(llm_mod, 'complete', high_food)
+    brief = forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'nope',
+                              as_of=date(2026, 7, 24), sectors=('food',), rounds=1)
+    from ph_economic_ai.engine import anchoring
+    food = brief.readings[0]
+    cap = anchoring.food_persistence_anchor([]) + anchoring.FOOD_TOLERANCE_PCT
+    assert food.estimate is not None and food.estimate <= cap + 1e-6   # clamped down
+    assert food.estimate < 5.0
+    assert food.confidence == 100                                      # agents agreed (raw)
+    assert food.drivers and 'ESTIMATE' not in food.drivers[0]          # driver trimmed
+
+
+def test_confidence_scales_with_corroboration():
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = SectorContext(sector='gas', unit='₱/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
+    agents = _capability_agents('gas')
+    lone = [AgentResponse('A', 1, '', 'CAUSAL CHAIN: x. ESTIMATE: +1.00/L', 1.0)]
+    assert f._aggregate(ctx, lone, agents).confidence == 50            # one voice, not 100%
+    pair = lone + [AgentResponse('B', 1, '', 'CAUSAL CHAIN: y. ESTIMATE: +1.00/L', 1.0)]
+    assert f._aggregate(ctx, pair, agents).confidence == 100           # two agree -> full
+
+
 def _snapshot(tmp_path, rows):
     d = tmp_path / 'social'
     d.mkdir()

@@ -30,21 +30,32 @@ _EXTRACTORS: dict[str, Callable] = {
 }
 _BAND = {'gas': 0.20, 'food': 0.3, 'electricity': 0.10}   # "agree" if within this of the mean
 _FLAT = {'gas': 0.05, 'food': 0.05, 'electricity': 0.02}  # |estimate| below this reads as flat
+# Magnitude-guard band per sector — how far a consensus may sit from the anchor
+# before it is more likely a weak-model error than a real signal (engine.anchoring).
+_TOLERANCE = {
+    'gas': anchoring.FUEL_TOLERANCE_PHP_L,
+    'food': anchoring.FOOD_TOLERANCE_PCT,
+    'electricity': anchoring.ELECTRICITY_TOLERANCE_PHP_KWH,
+}
 _EST_LINE = {
     'gas': 'ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L',
     'food': 'ESTIMATE: +X.X% or ESTIMATE: -X.X%',
     'electricity': 'ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh',
 }
 
-# Capability channels: the instruction each channel follows (persona-agnostic).
+# Capability channels: each agent stays strictly in its lane so the three do NOT
+# converge on the same paragraph — the point of a forum over a single model.
 _CHANNEL_TEMPLATES = {
-    'social': ('You gauge how Filipinos are reacting RIGHT NOW to {sector} prices, '
-               'using the frozen social posts and search-interest snapshot. State the '
-               'CURRENT direction of pressure and why.'),
-    'news': ('You summarise what the news is reporting RIGHT NOW about Philippine '
-             '{sector} prices — announcements, rate changes, events. Present pressure only.'),
-    'market': ('You read the underlying market drivers (oil, FX, spot rates) behind '
-               'the CURRENT {sector} pressure. Present read, not a forecast.'),
+    'social': ('You speak ONLY to public mood — what Filipinos are posting on Reddit and '
+               'searching for RIGHT NOW about {sector} prices. Do NOT analyse markets or '
+               'policy; that is other agents\' job. If there is no fresh social signal, say '
+               'so plainly rather than inventing one.'),
+    'news': ('You speak ONLY to reported events — announcements, rate changes, and official '
+             'actions in the news about Philippine {sector} prices RIGHT NOW. Do NOT restate '
+             'social mood or raw market prices; name the concrete event and its source.'),
+    'market': ('You speak ONLY to the underlying market — the oil, FX, and spot-price moves '
+               'driving {sector} cost RIGHT NOW. Do NOT restate news or sentiment; give the '
+               'mechanism and the numbers.'),
 }
 
 # The named cast — (name, occupation) per sector x channel. Display/flavour only;
@@ -93,7 +104,7 @@ def _capability_agents(sector: str) -> list[Agent]:
                            + ' End your response with a CAUSAL CHAIN line and then: '
                            + _EST_LINE[sector]),
             rag_sources=srcs.get(channel, []),
-            tier=llm.FAST, is_mini=(channel != 'market')))
+            tier=llm.FAST))                       # all forum agents share the fast tier
     return agents
 
 
@@ -103,6 +114,14 @@ def _direction(sector: str, value: Optional[float]) -> str:
     if abs(value) < _FLAT.get(sector, 0.05):
         return 'flat'
     return 'rising' if value > 0 else 'easing'
+
+
+def _driver_text(statement: str) -> Optional[str]:
+    """The causal-chain line only — without the trailing ESTIMATE line."""
+    if 'CAUSAL CHAIN:' not in statement:
+        return None
+    part = statement.split('CAUSAL CHAIN:')[-1].split('ESTIMATE:')[0]
+    return part.strip()[:160] or None
 
 
 class Forum:
@@ -132,15 +151,22 @@ class Forum:
                       history: list[AgentResponse], steer: str) -> list[dict]:
         query = f"Current {ctx.sector} price pressure in the Philippines, {self._window}."
         prior = '\n'.join(f"{r.agent_name}: {r.statement[:280]}" for r in history)
+        sc = ctx.social_counts or {}
+        social_note = (f"Frozen social posts in the snapshot — today {sc.get('today', 0)}, "
+                       f"this week {sc.get('this_week', 0)}, this month {sc.get('this_month', 0)}.\n\n")
+        challenge = ('Do NOT repeat what earlier agents already said. Add only what YOUR '
+                     'channel sees that they missed, or disagree and say why.\n') if prior else ''
         user = (
             f"BENCHMARK NOTE: {ctx.verdict_note}\n\n"
             f"As of {self._as_of} ({self._window}). Sector: {ctx.sector} "
             f"(report in {ctx.unit}).\n\n"
+            f"{social_note}"
             f"Frozen context:\n{self._rag_text(agent, query)}\n\n"
             + (f"Moderator steer: {steer}\n\n" if steer else '')
             + (f"Prior statements:\n{prior}\n\n" if prior else '')
-            + "Give a short present-tense read. End with:\n"
-            "CAUSAL CHAIN: [signal] → [effect] → [household impact]\n"
+            + challenge
+            + "Give a short present-tense read from your channel only. End with:\n"
+            "CAUSAL CHAIN: <trigger> → <effect> → <household impact>\n"
             + _EST_LINE[ctx.sector]
         )
         return [{'role': 'system', 'content': agent.system_prompt},
@@ -194,30 +220,41 @@ class Forum:
                 self._emit('agent_message', {
                     'name': agent.name, 'occupation': agent.role, 'sector': ctx.sector,
                     'round': rnd, 'message': statement,
-                    'estimate': resp.price_estimate, 'unit': ctx.unit})
+                    'estimate': resp.price_estimate, 'unit': ctx.unit,
+                    'sources': list(agent.rag_sources)})
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 steer = self._moderate(ctx, [r for r in history if r.round_num == rnd])
                 self._emit('moderator', {'sector': ctx.sector, 'text': steer})
-        return self._aggregate(ctx, history)
+        return self._aggregate(ctx, history, agents)
 
-    def _aggregate(self, ctx: SectorContext, history: list[AgentResponse]) -> SectorReading:
+    def _aggregate(self, ctx: SectorContext, history: list[AgentResponse],
+                   agents: list[Agent]) -> SectorReading:
         final = max((r.round_num for r in history), default=0)
         finals = [r for r in history if r.round_num == final]
         ests = [r.price_estimate for r in finals if r.price_estimate is not None]
+        avg, confidence = None, 0
         if ests:
-            avg = sum(ests) / len(ests)
+            raw = sum(ests) / len(ests)
+            # Agreement is measured on the RAW consensus (before any clamp), so
+            # agents that agree still read as agreeing even when the magnitude guard
+            # pulls the reported number in. Scaled by corroboration: a lone estimate
+            # can't be "100% agreed".
+            band = _BAND.get(ctx.sector, 0.2)
+            n = len(ests)
+            within = sum(1 for e in ests if abs(e - raw) <= band)
+            confidence = int((within / n) * 100 * min(n, 2) / 2)
+            # Magnitude guard (§6.6): clamp the consensus back toward the sector
+            # anchor, keeping direction — this is what stops a "+5%/month" food read
+            # (a YoY-leak error) from reaching the card.
+            avg = raw
             if ctx.anchor is not None:
                 try:
-                    avg = anchoring.reconcile_estimate(avg, ctx.anchor).value
+                    avg = anchoring.reconcile_estimate(
+                        raw, ctx.anchor, tolerance=_TOLERANCE.get(ctx.sector, 2.0)).value
                 except Exception:
-                    pass
-            band = _BAND.get(ctx.sector, 0.2)
-            confidence = int(sum(1 for e in ests if abs(e - avg) <= band) / len(ests) * 100)
-        else:
-            avg, confidence = None, 0
-        drivers = [r.statement.split('CAUSAL CHAIN:')[-1].strip()[:160]
-                   for r in finals if 'CAUSAL CHAIN:' in r.statement][:3]
-        sources = sorted({s for a in _capability_agents(ctx.sector) for s in a.rag_sources})
+                    avg = raw
+        drivers = [d for r in finals if (d := _driver_text(r.statement))][:3]
+        sources = sorted({s for a in agents for s in a.rag_sources})
         return SectorReading(
             sector=ctx.sector, direction=_direction(ctx.sector, avg),
             estimate=(round(avg, 2) if avg is not None else None),
@@ -246,7 +283,7 @@ class Forum:
 
 def run_monitor(rag, corpus_dir=None, as_of=None, window: str = 'this_week',
                 sectors=('gas', 'food', 'electricity'), rounds: int = 2,
-                on_event: Optional[Callable[[str, str], None]] = None) -> PressureBrief:
+                on_event: Optional[Callable[[str, dict], None]] = None) -> PressureBrief:
     """One-click entry point: assemble the present context, then debate it into a
     Pressure Brief. This is what the "Run" button calls (Stage 1 of the Monitor)."""
     kwargs = {} if corpus_dir is None else {'corpus_dir': corpus_dir}
