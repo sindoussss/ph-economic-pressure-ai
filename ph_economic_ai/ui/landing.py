@@ -205,7 +205,7 @@ class LandingPanel(QWidget):
         left.setSpacing(0)
         left.setContentsMargins(0, 12, 0, 0)
 
-        eyebrow = QLabel('SWARM INTELLIGENCE  ·  PHILIPPINES')
+        eyebrow = QLabel('PRESSURE MONITOR  ·  PHILIPPINES')
         eyebrow.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
             f'color:{TEXT_3};letter-spacing:3px;'
@@ -214,7 +214,7 @@ class LandingPanel(QWidget):
         left.addSpacing(22)
 
         # Serif headline — bold thesis statement
-        headline = QLabel('Simulating the\nfuture of the\nPhilippine economy.')
+        headline = QLabel('Reading the\npressure on\nPhilippine prices.')
         headline.setFont(_serif_font(40, bold=True))
         headline.setStyleSheet(
             f'color:{INK};letter-spacing:-1.4px;line-height:1.05;background:transparent;'
@@ -223,10 +223,11 @@ class LandingPanel(QWidget):
         left.addSpacing(20)
 
         body = QLabel(
-            'A 20-agent swarm pulls live Brent crude, USD/PHP, Manila '
-            'weather, and Philippine retail prices to forecast next-month '
-            'moves in fuel, food, and electricity. No inputs. No guesswork. '
-            'Every run grounded in the most recent observable data.'
+            'One click runs a forum of agents that read the present pressure on '
+            'fuel, food, and electricity from live market and social data — then a '
+            'swarm forecasts the month ahead, bounded by a benchmark that says '
+            'plainly where prices cannot be called. No inputs; every run grounded '
+            'in observable data.'
         )
         body.setWordWrap(True)
         body.setStyleSheet(
@@ -239,7 +240,7 @@ class LandingPanel(QWidget):
         # CTA row — substantial black button with subtle elevation + arrow
         cta_row = QHBoxLayout()
         cta_row.setSpacing(24)
-        self._run_btn = QPushButton('RUN SWARM  →')
+        self._run_btn = QPushButton('RUN  →')
         self._run_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._run_btn.setFixedHeight(54)
         self._run_btn.setMinimumWidth(240)
@@ -270,7 +271,7 @@ class LandingPanel(QWidget):
         self._run_btn.clicked.connect(self.run_requested.emit)
         cta_row.addWidget(self._run_btn)
 
-        run_caption = QLabel('~60 seconds  ·  live data inputs')
+        run_caption = QLabel('a few minutes  ·  present read → forecast')
         run_caption.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:11px;color:{TEXT_3};'
             f'letter-spacing:1px;background:transparent;'
@@ -490,7 +491,7 @@ class LandingPanel(QWidget):
         cl.addWidget(eyebrow)
         cl.addSpacing(20)
 
-        title = QLabel('A swarm of small models,\nreading the country in real time.')
+        title = QLabel('A forum reads the present,\na swarm forecasts the month.')
         title.setFont(_serif_font(28, bold=True))
         title.setStyleSheet(
             f'color:{INK};letter-spacing:-0.8px;line-height:1.15;'
@@ -815,7 +816,7 @@ class LandingPanel(QWidget):
             self._run_btn.setText('RUNNING  ●')
             self._run_btn.setEnabled(False)
         else:
-            self._run_btn.setText('RUN SWARM  →')
+            self._run_btn.setText('RUN  →')
             self._run_btn.setEnabled(True)
             self._refresh_recent_runs()
 
