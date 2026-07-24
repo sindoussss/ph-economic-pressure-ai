@@ -15,9 +15,9 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.social_snapshot import (
-    CORPUS_DIR, WINDOWS, load_social_snapshot, register_social_sources,
-    social_sources, window_slice)
+    CORPUS_DIR, WINDOWS, load_social_snapshot, register_social_sources, window_slice)
 
 _REPORT = (Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts'
            / 'accuracy_report.json')
@@ -83,6 +83,16 @@ def _verdict_notes(report_path: Path = _REPORT) -> dict[str, str]:
     return notes
 
 
+def _sector_anchor(sector: str) -> float:
+    """A magnitude-guard anchor for the present read. Food uses its own-trend
+    persistence (§6.6); gas/electricity guard around zero here, because the Monitor
+    has no within-month oil/FX shock to feed the pass-through — the forecast stage
+    applies the full mechanical anchor with that shock."""
+    if sector == 'food':
+        return anchoring.food_persistence_anchor([])
+    return 0.0
+
+
 def auto_assemble(rag=None, corpus_dir: Path = CORPUS_DIR,
                   as_of: Optional[date] = None, window: str = 'this_week',
                   sectors=('gas', 'food', 'electricity'),
@@ -98,15 +108,14 @@ def auto_assemble(rag=None, corpus_dir: Path = CORPUS_DIR,
         register_social_sources(rag, corpus_dir, window=window, as_of=ref)
 
     posts = load_social_snapshot(corpus_dir)
-    social_posts = [p for p in posts if p.source in set(social_sources(posts))]
     notes = _verdict_notes(report_path)
 
     contexts = []
     for s in sectors:
-        counts = {w: len(window_slice(social_posts, w, ref)) for w in WINDOWS}
+        counts = {w: len(window_slice(posts, w, ref)) for w in WINDOWS}
         contexts.append(SectorContext(
             sector=s, unit=SECTOR_UNIT.get(s, ''),
             verdict_note=notes.get(s, _DEFAULT_NOTE),
-            social_counts=counts,
+            social_counts=counts, anchor=_sector_anchor(s),
             scenario={'as_of': ref.isoformat(), 'window': window}))
     return AssembledContext(as_of=ref.isoformat(), window=window, contexts=contexts)
