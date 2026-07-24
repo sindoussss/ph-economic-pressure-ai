@@ -106,6 +106,20 @@ def test_forum_graph_grows_with_turns():
     assert sum(1 for n in nodes if n.kind == 'agent') == 2
 
 
+def test_forum_graph_includes_rag_sources():
+    from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
+    from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn
+    b = KnowledgeGraphBuilder()
+    add_forum_turn(b, 'Andrea Lim', 'Analyst', 'gas', 1.0, 'x',
+                   sources=['RedditPH', 'GoogleTrends'])
+    nodes, edges = b.snapshot()
+    ids = {n.id for n in nodes}
+    assert 'src:RedditPH' in ids and 'src:GoogleTrends' in ids
+    assert any(n.id == 'src:RedditPH' and n.label == 'Reddit' for n in nodes)  # short label
+    assert any(e.src == 'agent:Andrea Lim' and e.dst == 'src:RedditPH'
+               and e.kind == 'retrieved' for e in edges)
+
+
 def test_panel_updates_debate_graph(app):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
@@ -117,6 +131,35 @@ def test_panel_updates_debate_graph(app):
     nodes, _ = panel._kg_builder.snapshot()
     assert any(n.id == 'agent:Andrea Lim' for n in nodes)
     assert not panel._kg.isHidden()      # un-hidden once the first turn lands
+
+
+def test_forum_graph_canvas_draws(app):
+    from ph_economic_ai.ui.forum_graph import ForumGraphCanvas
+    from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
+    from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn
+    b = KnowledgeGraphBuilder()
+    add_forum_turn(b, 'Andrea Lim', 'Commuter Sentiment Analyst', 'gas', 1.0, 'rising')
+    add_forum_turn(b, 'Diego Ocampo', 'Crude & FX Trader', 'gas', 0.9, 'up')
+    canvas = ForumGraphCanvas()
+    canvas.set_snapshot(*b.snapshot())
+    assert canvas.node_item_count() > 0        # ellipses, edges, labels all drawn
+
+
+def test_seed_sectors_creates_hubs():
+    from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
+    from ph_economic_ai.engine.kg_forum_adapter import seed_sectors
+    b = KnowledgeGraphBuilder()
+    seed_sectors(b, ('gas', 'food', 'electricity'))
+    nodes, _ = b.snapshot()
+    ids = {n.id for n in nodes}
+    assert {'sector:gas', 'sector:food', 'sector:electricity'} <= ids
+    assert all(n.kind == 'master' for n in nodes)
+
+
+def test_placeholder_card_builds(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    assert panel._placeholder_card('gas') is not None      # dashed 'analysing…' card
 
 
 def test_main_window_has_monitor_tab(app):

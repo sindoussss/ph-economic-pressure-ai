@@ -7,20 +7,21 @@ between rounds. The single "Run" button drives it all off the UI thread.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
 from ph_economic_ai.engine.monitor import MonitorThread
 from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
-from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn
-from ph_economic_ai.ui.kg_canvas import KnowledgeGraphCanvas
+from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn, seed_sectors
+from ph_economic_ai.ui.forum_graph import ForumGraphCanvas
 
 _INK = '#0F1115'
-_T2 = '#525866'
-_T3 = '#8B95A7'
-_DIV = '#E5E7EB'
+_T2 = '#4B5563'
+_T3 = '#79828F'
+_DIV = '#C3CAD4'          # darker so borders/dividers are visible on real displays,
+                          # not only in screenshots (thin light lines vanish on HiDPI)
 _RISE = '#B42318'
 _EASE = '#067647'
 _FLAT = '#525866'
@@ -46,11 +47,13 @@ def _initials(name: str) -> str:
 
 
 class PressureMonitorPanel(QWidget):
+    run_finished = pyqtSignal()          # emitted when a Monitor run ends (ok or error)
+
     def __init__(self, rag, parent=None):
         super().__init__(parent)
         self._rag = rag
         self._thread: MonitorThread | None = None
-        self.setStyleSheet('background:#FAFAF8;')
+        self.setStyleSheet('background:#EDEFF3;')       # greyer page so white cards pop
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -60,7 +63,7 @@ class PressureMonitorPanel(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left_scroll.setStyleSheet('QScrollArea{border:none;background:#FAFAF8;}')
+        left_scroll.setStyleSheet('QScrollArea{border:none;background:#EDEFF3;}')
         body = QWidget()
         left_scroll.setWidget(body)
         col = QVBoxLayout(body)
@@ -96,11 +99,12 @@ class PressureMonitorPanel(QWidget):
         self._kg_label.setStyleSheet(f'{_EYEBROW}margin-bottom:8px;')
         self._kg_label.setVisible(False)
         col.addWidget(self._kg_label)
-        self._kg = KnowledgeGraphCanvas()
-        self._kg.setMinimumHeight(300)
+        self._kg = ForumGraphCanvas()
+        self._kg.setMinimumHeight(360)
         self._kg.setVisible(False)
         col.addWidget(self._kg)
         self._kg_builder: KnowledgeGraphBuilder | None = None
+        self._feed_has_real = False
 
         self._hero_label = QLabel('PRESENT PRESSURE')
         self._hero_label.setStyleSheet(f'{_EYEBROW}margin-bottom:10px;')
@@ -127,7 +131,7 @@ class PressureMonitorPanel(QWidget):
         right = QFrame()
         right.setFixedWidth(410)
         right.setStyleSheet(
-            f'QFrame{{background:#FFFFFF;border-left:1px solid {_DIV};}}'
+            f'QFrame{{background:#F4F6F8;border-left:2px solid {_DIV};}}'
             f'QFrame QLabel{{background:transparent;border:none;}}')
         rcol = QVBoxLayout(right)
         rcol.setContentsMargins(22, 26, 22, 14)
@@ -139,7 +143,7 @@ class PressureMonitorPanel(QWidget):
         feed_scroll = QScrollArea()
         feed_scroll.setWidgetResizable(True)
         feed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        feed_scroll.setStyleSheet('QScrollArea{border:none;background:#FFFFFF;}')
+        feed_scroll.setStyleSheet('QScrollArea{border:none;background:#F4F6F8;}')
         self._feed_scroll = feed_scroll
         feed_body = QWidget()
         feed_scroll.setWidget(feed_body)
@@ -184,6 +188,10 @@ class PressureMonitorPanel(QWidget):
 
     # ── run ────────────────────────────────────────────────────────────────────
 
+    def start(self):
+        """Programmatic entry (e.g. chained from the Home Run button)."""
+        self._on_run()
+
     def _on_run(self):
         if self._thread is not None and self._thread.isRunning():
             return
@@ -191,12 +199,30 @@ class PressureMonitorPanel(QWidget):
         _clear(self._outlook)
         self._narrative.setText('')
         self._outlook_label.setVisible(False)
+
+        # Placeholder sector cards so PRESENT PRESSURE isn't a void while it runs.
+        for s in ('gas', 'food', 'electricity'):
+            self._cards.addWidget(self._placeholder_card(s))
+
+        # Seed the debate map with the three sector hubs immediately, so the graph
+        # is on screen from the first second and simply grows as agents connect.
+        self._kg.reset()
+        self._kg_builder = KnowledgeGraphBuilder()
+        seed_sectors(self._kg_builder, ('gas', 'food', 'electricity'))
+        try:
+            self._kg.set_snapshot(*self._kg_builder.snapshot())
+        except Exception:
+            pass
+        self._kg.setVisible(True)
+        self._kg_label.setVisible(True)
+
+        # A convening message in the feed instead of a blank white panel.
         self._clear_feed()
+        self._add_feed(self._hint('The forum is convening — agents are gathering the '
+                                  'frozen snapshot and reading the market…'))
+        self._feed_has_real = False
         self._feed_head.setText('FORUM  ·  live')
         self._typing.setText('Waking the agents…')
-        self._kg_builder = KnowledgeGraphBuilder()
-        self._kg.setVisible(False)
-        self._kg_label.setVisible(False)
         self._run_btn.setEnabled(False)
         self._status.setText('Gathering current pressure and running the Forum debate…')
 
@@ -219,6 +245,9 @@ class PressureMonitorPanel(QWidget):
                 f"is reading {d.get('sector', '')}…")
         elif kind == 'agent_message':
             self._typing.setText('')
+            if not self._feed_has_real:            # drop the convening placeholder
+                self._clear_feed()
+                self._feed_has_real = True
             self._add_feed(self._chat_card(d))
             self._update_graph(d)
         elif kind == 'moderator':
@@ -229,7 +258,8 @@ class PressureMonitorPanel(QWidget):
             return
         try:
             add_forum_turn(self._kg_builder, d.get('name', ''), d.get('occupation', ''),
-                           d.get('sector', ''), d.get('estimate'), d.get('message', ''))
+                           d.get('sector', ''), d.get('estimate'), d.get('message', ''),
+                           d.get('sources'))
             self._kg.set_snapshot(*self._kg_builder.snapshot())
             self._kg.setVisible(True)
             self._kg_label.setVisible(True)
@@ -241,6 +271,7 @@ class PressureMonitorPanel(QWidget):
         self._typing.setText('')
         self._feed_head.setText('FORUM  ·  error')
         self._run_btn.setEnabled(True)
+        self.run_finished.emit()
 
     def _on_monitor_ready(self, brief):
         self._feed_head.setText('FORUM  ·  done')
@@ -260,6 +291,7 @@ class PressureMonitorPanel(QWidget):
             self._outlook.addWidget(self._outlook_row(s))
         self._status.setText(f'Done. Present read + bounded {outlook.horizon} outlook.')
         self._run_btn.setEnabled(True)
+        self.run_finished.emit()
 
     # ── forum chat cards (right column) ────────────────────────────────────────
 
@@ -334,6 +366,29 @@ class PressureMonitorPanel(QWidget):
         return card
 
     # ── present-pressure & outlook cards (left column) ─────────────────────────
+
+    def _placeholder_card(self, sector: str) -> QFrame:
+        """A dashed 'analysing…' card shown per sector while the forum runs."""
+        card = QFrame()
+        card.setStyleSheet(
+            f'QFrame{{background:#FFFFFF;border:1px dashed {_DIV};border-radius:10px;}}'
+            f'QFrame QLabel{{background:transparent;border:none;}}')
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(18, 16, 18, 16)
+        top = QHBoxLayout()
+        name = QLabel(sector.upper())
+        name.setStyleSheet(f'font-size:13px;font-weight:700;letter-spacing:1px;'
+                           f'color:{_SECTOR_COLOR.get(sector, _T3)};')
+        top.addWidget(name)
+        top.addStretch()
+        dots = QLabel('· · ·')
+        dots.setStyleSheet(f'color:{_T3};font-size:15px;font-weight:700;')
+        top.addWidget(dots)
+        lay.addLayout(top)
+        sub = QLabel('analysing present pressure…')
+        sub.setStyleSheet(f'color:{_T3};font-size:12px;margin-top:4px;')
+        lay.addWidget(sub)
+        return card
 
     def _sector_card(self, r) -> QFrame:
         card = QFrame()

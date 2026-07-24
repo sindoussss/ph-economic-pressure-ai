@@ -57,6 +57,22 @@ def test_completion_stays_on_simulation_then_button_navigates(window):
     assert window._stack.currentIndex() == 3        # navigated to Report on demand
 
 
+def test_home_run_chains_monitor_then_swarm(window, monkeypatch):
+    # Don't actually start the Monitor thread or the swarm — capture the wiring.
+    started = {}
+    monkeypatch.setattr(window._monitor, 'start', lambda: started.__setitem__('m', True))
+    calls = {}
+    monkeypatch.setattr(window, '_on_run_requested',
+                        lambda sc, agents, swarm_mode=False, parallel_n=4:
+                        calls.update(swarm_mode=swarm_mode))
+    window._on_landing_run()
+    assert window._stack.currentIndex() == 7        # Monitor shown first
+    assert started.get('m') is True                 # Monitor started
+    assert calls == {}                              # swarm NOT started yet
+    window._monitor.run_finished.emit()             # Monitor finishes ->
+    assert calls.get('swarm_mode') is True          # ... now the tournament runs
+
+
 def test_learning_tab_present_and_refreshes(window):
     from ph_economic_ai.ui.main_window import _TopNavBar
     from ph_economic_ai.ui.learning_view import LearningView
