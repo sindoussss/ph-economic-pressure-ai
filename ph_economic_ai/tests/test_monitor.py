@@ -46,7 +46,7 @@ def test_run_pressure_monitor_composes(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_mod, 'complete', _fake_complete)
     brief, outlook = run_pressure_monitor(
         FakeRag(), corpus_dir=tmp_path / 'empty', as_of=date(2026, 7, 24),
-        rounds=1, run_tournament=False)
+        rounds=1, run_tournament=False, live=False)
     assert len(brief.readings) == 3
     assert {s.sector for s in outlook.sectors} == {'gas', 'food', 'electricity'}
     assert outlook.horizon == 'next month'
@@ -79,8 +79,10 @@ def test_panel_shows_live_forum_cards(app):
         'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas',
         'message': 'Pump prices are climbing. ESTIMATE: +1.00/L', 'estimate': 1.0, 'unit': '₱/L'})
     panel._on_forum_event('moderator', {'sector': 'gas', 'text': 'Stay on the present read.'})
+    panel._on_forum_event('judge', {'sector': 'gas', 'text': 'On balance, rising.',
+                                    'estimate': 1.0, 'unit': '₱/L'})
     assert panel._typing.text() == ''                    # cleared once the message lands
-    assert panel._feed_count() == 2                      # one chat card + one moderator card
+    assert panel._feed_count() == 3                      # chat + moderator + judge cards
 
 
 def test_forum_personas_have_names():
@@ -160,6 +162,15 @@ def test_placeholder_card_builds(app):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     panel = PressureMonitorPanel(FakeRag())
     assert panel._placeholder_card('gas') is not None      # dashed 'analysing…' card
+
+
+def test_live_social_refresh_is_graceful(tmp_path):
+    """Hybrid refresh must never raise and must degrade to the frozen snapshot when
+    the live deps/creds aren't present (returns a status, writes nothing)."""
+    from ph_economic_ai.engine.live_social import refresh_social_snapshot
+    status = refresh_social_snapshot(tmp_path)            # must not raise
+    assert set(status) >= {'reddit', 'trends', 'live', 'notes'}
+    assert isinstance(status['live'], bool)
 
 
 def test_main_window_has_monitor_tab(app):

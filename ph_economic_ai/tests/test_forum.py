@@ -63,6 +63,22 @@ def test_confidence_scales_with_corroboration():
     assert f._aggregate(ctx, pair, agents).confidence == 100           # two agree -> full
 
 
+def test_judge_synthesis_overrides_the_mean():
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = SectorContext(sector='gas', unit='₱/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
+    agents = _capability_agents('gas')
+    finals = [AgentResponse('A', 1, '', 'CAUSAL CHAIN: x. ESTIMATE: +1.00/L', 1.0),
+              AgentResponse('B', 1, '', 'CAUSAL CHAIN: y. ESTIMATE: +1.00/L', 1.0)]
+    r = f._aggregate(ctx, finals, agents, judged=0.40)
+    assert r.estimate == 0.40        # the judge's synthesis, not the +1.00 agent mean
+    assert r.confidence == 100       # agents still agreed (on +1.00)
+    r2 = f._aggregate(ctx, finals, agents, judged=None)
+    assert r2.estimate == 1.00       # no judge number -> falls back to the agent mean
+
+
 def _snapshot(tmp_path, rows):
     d = tmp_path / 'social'
     d.mkdir()
