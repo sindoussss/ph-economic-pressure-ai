@@ -84,6 +84,14 @@ _MODERATOR_SYSTEM = (
     'and enforce the benchmark note: keep the agents on the PRESENT read and stop any '
     'agent that drifts into a confident forward forecast. One short paragraph.'
 )
+_JUDGE_SYSTEM = (
+    'You are the forum judge. You have just heard specialist analysts — a social-mood '
+    'reader, a news reader, and a market reader — debate the CURRENT pressure on one '
+    'Philippine price. Do NOT introduce new facts. Weigh what they said, trusting '
+    'concrete cited data over vibes, resolve their disagreement into a SINGLE present '
+    'read, and stay honest to the benchmark note (a present read, never a confident '
+    'forecast). One or two sentences, then the estimate line.'
+)
 _SYNTH_SYSTEM = (
     'You are a Philippine macro analyst writing the present-pressure summary a '
     'household would read. Write 2-3 present-tense sentences on current pressure '
@@ -191,6 +199,29 @@ class Forum:
         except Exception:
             return ''
 
+    def _judge_sector(self, ctx: SectorContext, finals: list[AgentResponse]):
+        """Synthesise the final round into one present read (like the swarm's master
+        judge) — resolving disagreement rather than averaging. Returns
+        (estimate | None, verdict_text)."""
+        transcript = '\n'.join(
+            f"{r.agent_name}: {r.statement[:280]} [est {r.price_estimate}]"
+            for r in finals)
+        msgs = [
+            {'role': 'system', 'content': _JUDGE_SYSTEM},
+            {'role': 'user', 'content': (
+                f"Sector: {ctx.sector} (report in {ctx.unit}). "
+                f"Benchmark note: {ctx.verdict_note}\n\n"
+                f"Analyst statements:\n{transcript}\n\n"
+                "Weigh the analysts, resolve their disagreement, and give the single "
+                "present read. End with:\n" + _EST_LINE[ctx.sector])},
+        ]
+        try:
+            text = llm.complete(msgs, tier=self._deep, max_tokens=280)
+        except Exception:
+            return None, ''
+        _, statement = _parse_think(text)
+        return _EXTRACTORS[ctx.sector](statement), statement.strip()
+
     def _emit(self, kind: str, data: dict):
         if self._on_event:
             try:
@@ -225,34 +256,39 @@ class Forum:
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 steer = self._moderate(ctx, [r for r in history if r.round_num == rnd])
                 self._emit('moderator', {'sector': ctx.sector, 'text': steer})
-        return self._aggregate(ctx, history, agents)
+        # The judge synthesises the debate into one present read.
+        finals = [r for r in history if r.round_num == self._rounds]
+        judged, verdict = self._judge_sector(ctx, finals)
+        self._emit('judge', {'sector': ctx.sector, 'text': verdict,
+                             'estimate': judged, 'unit': ctx.unit})
+        return self._aggregate(ctx, history, agents, judged)
 
     def _aggregate(self, ctx: SectorContext, history: list[AgentResponse],
-                   agents: list[Agent]) -> SectorReading:
+                   agents: list[Agent], judged: Optional[float] = None) -> SectorReading:
         final = max((r.round_num for r in history), default=0)
         finals = [r for r in history if r.round_num == final]
         ests = [r.price_estimate for r in finals if r.price_estimate is not None]
-        avg, confidence = None, 0
+        confidence = 0
         if ests:
-            raw = sum(ests) / len(ests)
-            # Agreement is measured on the RAW consensus (before any clamp), so
-            # agents that agree still read as agreeing even when the magnitude guard
-            # pulls the reported number in. Scaled by corroboration: a lone estimate
-            # can't be "100% agreed".
+            # Agreement measured on the raw agent estimates, corroboration-scaled:
+            # a lone estimate can't be "100% agreed".
             band = _BAND.get(ctx.sector, 0.2)
             n = len(ests)
-            within = sum(1 for e in ests if abs(e - raw) <= band)
+            centre = sum(ests) / n
+            within = sum(1 for e in ests if abs(e - centre) <= band)
             confidence = int((within / n) * 100 * min(n, 2) / 2)
-            # Magnitude guard (§6.6): clamp the consensus back toward the sector
-            # anchor, keeping direction — this is what stops a "+5%/month" food read
-            # (a YoY-leak error) from reaching the card.
-            avg = raw
-            if ctx.anchor is not None:
-                try:
-                    avg = anchoring.reconcile_estimate(
-                        raw, ctx.anchor, tolerance=_TOLERANCE.get(ctx.sector, 2.0)).value
-                except Exception:
-                    avg = raw
+        # Point estimate: the JUDGE's synthesis (resolving disagreement), falling
+        # back to the agent mean only if the judge produced no number.
+        raw = judged if judged is not None else (sum(ests) / len(ests) if ests else None)
+        avg = raw
+        # Magnitude guard (§6.6): clamp toward the sector anchor, keeping direction —
+        # this stops a "+5%/month" food read (a YoY-leak error) from reaching the card.
+        if raw is not None and ctx.anchor is not None:
+            try:
+                avg = anchoring.reconcile_estimate(
+                    raw, ctx.anchor, tolerance=_TOLERANCE.get(ctx.sector, 2.0)).value
+            except Exception:
+                avg = raw
         drivers = [d for r in finals if (d := _driver_text(r.statement))][:3]
         sources = sorted({s for a in agents for s in a.rag_sources})
         return SectorReading(
@@ -282,12 +318,22 @@ class Forum:
 
 
 def run_monitor(rag, corpus_dir=None, as_of=None, window: str = 'this_week',
-                sectors=('gas', 'food', 'electricity'), rounds: int = 2,
+                sectors=('gas', 'food', 'electricity'), rounds: int = 2, live: bool = True,
                 on_event: Optional[Callable[[str, dict], None]] = None) -> PressureBrief:
-    """One-click entry point: assemble the present context, then debate it into a
-    Pressure Brief. This is what the "Run" button calls (Stage 1 of the Monitor)."""
-    kwargs = {} if corpus_dir is None else {'corpus_dir': corpus_dir}
-    assembled = auto_assemble(rag=rag, as_of=as_of, window=window, sectors=sectors, **kwargs)
+    """One-click entry point: (optionally) refresh the social snapshot live, assemble
+    the present context, then debate it into a Pressure Brief. `live` makes the
+    Monitor hybrid — it pulls fresh Reddit/Trends when possible and falls back to the
+    frozen snapshot otherwise; the validated benchmark is never touched."""
+    from ph_economic_ai.engine.social_snapshot import CORPUS_DIR
+    cdir = corpus_dir or CORPUS_DIR
+    if live:
+        try:
+            from ph_economic_ai.engine.live_social import refresh_social_snapshot
+            refresh_social_snapshot(cdir)      # best-effort; frozen fallback on any miss
+        except Exception:
+            pass
+    assembled = auto_assemble(rag=rag, as_of=as_of, window=window, sectors=sectors,
+                              corpus_dir=cdir)
     forum = Forum(rag, assembled.contexts, as_of=assembled.as_of,
                   window=assembled.window, rounds=rounds)
     return forum.run(on_event=on_event)

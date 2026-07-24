@@ -252,6 +252,8 @@ class PressureMonitorPanel(QWidget):
             self._update_graph(d)
         elif kind == 'moderator':
             self._add_feed(self._moderator_card(d))
+        elif kind == 'judge':
+            self._add_feed(self._judge_card(d))
 
     def _update_graph(self, d: dict):
         if self._kg_builder is None:
@@ -343,6 +345,33 @@ class PressureMonitorPanel(QWidget):
             badge.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};margin-top:2px;')
             v.addWidget(badge)
         h.addLayout(v, stretch=1)
+        return card
+
+    def _judge_card(self, d: dict) -> QFrame:
+        sector = d.get('sector', '')
+        color = _SECTOR_COLOR.get(sector, _INK)
+        card = QFrame()
+        card.setStyleSheet(
+            f'QFrame{{background:#FFFFFF;border:1px solid {color};border-radius:10px;}}'
+            f'QFrame QLabel{{background:transparent;border:none;}}')
+        v = QVBoxLayout(card)
+        v.setContentsMargins(12, 10, 12, 10)
+        v.setSpacing(3)
+        lbl = QLabel(f"JUDGE · {sector.upper()} · the verdict")
+        lbl.setStyleSheet(f'{_EYEBROW}font-size:9px;color:{color};')
+        v.addWidget(lbl)
+        txt = ' '.join((d.get('text') or '').split())
+        if len(txt) > 340:
+            txt = txt[:340] + '…'
+        body = QLabel(txt or '(synthesising the read)')
+        body.setWordWrap(True)
+        body.setStyleSheet(f'font-size:12px;color:{_INK};font-weight:500;')
+        v.addWidget(body)
+        est = d.get('estimate')
+        if est is not None:
+            badge = QLabel(f'verdict  {est:+.2f} {d.get("unit", "")}')
+            badge.setStyleSheet(f'font-size:11px;font-weight:700;color:{color};margin-top:2px;')
+            v.addWidget(badge)
         return card
 
     def _moderator_card(self, d: dict) -> QFrame:
