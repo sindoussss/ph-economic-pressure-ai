@@ -105,6 +105,8 @@ So one anchor (fuel) is a validated *predictor*; all three are validated *magnit
 |---|---|---|
 | ![workbench](docs/img/workbench.png) | ![simulation](docs/img/simulation.png) | ![landing](docs/img/landing.png) |
 
+*(Drop PNGs into `docs/img/` to populate these.)*
+
 ## Repo layout
 
 ```
