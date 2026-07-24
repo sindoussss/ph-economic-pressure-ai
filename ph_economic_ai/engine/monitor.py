@@ -20,7 +20,7 @@ from ph_economic_ai.engine.pressure_brief import PressureBrief
 def run_pressure_monitor(rag, corpus_dir=None, as_of=None, window: str = 'this_week',
                          sectors=('gas', 'food', 'electricity'), rounds: int = 2,
                          run_tournament: bool = True,
-                         on_event: Optional[Callable[[str, str], None]] = None
+                         on_event: Optional[Callable[[str, dict], None]] = None
                          ) -> tuple[PressureBrief, Outlook]:
     """Stage 1 (Monitor) then Stage 2 (Outlook). Returns (brief, outlook)."""
     kwargs = {} if corpus_dir is None else {'corpus_dir': corpus_dir}

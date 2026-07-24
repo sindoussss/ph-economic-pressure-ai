@@ -332,14 +332,35 @@ class SimMainWindow(QMainWindow):
             self._learning.refresh(getattr(self, '_current_run_id', None))
 
     def _on_landing_run(self):
-        """Click on the landing 'RUN SIMULATION' button — auto-derive a scenario
-        from sensible defaults (refined further once LiveDataBrief arrives) and
-        kick off the swarm in default swarm mode + 4 parallel groups."""
+        """Click on the landing 'RUN' button — run the Monitor forum first (the
+        present-pressure read + live debate), then chain the tournament swarm the
+        moment the Monitor finishes. Scenario defaults are refined from the live
+        brief once it lands (see _on_brief_ready)."""
         self._landing.set_busy(True)
-        # Use defaults — real values get computed in _on_brief_ready once
-        # LiveDataBrief lands. The brief drives oil/usd/weather; bsp_rate +
-        # demand_index stay at sensible defaults.
-        sc = Scenario(oil_pct=0.0, usd_pct=0.0, bsp_rate=6.5, demand_index=72.0)
+        self._pending_swarm_scenario = Scenario(
+            oil_pct=0.0, usd_pct=0.0, bsp_rate=6.5, demand_index=72.0)
+
+        # Stage 1: the Monitor forum. Show it so the user watches the debate.
+        self._sidebar.unlock_stages([7])
+        self._sidebar.set_active(7)
+        self._stack.setCurrentIndex(7)
+
+        # Chain the tournament to the Monitor finishing (one-shot connection).
+        try:
+            self._monitor.run_finished.disconnect(self._on_monitor_finished_run_swarm)
+        except TypeError:
+            pass
+        self._monitor.run_finished.connect(self._on_monitor_finished_run_swarm)
+        self._monitor.start()
+
+    def _on_monitor_finished_run_swarm(self):
+        """Stage 2: once the Monitor forum is done, run the tournament swarm."""
+        try:
+            self._monitor.run_finished.disconnect(self._on_monitor_finished_run_swarm)
+        except TypeError:
+            pass
+        sc = getattr(self, '_pending_swarm_scenario', None) or Scenario(
+            oil_pct=0.0, usd_pct=0.0, bsp_rate=6.5, demand_index=72.0)
         self._on_run_requested(sc, self._agents, swarm_mode=True, parallel_n=4)
 
     def _on_rerun_requested(self, scenario_dict: dict):
