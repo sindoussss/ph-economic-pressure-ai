@@ -43,3 +43,28 @@ launch_and_run_swarm.py
 navigate_swarm.py
 ph_economic_ai/cache/
 ph_economic_ai/tools/_market_monthly_cache.json
+
+# ── ML model weights & training corpora ───────────────────────────────────────
+# These routinely exceed GitHub's 100 MB per-file limit and are reproducible
+# artifacts, not source. Ignoring them keeps a monorepo commit from silently
+# dragging hundreds of MB into history — which is easy to do here, because the
+# repo root holds jarvis alongside ph_economic_ai and a pathspec-less
+# `git commit` picks up whatever happens to be staged.
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.onnx
+pytorch_model*.bin
+model*.bin
+adapter_model.bin
+optimizer.pt
+scheduler.pt
+rng_state.pth
+scaler.pt
+
+# Fine-tuning corpora and checkpoints
+jarvis/Training/
+jarvis/**/checkpoint-*/
+jarvis/deepseek-*/
+jarvis/jarvis-lora-adapter/
