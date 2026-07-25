@@ -1,11 +1,11 @@
 {
   "n": 151,
   "mom": {
-    "verdict": "beats_best_naive",
-    "best_method": "arima",
-    "best_naive": "random_walk",
-    "best_skill_vs_naive": 0.16,
-    "dm_p": 0.0046,
+    "verdict": "no_better_than_naive",
+    "best_method": "mean",
+    "best_naive": "mean",
+    "best_skill_vs_naive": 0.0,
+    "dm_p": null,
     "n": 151,
     "rmse_by_method": {
       "random_walk": 0.7897,
@@ -14,13 +14,14 @@
       "arima": 0.6633,
       "ets": 0.7285,
       "ridge": 0.702,
-      "hgb": 0.7386
+      "hgb": 0.7386,
+      "mean": 0.689
     }
   },
   "driver_ablation": {
     "verdict": "no_better_than_naive",
-    "best_method": "random_walk",
-    "best_naive": "random_walk",
+    "best_method": "mean",
+    "best_naive": "mean",
     "best_skill_vs_naive": 0.0,
     "dm_p": null,
     "n": 151,
@@ -29,7 +30,8 @@
       "seasonal_naive": 0.9151,
       "drift": 0.7936,
       "ridge": 0.7274,
-      "hgb": 0.7878
+      "hgb": 0.7878,
+      "mean": 0.689
     },
     "driver_edge": false
   },
@@ -39,8 +41,8 @@
     "n": 145,
     "driver_ablation": {
       "verdict": "no_better_than_naive",
-      "best_method": "random_walk",
-      "best_naive": "random_walk",
+      "best_method": "mean",
+      "best_naive": "mean",
       "best_skill_vs_naive": 0.0,
       "dm_p": null,
       "n": 145,
@@ -49,7 +51,8 @@
         "seasonal_naive": 0.9114,
         "drift": 0.7556,
         "ridge": 0.7029,
-        "hgb": 0.7554
+        "hgb": 0.7554,
+        "mean": 0.673
       },
       "driver_edge": false
     },

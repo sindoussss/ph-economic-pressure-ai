@@ -1,29 +1,29 @@
 {
   "verdict": "no_better_than_naive",
-  "best_method": "random_walk",
-  "best_naive": "random_walk",
+  "best_method": "mean",
+  "best_naive": "mean",
   "best_skill_vs_naive": 0.0,
   "dm_p": null,
   "n": 61,
   "calibration": [
     {
       "nominal": 0.5,
-      "qhat": 0.2939,
-      "measured": 0.5806
+      "qhat": 0.253,
+      "measured": 0.4194
     },
     {
       "nominal": 0.8,
-      "qhat": 0.7307,
-      "measured": 0.9032
+      "qhat": 0.4105,
+      "measured": 0.6129
     },
     {
       "nominal": 0.9,
-      "qhat": 0.9964,
-      "measured": 1.0
+      "qhat": 0.6591,
+      "measured": 0.9032
     },
     {
       "nominal": 0.95,
-      "qhat": 1.0571,
+      "qhat": 0.8623,
       "measured": 1.0
     }
   ],
@@ -32,7 +32,8 @@
     "seasonal_naive": 0.5343,
     "drift": 0.4578,
     "ridge": 0.3993,
-    "hgb": 0.4431
+    "hgb": 0.4431,
+    "mean": 0.3961
   },
   "driver_edge": false
 }

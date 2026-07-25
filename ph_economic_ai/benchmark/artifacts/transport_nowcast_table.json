@@ -2,8 +2,8 @@
   "n": 151,
   "mom": {
     "verdict": "no_better_than_naive",
-    "best_method": "seasonal_naive",
-    "best_naive": "seasonal_naive",
+    "best_method": "mean",
+    "best_naive": "mean",
     "best_skill_vs_naive": 0.0,
     "dm_p": null,
     "n": 151,
@@ -14,33 +14,35 @@
       "arima": 1.62,
       "ets": 1.6328,
       "ridge": 1.6116,
-      "hgb": 1.7342
+      "hgb": 1.7342,
+      "mean": 1.5312
     }
   },
   "driver_ablation": {
-    "verdict": "beats_best_naive",
-    "best_method": "ridge",
-    "best_naive": "seasonal_naive",
-    "best_skill_vs_naive": 0.1475,
-    "dm_p": 0.0214,
+    "verdict": "no_better_than_naive",
+    "best_method": "mean",
+    "best_naive": "mean",
+    "best_skill_vs_naive": 0.0,
+    "dm_p": null,
     "n": 151,
     "rmse_by_method": {
       "random_walk": 2.0355,
       "seasonal_naive": 1.8463,
       "drift": 2.0435,
       "ridge": 1.574,
-      "hgb": 1.7375
+      "hgb": 1.7375,
+      "mean": 1.5312
     },
-    "driver_edge": true
+    "driver_edge": false
   },
-  "driver_edge": true,
+  "driver_edge": false,
   "robust": {
     "prelim_months_dropped": 6,
     "n": 145,
     "driver_ablation": {
       "verdict": "no_better_than_naive",
-      "best_method": "random_walk",
-      "best_naive": "random_walk",
+      "best_method": "mean",
+      "best_naive": "mean",
       "best_skill_vs_naive": 0.0,
       "dm_p": null,
       "n": 145,
@@ -49,7 +51,8 @@
         "seasonal_naive": 1.6412,
         "drift": 1.4235,
         "ridge": 1.3138,
-        "hgb": 1.4131
+        "hgb": 1.4131,
+        "mean": 1.2575
       },
       "driver_edge": false
     },

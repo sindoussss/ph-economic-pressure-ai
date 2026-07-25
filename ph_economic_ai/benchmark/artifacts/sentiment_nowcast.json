@@ -1,4 +1,87 @@
 {
-  "status": "no_trends_data",
-  "note": "run `python -m ph_economic_ai.tools.refresh_social --trends` first"
+  "status": "computed",
+  "baseline_pool": [
+    "random_walk",
+    "seasonal_naive",
+    "drift",
+    "mean"
+  ],
+  "trend_terms": [
+    "presyo ng gas",
+    "diesel price",
+    "Meralco bill",
+    "bigas presyo"
+  ],
+  "targets": {
+    "headline": {
+      "n": 61,
+      "trend_cols": [
+        "trend_presyo_ng_gas",
+        "trend_diesel_price",
+        "trend_meralco_bill",
+        "trend_bigas_presyo"
+      ],
+      "sentiment_only": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 61
+      },
+      "drivers_only": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 61
+      },
+      "drivers_plus_sentiment": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 61
+      },
+      "sentiment_edge": false
+    },
+    "food": {
+      "n": 75,
+      "trend_cols": [
+        "trend_presyo_ng_gas",
+        "trend_diesel_price",
+        "trend_meralco_bill",
+        "trend_bigas_presyo"
+      ],
+      "sentiment_only": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 75
+      },
+      "drivers_only": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 75
+      },
+      "drivers_plus_sentiment": {
+        "verdict": "no_better_than_naive",
+        "best_method": "mean",
+        "best_naive": "mean",
+        "best_skill_vs_naive": 0.0,
+        "dm_p": null,
+        "n": 75
+      },
+      "sentiment_edge": false
+    }
+  },
+  "sentiment_edge_anywhere": false,
+  "finding": "social search interest does NOT nowcast PH fuel/food inflation beyond the naive (mean) baseline"
 }
