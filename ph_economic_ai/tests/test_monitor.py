@@ -164,13 +164,34 @@ def test_placeholder_card_builds(app):
     assert panel._placeholder_card('gas') is not None      # dashed 'analysing…' card
 
 
-def test_live_social_refresh_is_graceful(tmp_path):
+def test_live_social_refresh_is_graceful(tmp_path, monkeypatch):
     """Hybrid refresh must never raise and must degrade to the frozen snapshot when
-    the live deps/creds aren't present (returns a status, writes nothing)."""
-    from ph_economic_ai.engine.live_social import refresh_social_snapshot
-    status = refresh_social_snapshot(tmp_path)            # must not raise
+    the live deps aren't present. Deps are stubbed absent so the test stays hermetic
+    — a unit test must never depend on Google being reachable."""
+    from ph_economic_ai.engine import live_social
+    monkeypatch.setattr(live_social, '_have', lambda mod: False)
+    status = live_social.refresh_social_snapshot(tmp_path)   # must not raise
     assert set(status) >= {'reddit', 'trends', 'live', 'notes'}
-    assert isinstance(status['live'], bool)
+    assert status['live'] is False and status['trends'] == 0
+    assert not list(tmp_path.glob('*.jsonl'))                # nothing written
+
+
+def test_live_trends_is_cached_per_day(tmp_path, monkeypatch):
+    """A Trends pull already made today is reused rather than re-fetched — Google
+    hard-rate-limits anonymous calls, so re-fetching on every Run earns a 429."""
+    import datetime as _dt
+    from ph_economic_ai.engine import live_social
+    (tmp_path / f'trends_{_dt.date.today().isoformat()}.jsonl').write_text(
+        '{"date":"x","source":"GoogleTrends","title":"t"}\n', encoding='utf-8')
+
+    def _boom(*a, **k):                    # any network attempt is a failure here
+        raise AssertionError('re-fetched despite a same-day cache')
+    monkeypatch.setattr(live_social, '_have', lambda mod: mod == 'pytrends')
+    stub = type(sys)('pytrends.request')
+    stub.TrendReq = _boom
+    monkeypatch.setitem(sys.modules, 'pytrends.request', stub)
+    status = live_social.refresh_social_snapshot(tmp_path)
+    assert status['trends'] == 1 and status['live'] is True   # served from cache
 
 
 def test_main_window_has_monitor_tab(app):

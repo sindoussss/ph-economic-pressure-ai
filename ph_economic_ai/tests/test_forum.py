@@ -40,7 +40,8 @@ def test_food_magnitude_is_anchor_guarded(monkeypatch, tmp_path):
         return 'Rising. CAUSAL CHAIN: high prices -> spending -> budgets. ESTIMATE: +5.0%'
     monkeypatch.setattr(llm_mod, 'complete', high_food)
     brief = forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'nope',
-                              as_of=date(2026, 7, 24), sectors=('food',), rounds=1)
+                              as_of=date(2026, 7, 24), sectors=('food',), rounds=1,
+                              live=False)
     from ph_economic_ai.engine import anchoring
     food = brief.readings[0]
     cap = anchoring.food_persistence_anchor([]) + anchoring.FOOD_TOLERANCE_PCT
@@ -51,32 +52,80 @@ def test_food_magnitude_is_anchor_guarded(monkeypatch, tmp_path):
 
 
 def test_confidence_scales_with_corroboration():
-    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.forum import Forum
     from ph_economic_ai.engine.auto_assemble import SectorContext
     from ph_economic_ai.engine.debate import AgentResponse
     ctx = SectorContext(sector='gas', unit='₱/L', verdict_note='', anchor=0.0)
     f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
-    agents = _capability_agents('gas')
     lone = [AgentResponse('A', 1, '', 'CAUSAL CHAIN: x. ESTIMATE: +1.00/L', 1.0)]
-    assert f._aggregate(ctx, lone, agents).confidence == 50            # one voice, not 100%
+    assert f._aggregate(ctx, lone).confidence == 50                    # one voice, not 100%
     pair = lone + [AgentResponse('B', 1, '', 'CAUSAL CHAIN: y. ESTIMATE: +1.00/L', 1.0)]
-    assert f._aggregate(ctx, pair, agents).confidence == 100           # two agree -> full
+    assert f._aggregate(ctx, pair).confidence == 100                   # two agree -> full
 
 
 def test_judge_synthesis_overrides_the_mean():
-    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.forum import Forum
     from ph_economic_ai.engine.auto_assemble import SectorContext
     from ph_economic_ai.engine.debate import AgentResponse
     ctx = SectorContext(sector='gas', unit='₱/L', verdict_note='', anchor=0.0)
     f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
-    agents = _capability_agents('gas')
     finals = [AgentResponse('A', 1, '', 'CAUSAL CHAIN: x. ESTIMATE: +1.00/L', 1.0),
               AgentResponse('B', 1, '', 'CAUSAL CHAIN: y. ESTIMATE: +1.00/L', 1.0)]
-    r = f._aggregate(ctx, finals, agents, judged=0.40)
+    r = f._aggregate(ctx, finals, judged=0.40)
     assert r.estimate == 0.40        # the judge's synthesis, not the +1.00 agent mean
     assert r.confidence == 100       # agents still agreed (on +1.00)
-    r2 = f._aggregate(ctx, finals, agents, judged=None)
+    r2 = f._aggregate(ctx, finals, judged=None)
     assert r2.estimate == 1.00       # no judge number -> falls back to the agent mean
+
+
+def test_cites_only_sources_actually_retrieved(monkeypatch, tmp_path):
+    """A channel whose feeds return nothing must NOT be cited. Reddit is no longer
+    reachable (API behind a researcher review), so citing it — on the card or in the
+    debate map — would claim evidence the run never read."""
+    class PartialRag:
+        def add_text(self, source, text, url=''):
+            return 1
+
+        def query(self, text, top_k=5, sources=None):        # social returns nothing
+            return [{'source': s, 'text': 'crude up 3pct'} for s in (sources or [])
+                    if s not in ('RedditPH', 'GoogleTrends')]
+
+    monkeypatch.setattr(llm_mod, 'complete', _fake_complete)
+    seen = []
+    brief = forum.run_monitor(PartialRag(), corpus_dir=tmp_path / 'empty',
+                              as_of=date(2026, 7, 24), sectors=('gas',), rounds=1,
+                              live=False, on_event=lambda k, d: seen.append((k, d)))
+    cited = brief.readings[0].sources
+    assert 'RedditPH' not in cited and 'GoogleTrends' not in cited   # never read
+    assert 'YahooFinanceCrude' in cited and 'DOEBulletin' in cited   # genuinely read
+    social = next(d for k, d in seen
+                  if k == 'agent_message' and d['name'] == 'Andrea Lim')
+    assert social['sources'] == []          # the social lane cites nothing, honestly
+
+
+def test_no_sources_at_all_cites_nothing(monkeypatch, tmp_path):
+    """Total retrieval failure yields an empty citation list, not a wishlist."""
+    monkeypatch.setattr(llm_mod, 'complete', _fake_complete)
+    brief = forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'empty',
+                              as_of=date(2026, 7, 24), sectors=('gas',), rounds=1,
+                              live=False)
+    assert brief.readings[0].sources == []
+
+
+def test_social_counts_are_sector_specific(tmp_path):
+    """Rice chatter must not be counted as gas evidence."""
+    d = _snapshot(tmp_path, [
+        {'date': '2026-07-24', 'source': 'RedditPH', 'title': 'bigas presyo tumaas',
+         'text': 'rice is expensive'},
+        {'date': '2026-07-24', 'source': 'RedditPH', 'title': 'diesel price hike',
+         'text': 'fuel up again'},
+        {'date': '2026-07-24', 'source': 'RedditPH', 'title': 'meralco bill',
+         'text': 'kuryente mahal'},
+    ])
+    asm = auto_assemble(rag=FakeRag(), corpus_dir=d, as_of=date(2026, 7, 24),
+                        window='this_week', report_path=tmp_path / 'none.json')
+    by = {c.sector: c.social_counts['this_week'] for c in asm.contexts}
+    assert by == {'gas': 1, 'food': 1, 'electricity': 1}   # one each, not 3/3/3
 
 
 def _snapshot(tmp_path, rows):
@@ -117,7 +166,7 @@ def test_forum_produces_pressure_brief(monkeypatch, tmp_path):
         {'date': '2026-07-24', 'source': 'RedditPH', 'title': 'x', 'text': 'y'},
     ])
     brief = forum.run_monitor(FakeRag(), corpus_dir=d, as_of=date(2026, 7, 24),
-                              window='this_week', rounds=1)
+                              window='this_week', rounds=1, live=False)
     assert brief.as_of == '2026-07-24' and brief.window == 'this_week'
     by = {r.sector: r for r in brief.readings}
     assert set(by) == {'gas', 'food', 'electricity'}
@@ -135,6 +184,6 @@ def test_forum_handles_unparseable_estimates(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_mod, 'complete',
                         lambda *a, **k: 'No number here.')   # no ESTIMATE line
     brief = forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'empty',
-                              as_of=date(2026, 7, 24), rounds=1)
+                              as_of=date(2026, 7, 24), rounds=1, live=False)
     for r in brief.readings:
         assert r.estimate is None and r.direction == 'unknown' and r.confidence == 0

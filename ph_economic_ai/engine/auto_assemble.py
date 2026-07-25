@@ -10,6 +10,7 @@ is read from the frozen snapshot only.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -47,6 +48,33 @@ SECTOR_SOURCES: dict[str, dict[str, list[str]]] = {
 
 _DEFAULT_NOTE = ('This is a present-pressure read (a nowcast). Keep the discussion '
                  'on what is happening NOW, not a forward forecast.')
+
+# Sector keywords (Tagalog + English) used to count how much of the social snapshot
+# is actually ABOUT each sector. Without this every sector is told the same total,
+# so a snapshot full of rice chatter would read as gas evidence.
+_SECTOR_TERMS: dict[str, tuple[str, ...]] = {
+    'gas': ('gas', 'diesel', 'gasolina', 'petrol', 'fuel', 'krudo', 'oil', 'pump',
+            'presyo ng gas'),
+    'food': ('bigas', 'rice', 'food', 'pagkain', 'palengke', 'gulay', 'vegetable',
+             'agri', 'grocery'),
+    'electricity': ('meralco', 'kuryente', 'electric', 'power rate', 'kwh', 'bill',
+                    'brownout'),
+}
+
+
+# Whole-word matching is essential here, not substring: 'gas' appears inside
+# 'bigas' (rice) and 'rice' inside 'price', so naive containment cross-labels the
+# sectors — rice chatter counted as fuel evidence and vice versa.
+_SECTOR_RE = {s: re.compile(r'\b(?:' + '|'.join(re.escape(t) for t in terms) + r')\b')
+              for s, terms in _SECTOR_TERMS.items()}
+
+
+def _sector_posts(posts, sector: str):
+    """Posts whose title/text mention the sector. Unknown sector -> everything."""
+    rx = _SECTOR_RE.get(sector)
+    if rx is None:
+        return posts
+    return [p for p in posts if rx.search(f'{p.title} {p.text}'.lower())]
 
 
 @dataclass
@@ -112,7 +140,8 @@ def auto_assemble(rag=None, corpus_dir: Path = CORPUS_DIR,
 
     contexts = []
     for s in sectors:
-        counts = {w: len(window_slice(posts, w, ref)) for w in WINDOWS}
+        relevant = _sector_posts(posts, s)      # only chatter about THIS sector
+        counts = {w: len(window_slice(relevant, w, ref)) for w in WINDOWS}
         contexts.append(SectorContext(
             sector=s, unit=SECTOR_UNIT.get(s, ''),
             verdict_note=notes.get(s, _DEFAULT_NOTE),
