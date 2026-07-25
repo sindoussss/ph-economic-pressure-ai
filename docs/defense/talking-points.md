@@ -102,7 +102,10 @@ Yes, and I say so in §2.4a and §4.7. It's implicit in Hyndman & Koehler (2006)
 It's a *null* thesis, which is a different thing. It reproduces Meese–Rogoff and Atkeson–Ohanian for a new market, and it adds a methodological result that doesn't depend on Philippine data at all. A referee can apply the diagnostic to their own work tomorrow. I'd rather submit a correct null than an incorrect positive — and I found it myself rather than having it found for me.
 
 **Q: With n≈50, isn't your "efficient" verdict just underpowered?**
-Fair, and we quantify it: the fuel test detects a ~25% skill edge at 80% power (`power.json`); observed −0.3%. We claim exactly what the data support — "no *large, exploitable* edge (≳25%) is detectable" — never "proven efficient." **Note this cuts both ways:** the nulls on the smaller nowcast samples are correspondingly weak, and per-target power analysis is listed as future work. Say that before they do.
+Partly — and **every null is bounded**, so I can tell you exactly how much (`power.json`, §5.10). The MDE at 80% power: fuel forecast **24.7%** (the weakest test in the thesis), headline MoM **13.2%**, long-sample **10.1%**, food **14.9%**, transport drivers **12.5%**, and electricity drivers **5.8%**. So I claim what each test supports and no more: for fuel, "no *large* edge is detectable"; for the electricity driver channel, the test genuinely had resolution to see a small edge and found the model 1.8% *worse* than a constant. The claims are not uniform in strength and I don't state them as if they were.
+
+**Q: You withdrew the electricity finding — isn't the replacement null just underpowered?**
+No, and this is the one to have ready. The electricity driver-only null is the **best-powered result in the entire map**: MDE 5.8% against an observed −1.8%. The test could comfortably have seen a small edge. It saw a model performing worse than a constant.
 
 **Q: Electricity +28% — real or overfit?**
 Neither. It was real arithmetic against the wrong baseline. Walk-forward, no look-ahead, DM p = 0.0011 — all correct, and all measured against a random walk that is structurally weak for a target with ρ ≈ 0. Ridge was in fact 1.8% *worse* than a constant. It's the worked example in §5.7.
@@ -135,7 +138,7 @@ Modest sample sizes and correspondingly limited power; PH-specific data; CPI pre
 Knowing these series aren't monthly-predictable saves wasted forecasting effort — and the diagnostic lets anyone check whether a reported edge is real before acting on it.
 
 **Q: Future work?**
-Per-target power analysis; a survey applying the S(ρ) diagnostic to published nowcasting results on mean-reverting targets; higher-frequency tests where the mean is a weaker competitor.
+A survey applying the S(ρ) diagnostic to published nowcasting results on mean-reverting targets; higher-frequency tests where the mean is a weaker competitor; extending the audit to the remaining CPI components.
 
 ---
 
