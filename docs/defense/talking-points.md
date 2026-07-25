@@ -2,13 +2,15 @@
 
 Your job at the defense is to be the **most honest person in the room** about what Strata does and doesn't do. The science is strong *because* it's blunt about limits. Lead with that, and the hard questions stop being threats.
 
+> **Revised 2026-07-26.** An earlier version of this sheet was built around four significant positives (headline MoM +16%, food MoM +16%, electricity drivers +28%, and a rejected transport edge). **Those positives did not survive the corrected baseline pool** and have been withdrawn. Everything below reflects the current, corrected map. If you rehearsed the old version, re-read §3 and §6 carefully — the strongest material is now the *refutation*, not the positives.
+
 ---
 
 ## 1. The one-sentence thesis
 
-> "Strata is a rigorous, reproducible benchmark of **what is and isn't forecastable** in Philippine fuel and inflation — a strictly-causal walk-forward audit with significance tests — plus an exploratory multi-agent app that makes the predictable channels legible."
+> "Strata is a rigorous, reproducible audit of **what is and isn't forecastable** in Philippine fuel and inflation — and its main methodological finding is that the *choice of naive baseline*, not the model, silently decided the verdicts."
 
-The **contribution is the benchmark (the predictability map)**, not the app. Say this first, always.
+The **contribution is the benchmark and the baseline result**, not the app. Say this first, always.
 
 ---
 
@@ -23,24 +25,35 @@ Draw this line before anyone else can blur it.
 | Needs an LLM? | **No** — fully reproducible with `python -m ph_economic_ai.benchmark.run` | Yes (local Ollama) |
 | Claim | A measured, significance-tested result | An interface / explanation layer — **not** a validated predictor |
 
-If a question is about prediction accuracy → it's about the **validated** side. If it's about the agents/agreement/learning → it's **exploratory**, and you say so.
+The boundary is enforced in code, not just asserted: `tests/test_benchmark_isolation.py` fails if `benchmark/` ever imports the app, PyQt, or any LLM provider — including via a relative import.
 
 ---
 
-## 3. The findings (the predictability map) — exact numbers
+## 3. The findings — the corrected map
 
-All skill = **% RMSE improvement over the strongest naive baseline** (random walk / drift / seasonal naive), walk-forward, DM-tested.
+All skill = **% RMSE improvement over the strongest naive baseline**, walk-forward, DM-tested. The naive pool is {random walk, drift, seasonal naive, **historical mean**}.
 
-| Target | Setup | Verdict | Numbers |
-|---|---|---|---|
-| RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **Efficient** — no method beats a random walk | skill ≈ **−0.01** (−0.0075) |
-| MoM inflation (headline) | nowcast | **Predictable** — own dynamics | ARIMA **+16%** (0.1627), DM **p = 0.001**, n = 143 |
-| MoM inflation (food) | nowcast | **Predictable** | **+16%** (0.16), DM **p = 0.005** |
-| **Electricity-CPI** | nowcast, driver-only | **Robust within-month driver edge** | Ridge **+28%** (0.2833), DM **p ≈ 0.001**, n = 151 |
-| Transport-CPI | nowcast, driver-only | **Rejected** — preliminary-data artifact | apparent +14.8%, fails robustness check |
-| Food-CPI | nowcast, driver-only | **Clean null** | no commodity-driver edge |
+| Target | Setup | Verdict |
+|---|---|---|
+| RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **Efficient** — no method beats a random walk (skill ≈ −0.01) |
+| MoM inflation (headline) | nowcast | **No better than naive** — ARIMA +4.1% vs the mean, p = 0.36 |
+| MoM inflation (food) | nowcast | **No better than naive** — ARIMA +3.7% vs the mean, p = 0.46 |
+| Electricity-CPI | nowcast, driver-only | **No better than naive** — Ridge **−1.8%** vs the mean, p = 0.37 |
+| Transport-CPI | nowcast, driver-only | **Rejected twice** — preliminary-data artifact *and* fails vs the mean |
+| Food-CPI | nowcast, driver-only | **Clean null** — Ridge −1.9% vs the mean |
+| Google Trends search interest | nowcast | **No better than naive** — adds nothing on either target |
 
-**The money line:** the within-month driver question is answered from all three sides — a **rejected false positive** (transport), a **confirmed null** (food), and a **confirmed true positive** (electricity, because the regulated generation charge is a formulaic, observable fuel pass-through). *That* is what makes the method credible: it discriminates real signal from artifact.
+**The map is uniformly negative, and that is the finding.**
+
+**The money line:** *"An earlier version of this audit reported four significant positives. The strongest — a +28.3% electricity driver edge, DM p = 0.0011 — passed every guard I had: significance, sub-sample stability, a real-time-data robustness re-test, a Bonferroni correction, and a mechanism that is institutionally accurate. It was still an artifact. The model was worse than predicting a constant, and the entire edge was the gap between the random walk and the mean on a mean-reverting target. I found it, I published the refutation, and I derived the condition under which it happens."*
+
+**The closed form (know this cold).** For a stationary target with lag-1 autocorrelation ρ, a forecaster carrying *no information beyond the unconditional mean* scores
+
+> **S(ρ) = 1 − [2(1 − ρ)]^(−1/2)** over the random walk — positive exactly when **ρ < ½**, and ≈ **+29% at ρ = 0**.
+
+Inverted, it's a diagnostic: the +28.3% electricity edge implies ρ ≈ 0.027; electricity MoM measures **ρ = +0.002**. The finding is fully explained by the target's own autocorrelation, with no driver involved. The expression matches simulation to ≤ 0.011 and all five real targets to ≤ 0.022 (`baseline_theory.json`).
+
+**Why every guard passed** (this is the part examiners find interesting): S(ρ) is a property of the *target*, not the estimation. So it doesn't decay out of sample, doesn't vary across sub-samples, survives a vintage re-test, and is untouched by multiple-comparison correction. **Robustness checks compound only if they're independent** — five checks that all take the baseline as given give the reassurance of five and the coverage of one.
 
 ---
 
@@ -50,93 +63,79 @@ Memorize these three layers; answer in exactly this order.
 
 1. **Within a run — yes.** The swarm debates over multiple rounds; each agent sees prior rounds' estimates and revises. **But it resets every run** (history starts empty).
 2. **Across runs — only on real outcomes.** A background checker grades past forecasts against the **real DOE pump price** (~5 days later); trust scores update; the swarm then *evolves* (benches low-trust agents, adjusts model tier/prompt) after a cold-start threshold. **Same-day reruns change nothing** — there's no new outcome yet.
-3. **The models themselves — never.** The LLMs are frozen. Fine-tuning (`train_sft.py`) is future work. It does **not** train on your runs, and does not yet read its own track record as memory.
+3. **The models themselves — never.** The LLMs are frozen. Fine-tuning (`train_sft.py`) is future work. It does **not** train on your runs.
 
 **One-liner:** *"It adapts its agent selection as real pump-price outcomes arrive over days — honest in-context/selection adaptation, not model training. It does not get smarter every click, and I'd never claim it does."*
-
-Why say it this way: if you claim "learns every run," the follow-up is "show me trust change between two runs five minutes apart" — and it's flat. The honest version has no such trap.
 
 ---
 
 ## 5. The app, made honest: anchoring & the size ablation
 
-Two follow-up contributions on the exploratory side. Both are *honesty stories* — lead with that. (It runs **offline on an 8GB GPU** now — local models only.)
+Two follow-up contributions on the exploratory side. Both are *honesty stories*. (It runs **offline on an 8GB GPU** — local models only.)
 
-**The magnitude problem, and the fix.** Small local models reason about *direction* fine but botch *magnitude* — a 7B judge said a +6.8% oil shock moves pump prices **+₱12.93/L** when the real pass-through is **~₱2.7/L**. The fix isn't a bigger model — it's **not asking the model to do the arithmetic at all**. The oil→pump pass-through is accounting, so it's computed deterministically (a physics "anchor") and used three ways: a **prior** in the prompt, a **leash** that clamps a hallucinated estimate back toward physics, and a **fallback** when the model produces nothing. This is the *program-aided* pattern (Gao et al. 2023, PAL) applied to macro.
-
-**Conditioned on the benchmark — this is the key link.** Each sector is anchored to **the signal its own backtest found real**: fuel and electricity get a fuel pass-through; **food gets its own trailing trend, NOT oil** — because your benchmark proved food is a clean null on commodities. Anchoring food to oil would be anchoring it to what you already proved is noise. This ties the exploratory app *directly* to the validated benchmark.
+**The magnitude problem, and the fix.** Small local models reason about *direction* fine but botch *magnitude* — a 7B judge said a +6.8% oil shock moves pump prices **+₱12.93/L** when the real pass-through is **~₱2.7/L**. The fix isn't a bigger model — it's **not asking the model to do the arithmetic at all**. The oil→pump pass-through is accounting, so it's computed deterministically (a physics "anchor") and used three ways: a **prior** in the prompt, a **leash** clamping a hallucinated estimate back toward physics, and a **fallback** when the model produces nothing. Program-aided reasoning (Gao et al. 2023, PAL) applied to macro.
 
 **Regressed against real data — and honestly bounded** (`anchor_validation.json`):
-- **Fuel anchor → significantly tracks pass-through.** Correlation **0.60** with actual monthly pump moves over 78 months (**p < 0.001**, CI [0.44, 0.73]), 74% directional. Lower MAE than a no-change baseline (₱2.21 vs ₱2.64) but only *marginally* — DM **p = 0.065**, so say "co-moves significantly; beats naive only marginally," never a flat "beats naive." Calibrated to the fitted **0.79×** pass-through (which at 5% isn't distinguishable from a full 1:1 — disclose that).
-- **Electricity & food anchors → magnitude guards, NOT predictors.** They get the *scale* right (~1.0×) but do not forecast the monthly move (electricity corr ~0.03; food persistence ≈ oil ≈ a plain mean). Raw commodity prices can't reproduce the benchmark's electricity edge — that needs the full generation-charge formula, and I say so.
+- **Fuel anchor → significantly tracks pass-through.** Correlation **0.60** with actual monthly pump moves over 78 months (**p < 0.001**, CI [0.44, 0.73]), 74% directional. Lower MAE than a no-change baseline (₱2.21 vs ₱2.64) but only *marginally* — DM **p = 0.065**, so say "co-moves significantly; beats naive only marginally," never a flat "beats naive."
+- **Electricity & food anchors → magnitude guards, NOT predictors.** They get the *scale* right (~1.0×) but do not forecast the monthly move (electricity corr ~0.03; food persistence ≈ oil ≈ a plain mean).
 
-**The line to say:** *"One anchor predicts, two only guard magnitude — and I report which is which. The anchor's job is to stop a weak model hallucinating ₱33/kWh, not to forecast."*
+**A detail worth volunteering:** the anchor backtest flagged that *"a plain mean is competitive"* for food **before** the benchmark's baseline pool did. Your own validation surfaced the problem; the audit was slower to hear it.
 
-**"Why 20 agents?" — the ablation** (`swarm_ablation.json`, n=8). All three cheaper configs reach the **same verdict** (means within ₱3.1–3.6/L, all overlapping). The full swarm's value is **lower run-to-run variance (σ 0.66 vs 0.72–0.81), not a better number** — it buys *agreement, not accuracy*. Two regions gives the same answer in half the time. **And the ablation corrected itself**: a 3-repeat pass looked like two-regions was tighter; 8 repeats showed that was noise — the same reject-your-own-flattering-result discipline as the transport artifact.
+**The line to say:** *"One anchor co-moves with reality, two only guard magnitude — and I report which is which. The anchor's job is to stop a weak model saying ₱33/kWh, not to forecast."*
+
+**"Why 20 agents?" — the ablation** (`swarm_ablation.json`, n=8). All three cheaper configs reach the **same verdict** (means within ₱3.1–3.6/L, overlapping). The full swarm buys **lower run-to-run variance (σ 0.66 vs 0.72–0.81), not a better number** — *agreement, not accuracy*. **And the ablation corrected itself**: a 3-repeat pass suggested two-regions was tighter; 8 repeats showed that was noise.
 
 ---
 
 ## 6. Q&A bank — likely examiner questions
 
 **Q: So your AI predicts fuel prices?**
-No — and that's a *result*, not a failure. Fuel (RON95) shows no detectable edge over a random walk. The value is knowing precisely what is and isn't predictable, so effort goes where there's signal.
-
-**Q: With n≈50, isn't your "efficient" verdict just underpowered — absence of evidence?**
-Fair, and we quantify it: the fuel test can detect a ~25% skill edge at 80% power (`power.json`), and observed −0.3%. So we claim exactly what the data support — "no *large, exploitable* edge (≳25%) is detectable," not "predictability is proven absent." We say "no detectable edge at this power," never "proven efficient." Small edges we cannot and do not rule out.
+No — and that's a *result*, not a failure. Nothing in the map shows a detectable edge over a properly-specified naive baseline. The value is knowing precisely what isn't predictable, so effort doesn't go where there's no signal.
 
 **Q: What's your actual contribution, then?**
-A significance-tested predictability map of PH fuel/inflation that cleanly separates predictable channels (MoM inflation +16%, electricity drivers +28%) from efficient ones (fuel, FX, YoY) — and is honest enough to reject a false positive (transport).
+Three things. A reproducible predictability audit for a data-poor economy. A **closed form for baseline-induced spurious skill**, S(ρ) = 1 − [2(1−ρ)]^(−1/2), validated on simulated and real data and usable as a diagnostic on anyone's published edge. And a documented case showing that five robustness checks can all pass on an artifact when none of them interrogates the baseline.
 
-**Q: Is the agent-agreement % a probability?**
-No. It's a stochastic LLM consensus signal that varies run to run (temperature ~0.8, no seed). It is explicitly **not** calibrated. The calibrated uncertainty lives in the benchmark's **split-conformal intervals**.
+**Q: Isn't "the mean should be in the baseline pool" already known?**
+Yes, and I say so in §2.4a and §4.7. It's implicit in Hyndman & Koehler (2006), it's the substance of the Atkeson–Ohanian benchmark argument, and the textbook comparison is standard. **I don't claim the effect is new — I claim the magnitude.** The literature (Hewamalage et al. 2023; Beck, Dovern & Vogl 2025) warns the naive forecast is *too hard* to beat on random-walk-like series. Mine is the mirror case: on mean-reverting *rates* it's too easy. What I add is how large, exactly when (ρ < ½), and how to test a published result for it.
 
-**Q: Why use LLM agents at all if the benchmark needs no LLM?**
-The benchmark is the validated science. The swarm is an explanation/interface layer that makes the drivers legible — every node grounded in real retrieved evidence — and it's clearly separated, never claimed as the predictor.
+**Q: Your headline finding evaporated. Isn't the thesis now empty?**
+It's a *null* thesis, which is a different thing. It reproduces Meese–Rogoff and Atkeson–Ohanian for a new market, and it adds a methodological result that doesn't depend on Philippine data at all. A referee can apply the diagnostic to their own work tomorrow. I'd rather submit a correct null than an incorrect positive — and I found it myself rather than having it found for me.
 
-**Q: Your local models are small — how are their numbers trustworthy?**
-They're not asked to do the hard part. Small models get *direction* right but *magnitude* wrong, so magnitude is computed deterministically (the pass-through anchor) and the LLM only supplies direction and qualitative judgment. Program-aided reasoning: LLM for structure, code for the arithmetic. It's how the app stays coherent on an 8GB GPU.
-
-**Q: Did you just tune the anchors to look good?**
-The opposite — I regressed all three against real PH series, significance-tested them with the same DM test as the audit, and *reported the limits*. Fuel significantly co-moves with pass-through (r 0.60, p < 0.001) but only *marginally* beats naive on error (DM p = 0.065). Electricity and food anchors do **not** forecast — they only guard magnitude. If anything I under-claim: I flag my own strongest result as merely marginal.
-
-**Q: Isn't the electricity anchor a cheat if it doesn't predict?**
-It's never claimed as a predictor. Its job is *scale* — stopping a weak model saying ₱33/kWh. The benchmark's electricity *prediction* edge (+28%) needs the full generation-charge formula; raw oil can't reproduce it, and the write-up says so plainly (§6.6, §6.7 of the manuscript).
-
-**Q: Why 20 agents if a smaller swarm gives the same answer?**
-It buys *stability, not accuracy* — lower run-to-run variance (σ 0.66 vs 0.72–0.81). And I measured that with an 8-repeat ablation rather than asserting it; two regions is a valid speed tradeoff that reaches the same verdict.
-
-**Q: You rebuilt the app since the benchmark — is it still the same thesis?**
-The rebuild is conditioned *on* the benchmark: each anchor uses exactly what the audit found forecastable for that series (fuel/electricity pass-through; food own-trend, not commodities). The app and the audit now tell one story instead of two.
+**Q: With n≈50, isn't your "efficient" verdict just underpowered?**
+Fair, and we quantify it: the fuel test detects a ~25% skill edge at 80% power (`power.json`); observed −0.3%. We claim exactly what the data support — "no *large, exploitable* edge (≳25%) is detectable" — never "proven efficient." **Note this cuts both ways:** the nulls on the smaller nowcast samples are correspondingly weak, and per-target power analysis is listed as future work. Say that before they do.
 
 **Q: Electricity +28% — real or overfit?**
-Walk-forward (no look-ahead), DM p ≈ 0.001, n = 151, and mechanistically grounded (the ERC generation charge is a formulaic fuel pass-through). And we rejected a similar-looking transport edge as an artifact — so the method discriminates rather than rationalizes.
+Neither. It was real arithmetic against the wrong baseline. Walk-forward, no look-ahead, DM p = 0.0011 — all correct, and all measured against a random walk that is structurally weak for a target with ρ ≈ 0. Ridge was in fact 1.8% *worse* than a constant. It's the worked example in §5.7.
 
 **Q: How do you know transport was an artifact?**
-The apparent edge appeared on preliminary CPI data and failed the robustness check on revised data — so we report it as rejected, not as a finding.
+Two independent ways now: the apparent edge rested on three preliminary CPI observations and vanished on revised data, *and* it fails against the mean. Only the second would have caught it if the data had been clean.
+
+**Q: Is the agent-agreement % a probability?**
+No. A stochastic LLM consensus signal that varies run to run (temperature ~0.8, no seed), explicitly **not** calibrated. The calibrated uncertainty lives in the benchmark's split-conformal intervals.
+
+**Q: Why use LLM agents at all if the benchmark needs no LLM?**
+The benchmark is the validated science. The swarm is an explanation/interface layer, clearly separated and never claimed as the predictor. If pressed on whether it's necessary: it isn't — it's an accessibility contribution, and I label it as exploratory throughout.
+
+**Q: Did you just tune the anchors to look good?**
+The opposite — all three were regressed against real PH series with the same DM test, and the limits reported. Fuel co-moves significantly (r 0.60) but beats naive only marginally (p = 0.065). Electricity and food don't forecast at all. I flag my own strongest result as merely marginal.
 
 **Q: What baseline are you beating?**
-The *strongest* naive per target (random walk / drift / seasonal naive), not a strawman. Skill is % RMSE improvement over that.
-
-**Q: Why conformal intervals?**
-Distribution-free, finite-sample coverage — honest uncertainty without assuming Gaussian errors.
+The *strongest* naive per target — random walk, drift, seasonal naive, **and the historical mean**. That last one is the whole point: omitting it is what produced the earlier false positives.
 
 **Q: How do I know you didn't p-hack?**
-One pre-committed protocol, DM significance tests, and we report the nulls and the *rejected* positive — not just the wins. The figure shows the efficient/rejected bars too.
+One pre-committed protocol, DM tests, and the strongest evidence available: **I published the destruction of my own headline result**, with the superseded map retained in `corrected_predictability_map.json` so you can audit the change rather than take it on trust.
 
 **Q: Reproducibility?**
-`pip install -r requirements.txt && python -m ph_economic_ai.benchmark.run` — no LLM, no GPU, committed data + artifacts. Anyone can re-derive every number.
+`pip install -r requirements.txt && python -m ph_economic_ai.benchmark.run` — no LLM, no GPU, committed data + artifacts. Every number re-derives.
 
 **Q: Limitations?**
-Modest sample sizes; PH-specific; CPI preliminary-data revisions (which is exactly why we reject fragile edges); and the app layer is exploratory, not validated.
-
-**Q: Why does the app matter if the benchmark is the contribution?**
-It turns the validated structure into something a policymaker can interrogate, with provenance — accessibility, not a new claim. Labeled exploratory throughout.
-
-**Q: Future work?**
-Fine-tuning (currently future), more targets, track-record memory *on the predictable targets only*, and faster outcome grading.
+Modest sample sizes and correspondingly limited power; PH-specific data; CPI preliminary-data revisions; proxy series (Henry Hub for PH generation fuel, RBOB for finished product); and the app layer is exploratory, not validated.
 
 **Q: Practical value?**
-Knowing fuel is unpredictable saves wasted forecasting effort; the predictable channels (MoM inflation, electricity drivers) are where nowcasting genuinely adds value.
+Knowing these series aren't monthly-predictable saves wasted forecasting effort — and the diagnostic lets anyone check whether a reported edge is real before acting on it.
+
+**Q: Future work?**
+Per-target power analysis; a survey applying the S(ρ) diagnostic to published nowcasting results on mean-reverting targets; higher-frequency tests where the mean is a weaker competitor.
 
 ---
 
@@ -144,32 +143,32 @@ Knowing fuel is unpredictable saves wasted forecasting effort; the predictable c
 
 **Use:**
 - "what is and isn't forecastable"
-- "informationally efficient — no method beats a random walk"
+- "no detectable edge over a properly-specified naive baseline"
+- "the choice of baseline decided the verdicts, not the model"
+- "robustness checks compound only if they're independent"
+- "I published the refutation of my own headline result"
 - "validated benchmark vs exploratory app"
-- "we rejected this as a data artifact"
-- "skill vs the strongest naive baseline, DM-tested"
 - "not a calibrated probability"
 - "program-aided — the model doesn't do the arithmetic"
-- "one anchor predicts, two guard magnitude — I report which"
 - "the swarm buys agreement, not accuracy"
-- "anchored to what the benchmark proved is real per series"
 
 **Avoid (overclaim traps):**
 - "the AI predicts fuel prices" → it doesn't, by your own finding
+- "MoM inflation / electricity is predictable" → **withdrawn**; both are nulls
+- "a confirmed true positive" → there is no longer one
 - "it learns / gets smarter every run" → only across days, on real outcomes; model is frozen
-- "87% confidence" / "agreement = probability" → it's not calibrated
-- "self-improving AI" → say "outcome-graded agent selection," scoped and honest
-- "the anchoring makes it accurate" → no — it makes it *coherent*; only the fuel anchor predicts
-- "electricity/food anchors are validated predictors" → they're magnitude guards; say exactly that
+- "87% confidence" / "agreement = probability" → not calibrated
+- "I discovered that baselines matter" → known; claim the *magnitude*, not the effect
+- "proven efficient" → say "no detectable edge at this power"
 
 ---
 
 ## 8. If you remember nothing else
 
-1. The contribution is the **predictability map**, validated and reproducible.
-2. You **reject false positives** — that's the integrity story (transport artifact; the anchoring's own n=3→n=8 reversal).
-3. The app is **exploratory and labeled as such** — never the predictor.
-4. "Learns" = within-run debate + outcome-graded evolution over days; **the model is frozen.**
-5. The app is now **anchored to the benchmark** — weak local models kept physically coherent by deterministic pass-through math (program-aided); **one anchor (fuel) validated as a predictor, two as honest magnitude guards** — every anchor regressed against real data.
+1. The contribution is the **audit plus the baseline result** — reproducible, and the map is uniformly null.
+2. **S(ρ) = 1 − [2(1−ρ)]^(−1/2), positive iff ρ < ½, ≈ +29% at ρ = 0.** Know it cold; it's the defensible core.
+3. You **refuted your own flagship finding** and published the before/after. That's the integrity story — lead with it, don't hide it.
+4. Five guards passed on an artifact because none questioned the baseline. Independence is what makes robustness real.
+5. The app is **exploratory and labeled as such** — never the predictor; anchors guard magnitude, they don't forecast.
 
 Be the most honest person in the room. It's your strongest position.

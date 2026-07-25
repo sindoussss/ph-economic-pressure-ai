@@ -156,26 +156,40 @@ walk was the wrong yardstick for the rate series; the mean is the right one.
 
 ---
 
-## 4. The fix
+## 4. The fix (adopted — 2026-07-26)
 
-**Canonical (destructive — rewrites cited numbers and test expectations, so make
-it a reviewed commit):**
+The correction is now **canonical**. Frozen artifacts are regenerated, the
+manuscript reports the corrected map (§4.7, §5.3–5.8), and the suite is green.
 
 ```python
-# nowcast.py
+# nowcast.py — the mean is part of the naive pool
 BASELINE_POOL = ('random_walk', 'seasonal_naive', 'drift', 'mean')
-PANEL_METHODS = ['random_walk', 'drift', 'seasonal_naive', 'mean',
-                 'arima', 'ets', 'ridge', 'hgb']
 ```
-and add `'mean'` to the driver-only ablation's method list in
-`run_driver_only_ablation`. The `mean` forecaster is already provided in
-`forecasters.py`. Then regenerate: `python -m ph_economic_ai.benchmark.run`, and
-update the unit tests that assert the old MoM verdicts.
 
-**Non-destructive (already provided):** `benchmark/corrected_audit.py` re-derives
-the entire map with the mean in the pool and writes
-`benchmark/artifacts/corrected_predictability_map.json`, leaving every frozen
-artifact intact — use it for the before/after in the revision.
+Two implementation details matter, because the obvious version of this fix does
+nothing and a plausible variant of it introduces a *new* false positive.
+
+**The pool must be self-enforcing.** Setting `BASELINE_POOL` alone is a **no-op**.
+`run_mom_nowcast` evaluates only `PANEL_METHODS`, and `mom_verdict` silently
+drops any pool member it has no RMSE for — so the mean would have been discarded
+and every verdict measured against the same weak baseline as before. The fix
+therefore lives in `run_mom_nowcast`, which now appends any pool member missing
+from the candidate list. That closes the general hole: a caller can no longer
+weaken the naive bar by passing an incomplete `methods` list. The driver-only
+ablation needs no separate change — it inherits the guarantee.
+
+**`mean` is deliberately NOT added to `PANEL_METHODS`.** An earlier draft of this
+document recommended exactly that; the recommendation was wrong. `run_nowcast`
+and `run_audit` pick the winner as *any* method significantly beating the random
+walk, so putting a naive baseline among the candidates lets the mean itself be
+crowned the "predictable" method — trading one false positive for another. In the
+same pass `audit.verdict_from_panel` was hardened to exclude all baselines from
+winning, since `drift` or `seasonal_naive` could already have produced a bogus
+`predictable` verdict by that route.
+
+**Before/after is preserved:** `benchmark/corrected_audit.py` still re-derives the
+map under both pools and writes `corrected_predictability_map.json`, so the
+superseded numbers stay auditable rather than being overwritten.
 
 ---
 
