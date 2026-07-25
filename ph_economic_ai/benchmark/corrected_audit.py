@@ -26,7 +26,6 @@ Reproduce:  python -m ph_economic_ai.benchmark.corrected_audit
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from ph_economic_ai.benchmark.audit import verdict_from_panel
 from ph_economic_ai.benchmark.efficiency import run_panel
@@ -39,9 +38,10 @@ from ph_economic_ai.benchmark.nowcast import (
 from ph_economic_ai.benchmark.psa_cpi import load_transport_mom
 from ph_economic_ai.benchmark.targets import TARGETS, load_inflation_mom
 
-MIN_TRAIN = 24
-_ARTIFACTS = Path(__file__).resolve().parent / 'artifacts'
-_OUT = _ARTIFACTS / 'corrected_predictability_map.json'
+from ph_economic_ai.benchmark.paths import ARTIFACTS_DIR, MIN_TRAIN, artifact
+
+_ARTIFACTS = ARTIFACTS_DIR
+_OUT = artifact('corrected_predictability_map.json')
 
 POOL_OLD = ('random_walk', 'seasonal_naive', 'drift')
 POOL_NEW = ('random_walk', 'seasonal_naive', 'drift', 'mean')

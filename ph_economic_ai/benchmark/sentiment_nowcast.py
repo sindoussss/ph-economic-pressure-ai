@@ -33,10 +33,11 @@ from ph_economic_ai.benchmark.nowcast import (
 from ph_economic_ai.benchmark.targets import load_inflation_mom
 from ph_economic_ai.benchmark.food_nowcast import _build_food_frame, load_food_features
 
-MIN_TRAIN = 24
-_DATA = Path(__file__).resolve().parent / 'data'
-_TRENDS_CSV = _DATA / 'google_trends_monthly.csv'
-_OUT = Path(__file__).resolve().parent / 'artifacts' / 'sentiment_nowcast.json'
+from ph_economic_ai.benchmark.paths import DATA_DIR, MIN_TRAIN, artifact, data
+
+_DATA = DATA_DIR
+_TRENDS_CSV = data('google_trends_monthly.csv')
+_OUT = artifact('sentiment_nowcast.json')
 
 # Corrected pool: the mean is the strong naive for a mean-reverting rate series.
 POOL = ('random_walk', 'seasonal_naive', 'drift', 'mean')

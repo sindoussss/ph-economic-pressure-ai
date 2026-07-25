@@ -19,11 +19,12 @@ it stays inside the validated benchmark. Reproduce with
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-_ARTIFACTS = Path(__file__).resolve().parent / 'artifacts'
-_REPORT = _ARTIFACTS / 'accuracy_report.json'
-_OUT = _ARTIFACTS / 'multiple_testing.json'
+from ph_economic_ai.benchmark.paths import ACCURACY_REPORT, ARTIFACTS_DIR, artifact
+
+_ARTIFACTS = ARTIFACTS_DIR
+_REPORT = ACCURACY_REPORT
+_OUT = artifact('multiple_testing.json')
 
 
 # ── Corrections (pure functions) ──────────────────────────────────────────────
@@ -144,8 +145,10 @@ def run() -> dict:
 
 def _main() -> int:
     r = run()
+    # ASCII only in console output: this is a documented reproduce command, and a
+    # Greek alpha crashes the default Windows console (cp1252 cannot encode it).
     print(f"Multiple-comparison correction over {r['n_tests']} confirmatory DM tests "
-          f"(α={r['alpha']}, Bonferroni threshold {r['bonferroni_threshold']}):\n")
+          f"(alpha={r['alpha']}, Bonferroni threshold {r['bonferroni_threshold']}):\n")
     print(f"  {'test':46} {'DM p':>7} {'Bonf p':>7} {'BH q':>6}  survives")
     for t in r['tests']:
         tag = ('Bonferroni+BH' if t['survives_bonferroni']

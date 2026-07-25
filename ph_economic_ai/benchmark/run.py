@@ -3,7 +3,7 @@
     python -m ph_economic_ai.benchmark.run
 """
 import hashlib
-from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -22,8 +22,9 @@ from ph_economic_ai.benchmark.metrics import mae, rmse, mape, mase, skill_score
 from ph_economic_ai.benchmark.proxy_validation import proxy_vs_gold
 from ph_economic_ai.benchmark import nowcast as nowcast_mod
 
-FEATURES_CSV = Path(__file__).parent / 'data' / 'features_monthly.csv'
-MIN_TRAIN = 24
+from ph_economic_ai.benchmark.paths import MIN_TRAIN, artifact, data
+
+FEATURES_CSV = data('features_monthly.csv')
 CONFORMAL_LEVELS = (0.5, 0.8, 0.9, 0.95)
 
 
@@ -309,8 +310,8 @@ def main():
     # baseline correction a general result rather than a one-dataset anecdote.
     from ph_economic_ai.benchmark import baseline_theory
     _bl = baseline_theory.run()
-    (Path(__file__).parent / 'artifacts' / 'baseline_theory.json').write_text(
-        __import__('json').dumps(_bl, indent=2), encoding='utf-8')
+    artifact('baseline_theory.json').write_text(
+        json.dumps(_bl, indent=2), encoding='utf-8')
     print(f"Baseline theory: mean-predictor beats RW iff rho<{_bl['crossover_rho']}; "
           f"closed form matches all targets to {_bl['max_abs_error_targets']:.3f}")
 

@@ -17,15 +17,16 @@ inside the validated benchmark. Reproduce with
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-_ARTIFACTS = Path(__file__).resolve().parent / 'artifacts'
+from ph_economic_ai.benchmark.paths import ARTIFACTS_DIR, artifact
+
+_ARTIFACTS = ARTIFACTS_DIR
 _PRED = _ARTIFACTS / 'backtest_predictions.csv'
-_OUT = _ARTIFACTS / 'power.json'
+_OUT = artifact('power.json')
 
 
 def min_detectable_skill(
