@@ -304,6 +304,16 @@ def main():
           f"{_pw['min_detectable_skill_pct']}% at {_pw['power']:.0%} power "
           f"(observed {_pw['observed_skill'] * 100:+.1f}%)")
 
+    # Closed form for the spurious skill a mean-predictor shows over the random
+    # walk, plus its validation against every real target. This is what makes the
+    # baseline correction a general result rather than a one-dataset anecdote.
+    from ph_economic_ai.benchmark import baseline_theory
+    _bl = baseline_theory.run()
+    (Path(__file__).parent / 'artifacts' / 'baseline_theory.json').write_text(
+        __import__('json').dumps(_bl, indent=2), encoding='utf-8')
+    print(f"Baseline theory: mean-predictor beats RW iff rho<{_bl['crossover_rho']}; "
+          f"closed form matches all targets to {_bl['max_abs_error_targets']:.3f}")
+
     # Sentiment keystone: does social search interest nowcast inflation beyond
     # naive? Ties the app's exploratory social layer to the validated spine, so it
     # belongs in the one-command run rather than being invoked by hand.

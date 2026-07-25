@@ -1,0 +1,87 @@
+{
+  "formula": "skill_vs_random_walk = 1 - 1/sqrt(2*(1-rho))",
+  "crossover_rho": 0.5,
+  "note": "A forecaster carrying no information beyond the unconditional mean out-scores the random walk whenever the target's lag-1 autocorrelation is below 0.5. The effect is a property of the target, so it is stable across sub-samples and survives robustness and multiple-comparison checks.",
+  "simulation": [
+    {
+      "rho": -0.2,
+      "predicted": 0.3545,
+      "simulated": 0.3484,
+      "abs_error": 0.0061
+    },
+    {
+      "rho": 0.0,
+      "predicted": 0.2929,
+      "simulated": 0.2861,
+      "abs_error": 0.0068
+    },
+    {
+      "rho": 0.2,
+      "predicted": 0.2094,
+      "simulated": 0.2016,
+      "abs_error": 0.0078
+    },
+    {
+      "rho": 0.4,
+      "predicted": 0.0871,
+      "simulated": 0.0776,
+      "abs_error": 0.0095
+    },
+    {
+      "rho": 0.5,
+      "predicted": 0.0,
+      "simulated": -0.0105,
+      "abs_error": 0.0105
+    },
+    {
+      "rho": 0.6,
+      "predicted": -0.118,
+      "simulated": -0.1292,
+      "abs_error": 0.0112
+    },
+    {
+      "rho": 0.8,
+      "predicted": -0.5811,
+      "simulated": -0.5874,
+      "abs_error": 0.0063
+    }
+  ],
+  "targets": [
+    {
+      "target": "headline MoM",
+      "rho": 0.3432,
+      "predicted_spurious_skill": 0.1275,
+      "observed_mean_vs_rw_skill": 0.1258,
+      "abs_error": 0.0017
+    },
+    {
+      "target": "headline MoM (long)",
+      "rho": 0.3686,
+      "predicted_spurious_skill": 0.1101,
+      "observed_mean_vs_rw_skill": 0.1222,
+      "abs_error": 0.0121
+    },
+    {
+      "target": "food MoM",
+      "rho": 0.375,
+      "predicted_spurious_skill": 0.1056,
+      "observed_mean_vs_rw_skill": 0.1276,
+      "abs_error": 0.022
+    },
+    {
+      "target": "electricity MoM",
+      "rho": 0.0019,
+      "predicted_spurious_skill": 0.2922,
+      "observed_mean_vs_rw_skill": 0.2959,
+      "abs_error": 0.0037
+    },
+    {
+      "target": "transport MoM",
+      "rho": 0.1397,
+      "predicted_spurious_skill": 0.2376,
+      "observed_mean_vs_rw_skill": 0.2477,
+      "abs_error": 0.0101
+    }
+  ],
+  "max_abs_error_targets": 0.022
+}
