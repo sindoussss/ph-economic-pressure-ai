@@ -10,18 +10,21 @@ Most "AI predicts the economy" claims are never tested against a hard baseline. 
 
 ## Findings — the predictability map
 
-![Predictability map — skill vs the naive baseline per target: electricity inflation +28% and month-on-month inflation +16% are predictable, transport's apparent edge is rejected as a data artifact, and 1-month fuel/FX/YoY inflation are informationally efficient.](docs/img/predictability_map.png)
+![Predictability map — skill vs the strongest naive baseline per target: with the historical mean in the baseline pool, no target shows a detectable edge.](docs/img/predictability_map.png)
 
 | Target | Setup | Verdict |
 |---|---|---|
 | RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **efficient** — no method beats a random walk (skill ≈ −0.01 vs RW) |
-| MoM inflation (headline) | nowcast, pre-release | **predictable** — ARIMA ~+16% over the best naive (DM p = 0.001, n = 143); own short-run dynamics |
-| MoM inflation (food) | nowcast, pre-release | **predictable** — ARIMA ~+16% (DM p = 0.005); own dynamics |
-| **Electricity-CPI** | nowcast, driver-only | **robust within-month driver edge** — Ridge +28% over best naive (DM p ≈ 0.001, n = 151) |
-| Transport-CPI | nowcast, driver-only | apparent +14.8% fuel edge **rejected** as a preliminary-data artifact |
+| MoM inflation (headline) | nowcast, pre-release | **no better than naive** — ARIMA +4.1% vs the mean (p = 0.36) |
+| MoM inflation (food) | nowcast, pre-release | **no better than naive** — ARIMA +3.7% vs the mean (p = 0.46) |
+| Electricity-CPI | nowcast, driver-only | **no better than naive** — Ridge **−1.8%** vs the mean (p = 0.37) |
+| Transport-CPI | nowcast, driver-only | **rejected twice** — preliminary-data artifact, and fails vs the mean |
 | Food-CPI | nowcast, driver-only | clean **null** on commodity drivers |
+| Google Trends search interest | nowcast, headline + food | **no better than naive** — search interest adds nothing |
 
-The within-month *driver* question is answered from all three sides: a rejected false positive (transport), a confirmed null (food), and a confirmed true positive (electricity — its regulated generation charge is a formulaic, observable fuel pass-through). Full write-up: [`docs/manuscript/2026-06-10-thesis-manuscript.md`](docs/manuscript/2026-06-10-thesis-manuscript.md).
+**The map is uniformly negative, and that is the finding.** An earlier version of this audit reported four significant positives — including a flagship electricity "driver edge" (Ridge +28.3%, DM p = 0.0011) that survived sub-sample stability tests, a preliminary-data robustness re-test, a plausible institutional mechanism, *and* a Bonferroni correction. All of them were measured against a baseline pool of {random-walk, seasonal-naive, drift}, which omits the **historical mean**. Every month-on-month target here is a mean-reverting rate, for which the random walk is structurally weak and the constant mean is the baseline to beat. With the mean in the pool, every positive disappears: the electricity model is in fact *worse than a constant*.
+
+The audit's guards did not malfunction — each answered a question other than "is the baseline appropriate?", and robustness checks only compound when they are independent. The superseded map is kept in [`corrected_predictability_map.json`](ph_economic_ai/benchmark/artifacts/) and the derivation in [`docs/defense/mean-baseline-finding.md`](docs/defense/mean-baseline-finding.md) so the change is auditable. Full write-up: [`docs/manuscript/2026-06-10-thesis-manuscript.md`](docs/manuscript/2026-06-10-thesis-manuscript.md).
 
 ## Reproduce the benchmark (no LLM required)
 
@@ -86,16 +89,16 @@ The novel part is that **each sector is anchored to the signal its own walk-forw
 | Sector | Benchmark verdict | Anchor | Regressed on real data |
 |---|---|---|---|
 | **Fuel** | informationally efficient (RW wins) | mechanical oil→pump pass-through | **predicts + right scale** — corr 0.60, beats naive |
-| **Electricity** | predictable via a *formulaic* fuel pass-through (Ridge +28%) | fuel→generation-charge proxy | **right scale, not a monthly predictor** — corr ~0.03 |
-| **Food** | clean null on commodities, predictable own-dynamics | trailing own-trend persistence | **right scale, weakly predictive** — persistence ≈ oil ≈ mean |
+| **Electricity** | no better than naive (Ridge −1.8% vs the mean) | fuel→generation-charge proxy | **right scale, not a monthly predictor** — corr ~0.03 |
+| **Food** | clean null on commodities *and* on own-dynamics | trailing own-trend persistence | **right scale, weakly predictive** — persistence ≈ oil ≈ mean |
 
 Anchoring food to oil would be anchoring it to what the backtest proved is noise; anchoring it to its own recent trend is what the benchmark says is informative. This couples the exploratory swarm directly to the validated benchmark. Verified live on 8GB hardware: with anchors injected, `qwen2.5:7b` returned **+₱2.91/L** for fuel and a food agent returned **+0.77%** — where the un-anchored model had produced ₱12.93 and 7.6%. This makes the exploratory layer physically coherent; it does **not** claim to beat the random-walk baseline, which the benchmark shows nothing does at one month.
 
 **Every anchor is regressed against real Philippine series** by `python -m ph_economic_ai.tools.anchor_backtest` (result frozen in `benchmark/artifacts/anchor_validation.json`), and the harness reports the finding honestly rather than a flattering one:
 
 - **Fuel** (78 months, WB RON95 vs Brent/FX): the mechanical pass-through significantly tracks *actual* pump moves — correlation **0.60** (p < 0.001, 95% CI [0.44, 0.73]), directional accuracy **74%**. Its MAE is lower than a no-change baseline (**₱2.21 vs ₱2.64**), though only *marginally* — held to the same HLN-corrected Diebold–Mariano test as the audit, **DM p = 0.065** (significant at 10%, not 5%). The OLS slope of **0.79 ± 0.12** (PH pass-through looks partial — subsidy buffers, DOE averaging lag, competitive absorption, though at 5% it is not distinguishable from a full 1:1) is fed back as the calibration coefficient.
-- **Electricity** (175 months, PSA electricity CPI): the raw fuel-price anchor does **not** predict the monthly move (corr ~0.03–0.13) — the benchmark's +28% edge needs the actual generation-charge formula, not raw commodity prices — but its **magnitude is right** (scale ratio ~1.0).
-- **Food** (172 months, PSA food CPI): persistence and oil are **both weak and statistically indistinguishable** (corr ~0.18 vs ~0.21, within ±0.15), and a plain mean is competitive — monthly food CPI is close to unpredictable here; the anchor's value is again **magnitude** (scale ~0.9).
+- **Electricity** (175 months, PSA electricity CPI): the raw fuel-price anchor does **not** predict the monthly move (corr ~0.03–0.13); its **magnitude is right** (scale ratio ~1.0). This was originally read as "the anchor needs the real generation-charge formula to capture the benchmark's +28% edge." With the mean in the baseline pool there is no +28% edge to capture — so the anchor-validation null and the benchmark null now agree, where before they quietly disagreed.
+- **Food** (172 months, PSA food CPI): persistence and oil are **both weak and statistically indistinguishable** (corr ~0.18 vs ~0.21, within ±0.15), and **a plain mean is competitive** — monthly food CPI is close to unpredictable here; the anchor's value is again **magnitude** (scale ~0.9). This anchor backtest flagged the competitiveness of the mean before the benchmark's baseline pool did.
 
 So one anchor (fuel) is a validated *predictor*; all three are validated *magnitude guards* — which is the anchor's actual job, keeping a weak local model from claiming +₱33/kWh or +7% food when reality is a tenth of that. A robustness sweep also exercises 10k+ scenarios plus adversarial inputs (NaN, inf, extremes), and a simulation shows reconciliation cuts a hallucinating model's error by **~58%**.
 
