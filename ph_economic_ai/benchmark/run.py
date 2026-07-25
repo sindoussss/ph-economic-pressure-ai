@@ -325,6 +325,19 @@ def main():
           f"(nominal {_bs['alpha']:.0%}), {_bs['max_size_with_mean']:.1%} with it; "
           f"worsens with more data = {_bs['worsens_with_more_data']}")
 
+    # How much of the standard macro target space sits in the vulnerable regime?
+    # Reads a frozen FRED-MD snapshot; refresh with tools.refresh_fredmd.
+    try:
+        from ph_economic_ai.benchmark import vulnerability_survey
+        _vs = vulnerability_survey.run()
+        artifact('vulnerability_survey.json').write_text(
+            json.dumps(_vs, indent=2), encoding='utf-8')
+        print(f"Vulnerability census (FRED-MD): {_vs['n_vulnerable']}/{_vs['n_series']} "
+              f"= {_vs['share_vulnerable']:.1%} of series have rho < 0.5 "
+              f"(median rho {_vs['median_rho']:+.3f})")
+    except FileNotFoundError:
+        print('Vulnerability census: skipped (run tools.refresh_fredmd first)')
+
     # Sentiment keystone: does social search interest nowcast inflation beyond
     # naive? Ties the app's exploratory social layer to the validated spine, so it
     # belongs in the one-command run rather than being invoked by hand.

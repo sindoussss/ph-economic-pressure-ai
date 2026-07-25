@@ -59,6 +59,13 @@ Inverted, it's a diagnostic: the +28.3% electricity edge implies ρ ≈ 0.027; e
 - **It dies above ρ = ½** — exactly the crossover the algebra predicts. Two independent derivations, same threshold.
 - **More data makes it WORSE** (43.3% → 99.7% as n goes 61 → 151). This is why my long-sample "robustness check" tightened the artifact from p = 0.032 to p = 0.001 and I read it as the finding strengthening. The standard robustness move actively amplifies this error.
 
+**"Isn't this just a quirk of your data?" — the FRED-MD census** (`vulnerability_survey.json`, §5.9a). No. Applying the same criterion to the 126 series of FRED-MD — the standard US macro panel — after its own *recommended* stationarity transform:
+- **80.2% sit below ρ = ½** (vulnerable); 57.9% below ρ = 0.2; 44% below ρ = 0.05 where the false-positive rate is ~100%.
+- Median ρ = **+0.107**. Median spurious skill an uninformative model would post: **+29.3%**.
+- **Every differenced series (19/19) and 92% of growth rates are vulnerable. No series left in levels is.**
+
+**The one-sentence version to have ready:** *"Differencing removes exactly the persistence that makes a random walk a valid benchmark — so the standard stationarity transform silently moves your target into the regime where the random-walk baseline is invalid. In FRED-MD that's four out of five series."* Note carefully: this measures the **target space**, not anyone's published findings, and I don't claim any specific paper is wrong.
+
 ---
 
 ## 4. "Does it learn?" — the honest three-layer answer
