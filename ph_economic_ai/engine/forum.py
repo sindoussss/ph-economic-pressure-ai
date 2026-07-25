@@ -46,10 +46,11 @@ _EST_LINE = {
 # Capability channels: each agent stays strictly in its lane so the three do NOT
 # converge on the same paragraph — the point of a forum over a single model.
 _CHANNEL_TEMPLATES = {
-    'social': ('You speak ONLY to public mood — what Filipinos are posting on Reddit and '
-               'searching for RIGHT NOW about {sector} prices. Do NOT analyse markets or '
-               'policy; that is other agents\' job. If there is no fresh social signal, say '
-               'so plainly rather than inventing one.'),
+    'social': ('You speak ONLY to public attention and mood — what Filipinos are '
+               'searching for and posting about {sector} prices RIGHT NOW (search-interest '
+               'spikes, public complaints). Do NOT analyse markets or policy; that is other '
+               'agents\' job. If the retrieved context shows no fresh social signal, say so '
+               'plainly and keep your read tentative rather than inventing a mood.'),
     'news': ('You speak ONLY to reported events — announcements, rate changes, and official '
              'actions in the news about Philippine {sector} prices RIGHT NOW. Do NOT restate '
              'social mood or raw market prices; name the concrete event and its source.'),
@@ -147,21 +148,32 @@ class Forum:
 
     # ── prompts ───────────────────────────────────────────────────────────────
 
-    def _rag_text(self, agent: Agent, query: str) -> str:
+    def _rag_text(self, agent: Agent, query: str) -> tuple[str, list[str]]:
+        """Retrieved context AND the sources it actually came from.
+
+        Returning the *used* sources (rather than the agent's configured wishlist)
+        is what keeps the citation honest: a channel whose feeds returned nothing
+        must not appear on the card or in the debate map as though it was read.
+        """
         try:
             chunks = self._rag.query(query, top_k=4, sources=agent.rag_sources)
         except Exception:
             chunks = []
-        return '\n'.join(f"[{c['source']}] {c['text'][:280]}" for c in chunks) \
-            or 'No frozen context retrieved.'
+        used = sorted({c['source'] for c in chunks if c.get('source')})
+        text = '\n'.join(f"[{c['source']}] {c['text'][:280]}" for c in chunks) \
+            or 'No context retrieved for your channel.'
+        return text, used
 
     def _agent_prompt(self, agent: Agent, ctx: SectorContext,
-                      history: list[AgentResponse], steer: str) -> list[dict]:
+                      history: list[AgentResponse], steer: str
+                      ) -> tuple[list[dict], list[str]]:
         query = f"Current {ctx.sector} price pressure in the Philippines, {self._window}."
         prior = '\n'.join(f"{r.agent_name}: {r.statement[:280]}" for r in history)
         sc = ctx.social_counts or {}
-        social_note = (f"Frozen social posts in the snapshot — today {sc.get('today', 0)}, "
-                       f"this week {sc.get('this_week', 0)}, this month {sc.get('this_month', 0)}.\n\n")
+        social_note = (f"Social posts mentioning {ctx.sector} in the snapshot — today "
+                       f"{sc.get('today', 0)}, this week {sc.get('this_week', 0)}, "
+                       f"this month {sc.get('this_month', 0)}.\n\n")
+        rag_text, used = self._rag_text(agent, query)
         challenge = ('Do NOT repeat what earlier agents already said. Add only what YOUR '
                      'channel sees that they missed, or disagree and say why.\n') if prior else ''
         user = (
@@ -169,7 +181,7 @@ class Forum:
             f"As of {self._as_of} ({self._window}). Sector: {ctx.sector} "
             f"(report in {ctx.unit}).\n\n"
             f"{social_note}"
-            f"Frozen context:\n{self._rag_text(agent, query)}\n\n"
+            f"Retrieved context:\n{rag_text}\n\n"
             + (f"Moderator steer: {steer}\n\n" if steer else '')
             + (f"Prior statements:\n{prior}\n\n" if prior else '')
             + challenge
@@ -177,8 +189,8 @@ class Forum:
             "CAUSAL CHAIN: <trigger> → <effect> → <household impact>\n"
             + _EST_LINE[ctx.sector]
         )
-        return [{'role': 'system', 'content': agent.system_prompt},
-                {'role': 'user', 'content': user}]
+        return ([{'role': 'system', 'content': agent.system_prompt},
+                 {'role': 'user', 'content': user}], used)
 
     # ── loop ──────────────────────────────────────────────────────────────────
 
@@ -233,14 +245,16 @@ class Forum:
         agents = _capability_agents(ctx.sector)
         extractor = _EXTRACTORS[ctx.sector]
         history: list[AgentResponse] = []
+        cited: set[str] = set()          # sources genuinely retrieved this sector
         steer = ''
         for rnd in range(1, self._rounds + 1):
             for agent in agents:
                 self._emit('agent_start', {'name': agent.name, 'occupation': agent.role,
                                            'sector': ctx.sector, 'round': rnd})
+                msgs, used = self._agent_prompt(agent, ctx, history, steer)
+                cited |= set(used)
                 try:
-                    text = llm.complete(self._agent_prompt(agent, ctx, history, steer),
-                                        tier=agent.tier, max_tokens=500)
+                    text = llm.complete(msgs, tier=agent.tier, max_tokens=500)
                 except Exception:
                     text = ''
                 thinking, statement = _parse_think(text)
@@ -252,7 +266,7 @@ class Forum:
                     'name': agent.name, 'occupation': agent.role, 'sector': ctx.sector,
                     'round': rnd, 'message': statement,
                     'estimate': resp.price_estimate, 'unit': ctx.unit,
-                    'sources': list(agent.rag_sources)})
+                    'sources': used})          # what it actually read, not its wishlist
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 steer = self._moderate(ctx, [r for r in history if r.round_num == rnd])
                 self._emit('moderator', {'sector': ctx.sector, 'text': steer})
@@ -261,10 +275,11 @@ class Forum:
         judged, verdict = self._judge_sector(ctx, finals)
         self._emit('judge', {'sector': ctx.sector, 'text': verdict,
                              'estimate': judged, 'unit': ctx.unit})
-        return self._aggregate(ctx, history, agents, judged)
+        return self._aggregate(ctx, history, judged=judged, cited=cited)
 
     def _aggregate(self, ctx: SectorContext, history: list[AgentResponse],
-                   agents: list[Agent], judged: Optional[float] = None) -> SectorReading:
+                   judged: Optional[float] = None,
+                   cited: Optional[set] = None) -> SectorReading:
         final = max((r.round_num for r in history), default=0)
         finals = [r for r in history if r.round_num == final]
         ests = [r.price_estimate for r in finals if r.price_estimate is not None]
@@ -290,7 +305,9 @@ class Forum:
             except Exception:
                 avg = raw
         drivers = [d for r in finals if (d := _driver_text(r.statement))][:3]
-        sources = sorted({s for a in agents for s in a.rag_sources})
+        # Cite only what was actually retrieved — an empty list is the honest answer
+        # when no feed returned anything, and is what the card/graph then show.
+        sources = sorted(cited) if cited else []
         return SectorReading(
             sector=ctx.sector, direction=_direction(ctx.sector, avg),
             estimate=(round(avg, 2) if avg is not None else None),
@@ -322,8 +339,8 @@ def run_monitor(rag, corpus_dir=None, as_of=None, window: str = 'this_week',
                 on_event: Optional[Callable[[str, dict], None]] = None) -> PressureBrief:
     """One-click entry point: (optionally) refresh the social snapshot live, assemble
     the present context, then debate it into a Pressure Brief. `live` makes the
-    Monitor hybrid — it pulls fresh Reddit/Trends when possible and falls back to the
-    frozen snapshot otherwise; the validated benchmark is never touched."""
+    Monitor hybrid — it pulls fresh search-interest/social text when possible and falls
+    back to the frozen snapshot otherwise; the validated benchmark is never touched."""
     from ph_economic_ai.engine.social_snapshot import CORPUS_DIR
     cdir = corpus_dir or CORPUS_DIR
     if live:
