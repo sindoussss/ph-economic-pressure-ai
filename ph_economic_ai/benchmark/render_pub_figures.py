@@ -6,12 +6,13 @@ the headline 'predictability map' bar chart to artifacts/figures/ AND docs/img/.
     python -m ph_economic_ai.benchmark.render_pub_figures
 """
 import json
-from pathlib import Path
 
 from ph_economic_ai.benchmark import figures
 
-_ART = Path(__file__).parent / 'artifacts'
-_DOCS_IMG = Path(__file__).resolve().parents[2] / 'docs' / 'img'
+from ph_economic_ai.benchmark.paths import ARTIFACTS_DIR, DOCS_IMG_DIR
+
+_ART = ARTIFACTS_DIR
+_DOCS_IMG = DOCS_IMG_DIR
 
 
 def _skill(d, *keys):

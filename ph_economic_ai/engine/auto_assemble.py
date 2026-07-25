@@ -20,8 +20,10 @@ from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.social_snapshot import (
     CORPUS_DIR, WINDOWS, load_social_snapshot, register_social_sources, window_slice)
 
-_REPORT = (Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts'
-           / 'accuracy_report.json')
+# Import the location rather than re-deriving it: the engine already depends on
+# the report's schema, so a path constant is strictly less coupling than a
+# hand-built path that breaks silently if the artifacts directory moves.
+from ph_economic_ai.benchmark.paths import ACCURACY_REPORT as _REPORT
 
 # Sectors, their reporting unit, and the RAG source channels each capability
 # agent draws on. Social sources are frozen-snapshot-backed; the rest are the

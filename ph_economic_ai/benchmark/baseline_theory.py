@@ -43,12 +43,13 @@ Reproduce:  python -m ph_economic_ai.benchmark.baseline_theory
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 
-_ARTIFACTS = Path(__file__).resolve().parent / 'artifacts'
-_OUT = _ARTIFACTS / 'baseline_theory.json'
+from ph_economic_ai.benchmark.paths import ARTIFACTS_DIR, artifact
+
+_ARTIFACTS = ARTIFACTS_DIR
+_OUT = artifact('baseline_theory.json')
 
 #: Lag-1 autocorrelation below which a mean-predictor out-scores the random walk.
 CROSSOVER_RHO = 0.5

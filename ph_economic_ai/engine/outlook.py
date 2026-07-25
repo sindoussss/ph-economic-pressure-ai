@@ -25,8 +25,7 @@ from typing import Callable, Optional
 from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.pressure_brief import PressureBrief
 
-_REPORT = (Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts'
-           / 'accuracy_report.json')
+from ph_economic_ai.benchmark.paths import ACCURACY_REPORT as _REPORT
 
 # Fallback ±band per sector (monthly), used when the report carries no conformal
 # width for the sector. Gas prefers the frozen fuel conformal 90% half-width.
