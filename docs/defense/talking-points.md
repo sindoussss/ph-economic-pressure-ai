@@ -55,6 +55,10 @@ Inverted, it's a diagnostic: the +28.3% electricity edge implies ρ ≈ 0.027; e
 
 **Why every guard passed** (this is the part examiners find interesting): S(ρ) is a property of the *target*, not the estimation. So it doesn't decay out of sample, doesn't vary across sub-samples, survives a vintage re-test, and is untouched by multiple-comparison correction. **Robustness checks compound only if they're independent** — five checks that all take the baseline as given give the reassurance of five and the coverage of one.
 
+**The size result — your strongest single number** (`baseline_size.json`). On simulated data with *nothing in it*, the mean-free protocol declares a significant edge **99.7% of the time** at ρ = 0, n = 151. Nominal α is 5%. With the mean in the pool: **0.0%**, and it still detects a genuine driver 80.7% of the time. Two follow-ups worth having ready:
+- **It dies above ρ = ½** — exactly the crossover the algebra predicts. Two independent derivations, same threshold.
+- **More data makes it WORSE** (43.3% → 99.7% as n goes 61 → 151). This is why my long-sample "robustness check" tightened the artifact from p = 0.032 to p = 0.001 and I read it as the finding strengthening. The standard robustness move actively amplifies this error.
+
 ---
 
 ## 4. "Does it learn?" — the honest three-layer answer

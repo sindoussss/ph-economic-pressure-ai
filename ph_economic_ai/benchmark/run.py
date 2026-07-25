@@ -315,6 +315,16 @@ def main():
     print(f"Baseline theory: mean-predictor beats RW iff rho<{_bl['crossover_rho']}; "
           f"closed form matches all targets to {_bl['max_abs_error_targets']:.3f}")
 
+    # Size-and-power study: what false-positive rate does a mean-free pool
+    # actually produce on data with nothing in it, and does the fix keep power?
+    from ph_economic_ai.benchmark import baseline_size
+    _bs = baseline_size.run()
+    artifact('baseline_size.json').write_text(json.dumps(_bs, indent=2), encoding='utf-8')
+    print(f"Baseline size: worst-case false-positive rate "
+          f"{_bs['worst_case_false_positive_rate']:.1%} without the mean "
+          f"(nominal {_bs['alpha']:.0%}), {_bs['max_size_with_mean']:.1%} with it; "
+          f"worsens with more data = {_bs['worsens_with_more_data']}")
+
     # Sentiment keystone: does social search interest nowcast inflation beyond
     # naive? Ties the app's exploratory social layer to the validated spine, so it
     # belongs in the one-command run rather than being invoked by hand.
