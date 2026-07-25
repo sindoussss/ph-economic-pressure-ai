@@ -1,0 +1,132 @@
+{
+  "alpha": 0.05,
+  "note": "Size: fraction of PURE-NOISE targets declared beats_best_naive (every rejection is a false positive; nominal rate is alpha). Power: fraction of targets with a genuine driver correctly detected. Both arms score the identical fitted losses under two baseline pools, so the pool is the only difference.",
+  "methods": [
+    "random_walk",
+    "seasonal_naive",
+    "drift",
+    "mean",
+    "ridge"
+  ],
+  "size": [
+    {
+      "rho": 0.0,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.4333,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.0,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.9967,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.2,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.1967,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.2,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.8767,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.35,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.0467,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.35,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.2633,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.5,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.01,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.5,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.0133,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.7,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.0,
+      "rate_pool_with_mean": 0.0
+    },
+    {
+      "rho": 0.7,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.0,
+      "rate_pool_without_mean": 0.0,
+      "rate_pool_with_mean": 0.0
+    }
+  ],
+  "power": [
+    {
+      "rho": 0.0,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.6,
+      "rate_pool_without_mean": 0.82,
+      "rate_pool_with_mean": 0.1733
+    },
+    {
+      "rho": 0.0,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.6,
+      "rate_pool_without_mean": 1.0,
+      "rate_pool_with_mean": 0.8067
+    },
+    {
+      "rho": 0.35,
+      "n": 61,
+      "reps": 300,
+      "beta": 0.6,
+      "rate_pool_without_mean": 0.42,
+      "rate_pool_with_mean": 0.13
+    },
+    {
+      "rho": 0.35,
+      "n": 151,
+      "reps": 300,
+      "beta": 0.6,
+      "rate_pool_without_mean": 0.9633,
+      "rate_pool_with_mean": 0.73
+    }
+  ],
+  "worst_case_false_positive_rate": 0.9967,
+  "worst_case_cell": {
+    "rho": 0.0,
+    "n": 151
+  }
+}
