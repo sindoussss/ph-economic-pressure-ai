@@ -323,18 +323,20 @@ This is the single largest change the correction produces, and it removes the th
 
 ### 5.8 The predictability map (synthesis)
 
-| Target | Setup | Verdict |
-|---|---|---|
-| Fuel / FX / YoY inflation | 1-month forecast | efficient (no method beats RW) |
-| YoY inflation | nowcast (pre-release) | no better than naive |
-| MoM inflation (headline) | nowcast (pre-release) | no better than naive (ARIMA +4.1% vs mean, p = 0.36) |
-| MoM inflation (headline, n = 143) | nowcast, long sample | no better than naive |
-| MoM inflation (food) | nowcast (pre-release) | no better than naive (ARIMA +3.7% vs mean, p = 0.46) |
-| Food-CPI MoM | nowcast, driver-only | clean null — Ridge −1.9% vs mean |
-| Transport-CPI MoM | nowcast, driver-only | rejected twice — preliminary-data artifact *and* fails vs mean |
-| Electricity-CPI MoM | nowcast, driver-only | no better than naive — Ridge **−1.8% vs mean** (p = 0.37) |
+| Target | Setup | Verdict | MDE (80% power) |
+|---|---|---|---|
+| Fuel / FX / YoY inflation | 1-month forecast | efficient (no method beats RW) | 24.7% |
+| YoY inflation | nowcast (pre-release) | no better than naive | — |
+| MoM inflation (headline) | nowcast (pre-release) | no better than naive (ARIMA +4.1% vs mean, p = 0.36) | 13.2% |
+| MoM inflation (headline, n = 143) | nowcast, long sample | no better than naive (+4.6%) | 10.1% |
+| MoM inflation (food) | nowcast (pre-release) | no better than naive (ARIMA +3.7% vs mean, p = 0.46) | 14.9% |
+| Food-CPI MoM | nowcast, driver-only | clean null — Ridge −1.9% vs mean | 14.9% |
+| Transport-CPI MoM | nowcast, driver-only | rejected twice — preliminary-data artifact *and* fails vs mean | 12.5% |
+| **Electricity-CPI MoM** | **nowcast, driver-only** | no better than naive — Ridge **−1.8% vs mean** (p = 0.37) | **5.8%** |
 
 Every target in the audit now returns the same verdict: **no detectable edge over a properly-chosen naive baseline.** The map is uniform.
+
+**Each null is bounded (§5.10).** The final column is the minimum skill over the *binding* baseline that a Diebold–Mariano test could have detected at 80% power — the honest scope of each "no". Two readings matter. The headline and food nulls are **loose**: at 10–15% MDE against observed edges of 3–5%, they rule out an economically large edge but cannot exclude a modest one. The **electricity driver null is tight**: a 5.8% MDE against an observed −1.8% means the test had ample power and still found the model performing worse than a constant. That is worth stating plainly, because electricity is the target whose +28.3% "edge" this thesis withdraws — the replacement null is the best-powered result in the map, not a shrug.
 
 This is a weaker set of claims than the earlier draft made, and a stronger thesis. A predictability audit whose answer is "efficient almost everywhere" reproduces Meese–Rogoff and Atkeson–Ohanian for a new market and adds a methodological result of its own: that the *choice of naive baseline* silently determines the verdict, and that the omission of the historical mean is sufficient to manufacture four significant positives — one of which (electricity, p = 0.001) survived sub-sample stability checks, a robustness re-test, and a Bonferroni correction. Every guard in the audit passed. Only the baseline was wrong.
 
@@ -362,6 +364,28 @@ Monthly Google Trends search interest for four price-salient terms (`presyo ng g
 **Search interest does not nowcast Philippine fuel or food inflation beyond a naive baseline**, alone or as an increment to the drivers (`sentiment_nowcast.json`).
 
 One measurement note matters for interpreting this null, because it nearly produced a vacuous one. Google Trends normalises every term within a *single query* against one shared 0–100 scale fixed by the highest observed point. Querying the four terms together let the highest-volume English term set the scale and collapsed the low-volume Tagalog terms to a near-constant zero — `presyo ng gas` was nonzero in 1 month of 127. A regression on a constant cannot fail to be uninformative, so that null would have carried no evidential weight. Re-querying each term in its own payload restores within-term variation (`presyo ng gas`: 22 nonzero months, 16 distinct values; `bigas presyo`: 94 and 27), at the cost of cross-term level comparability, which no part of this analysis uses. The reported null is therefore a null about *search interest*, not an artifact of a degenerate feature.
+
+### 5.10 How strong is each "no"? Minimum detectable effects
+
+A null is only informative if the test could have rejected it, so every null in the map carries a minimum-detectable-effect (MDE): the smallest skill over the binding baseline that a Diebold–Mariano test would detect at 80% power and α = 0.05 (`power.json`, reproduced by `benchmark.power`).
+
+Two design points matter. First, each nowcast null is bounded against the **mean**, not the random walk — bounding against a baseline that does not bind would overstate the test's power, and by exactly the S(ρ) margin of §4.7. Second, the model used is the *strongest candidate* on each target, so the bound describes the most favourable case the audit actually gave a model rather than a convenient weak one.
+
+| Target | n | Best candidate | Observed skill | MDE @ 80% power |
+|---|---|---|---|---|
+| Fuel one-month forecast (vs RW) | 51 | HGB | −0.3% | 24.7% |
+| Headline MoM | 61 | ARIMA | +4.1% | 13.2% |
+| Headline MoM (long) | 143 | ARIMA | +4.6% | 10.1% |
+| Food MoM | 151 | ARIMA | +3.7% | 14.9% |
+| Electricity MoM (full) | 151 | Ridge | −4.3% | 11.6% |
+| **Electricity MoM (driver-only)** | 151 | Ridge | **−1.8%** | **5.8%** |
+| Transport MoM (driver-only) | 151 | Ridge | −2.8% | 12.5% |
+
+Every observed skill sits inside its own detectable band — which is what makes each verdict a null rather than an unresolved positive, and is asserted as a unit test so a future genuine positive cannot be silently reported as a null.
+
+The spread across rows is the honest part. The fuel forecast (n = 51) is the weakest test in the thesis at ~25% MDE; the headline and food nowcast nulls sit at 10–15%; and the electricity driver-only null is the strongest at 5.8%. So the claims are not uniform in strength, and should not be stated as though they were: for fuel and headline inflation the defensible statement is "no *large* edge is detectable at this sample size", whereas for the electricity driver channel the test genuinely had the resolution to see a small edge and did not.
+
+That last row carries the most weight. Electricity is the target whose apparent +28.3% driver edge this thesis withdraws (§5.7), and the natural objection to a withdrawal is that the replacement null is merely underpowered. It is not: the electricity driver test is the best-powered in the map.
 
 ---
 
@@ -419,7 +443,7 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 
 The more durable contribution is methodological, and it is a negative result about method rather than about the Philippines. An earlier version of this audit reported four significant positives, one of which — the electricity within-month driver edge — cleared every guard the protocol had: significance, sub-sample stability, a real-time-data robustness re-test, a Bonferroni family-wise correction, and a mechanism that was institutionally accurate. It was still an artifact of a single specification choice: a baseline pool that omitted the constant mean, on targets that are mean-reverting rates. The lesson is that robustness checks compound only when they are *independent*, and that a stack of guards which all take the baseline as given offers the reassurance of five checks and the coverage of one. Baseline specification is not a preliminary to the analysis; on a mean-reverting target it *is* the analysis.
 
-**Future work.** (i) Re-examine whether any within-month driver channel survives at higher frequency, where the mean is a weaker competitor because there is less time to revert — the electricity generation-charge pass-through remains institutionally real even though it does not beat a constant monthly, and weekly MOPS data would test it properly. (ii) Quantify the power of these nulls target-by-target, as §5.1 does for fuel, so "no detectable edge" carries an explicit minimum-detectable-effect everywhere rather than only for the flagship. (iii) Audit whether the published nowcasting literature on mean-reverting rate targets shares this baseline omission; the artifact reproduced here is not specific to Philippine data and the check is cheap. (iv) Extend the audit to the remaining CPI components (housing, water, services) through the same PSA OpenSTAT source. (v) Re-evaluate the Transport-CPI series once the 2026 prints are finalised. (vi) Revisit the application's electricity anchor (§6.6), whose justification rested on the now-withdrawn driver edge; its role as a *magnitude guard* is unaffected, but it should no longer be described as approaching a predictor.
+**Future work.** (i) Re-examine whether any within-month driver channel survives at higher frequency, where the mean is a weaker competitor because there is less time to revert — the electricity generation-charge pass-through remains institutionally real even though it does not beat a constant monthly, and weekly MOPS data would test it properly. (ii) Audit whether the published nowcasting literature on mean-reverting rate targets shares this baseline omission; the artifact reproduced here is not specific to Philippine data and the check is cheap. (iii) Extend the audit to the remaining CPI components (housing, water, services) through the same PSA OpenSTAT source. (iv) Re-evaluate the Transport-CPI series once the 2026 prints are finalised. (v) Revisit the application's electricity anchor (§6.6), whose justification rested on the now-withdrawn driver edge; its role as a *magnitude guard* is unaffected, but it should no longer be described as approaching a predictor.
 
 ---
 
