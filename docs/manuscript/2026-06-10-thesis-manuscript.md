@@ -8,7 +8,11 @@
 
 ## Abstract
 
-Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, a seven-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk — a null the accompanying power analysis bounds to a ~25% minimum detectable effect, so it rules out a large exploitable edge rather than every edge — reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. The single genuine positive is a **nowcast of month-on-month inflation**: using within-month observable oil, FX, and fuel data plus the previous print, an ARIMA model beats the strongest naive baseline by 16.2% (Diebold–Mariano p = 0.032, n = 61), a result that strengthens to 16.3% (p = 0.001, n = 143) on a longer 2007–2026 sample spanning the global financial crisis and COVID. A driver-only ablation shows this edge comes from inflation's own short-run dynamics, not a statistically significant contemporaneous-driver signal. Component-level tests then probe the within-month *driver* channel from three directions. A transport nowcast shows an apparently significant fuel edge (+14.8%, p = 0.021) that the robustness check exposes as an artifact of three preliminary data points and rejects. A food nowcast yields a clean, stable null on its commodity drivers (while independently reproducing the own-dynamics positive, ARIMA +16%, p = 0.005). An electricity nowcast yields a **robustly significant driver edge** (Ridge +28%, DM p ≈ 0.001, stable across both sample halves and earlier cutoffs) — because the regulated Meralco generation charge is a formulaic, within-month-observable fuel pass-through. The same protocol thus *rejects* a false positive, *confirms* a null, and *confirms* a true positive: the within-month driver channel is exploitable precisely where the pass-through is mechanical (electricity), and not where prices are locally determined (food) or the apparent signal is fragile (transport). The contribution is methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and that bounds its one positive finding rather than overstating it. A companion contribution turns the map outward: it conditions a program-aided *anchoring* layer that lets a small, offline language-model system produce physically coherent estimates on commodity hardware — each series anchored to the signal its own backtest identified, and each anchor regressed against the same real data, so that the one anchor that predicts (fuel, correlation 0.60 against realized pump changes) is distinguished from the two that only guard magnitude (electricity, food) rather than presented as uniform successes.
+Claims that machine learning or multi-agent AI systems can "predict the economy" are common and rarely tested against a hard baseline. This thesis asks a narrower, answerable question for the Philippine case: can standard methods forecast monthly fuel prices, the peso–dollar exchange rate, and inflation better than naive persistence — and if a series resists forecasting, can the official figure at least be *nowcast* before its release? I build a small, fully reproducible benchmark that evaluates every claim with a strictly causal walk-forward backtest, an eight-method forecaster panel, Diebold–Mariano significance tests against the *strongest* simple baseline, and split-conformal prediction intervals. The result is a **predictability map**, and it is uniformly negative. One-month-ahead forecasts of premium gasoline (RON95), USD/PHP, and year-on-year inflation are **informationally efficient**: no method significantly beats a random walk — a null the accompanying power analysis bounds to a ~25% minimum detectable effect, so it rules out a large exploitable edge rather than every edge — reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for an emerging market. No nowcast target is predictable either, once the baseline pool is correctly specified.
+
+That last qualification is the thesis's principal methodological finding, and it arrived by self-refutation. An earlier version of this audit reported four significant positives, including a flagship within-month "driver edge" for electricity (Ridge +28.3%, DM p = 0.0011) that survived sub-sample stability tests, a preliminary-data robustness re-test, and a Bonferroni family-wise correction. All of those positives were measured against a baseline pool of {random-walk, seasonal-naive, drift}, which omits the **historical mean**. Every month-on-month target in this audit is a mean-reverting rate, for which the random walk is structurally weak and the constant mean is the baseline to beat. Adding the mean to the pool eliminates every positive: the electricity driver model is in fact **1.8% worse than a constant** (p = 0.37), and its entire apparent +28.3% was the distance between the random walk and the mean. The headline month-on-month inflation edge falls from +16.2% (p = 0.032, vs random walk) to +4.1% (p = 0.36, vs mean); food behaves identically. A controlled test reproduces the artifact on synthetic data where the driver is unrecoverable by construction, and a symmetry check confirms the correction cannot manufacture false negatives — on persistent level series the mean scores −1.7 to −2.1 in skill and never binds, leaving the forecasting nulls untouched.
+
+The contribution is therefore methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and a demonstration that the choice of naive baseline — not the model, the significance test, the robustness check, or the multiple-comparison correction — silently determined the verdicts. Every guard in the audit passed; only the baseline was wrong. A companion contribution turns the map outward: it conditions a program-aided *anchoring* layer that lets a small, offline language-model system produce physically coherent estimates on commodity hardware — each series anchored to the signal its own backtest identified, and each anchor regressed against the same real data, so that the one anchor that predicts (fuel, correlation 0.60 against realized pump changes) is distinguished from the two that only guard magnitude (electricity, food) rather than presented as uniform successes.
 
 ---
 
@@ -32,9 +36,9 @@ A wave of applications — including multi-agent "swarm" and large-language-mode
 
 ### 1.4 Contributions
 1. A small, fully reproducible benchmark (`ph_economic_ai/benchmark/`) that turns "is it accurate?" from an assertion into a re-runnable measurement.
-2. A **predictability map** of Philippine macro series: a clean boundary between the efficient (unforecastable beyond naive) and the forecastable.
-3. A genuine positive: a month-on-month inflation nowcast that beats the strongest naive baseline, significance-tested and robustness-checked.
-4. A discipline of *honest bounding*: removing fabricated confidence, requiring a beat over the strongest baseline, using ablation to attribute the win to a mechanism rather than overclaiming, and correcting for multiple comparisons — under which the headline positives (electricity, long-sample MoM inflation, food) survive the strict Bonferroni family-wise bound.
+2. A **predictability map** of Philippine macro series: forecast and nowcast targets alike show no detectable edge over a properly-specified naive baseline.
+3. A **baseline-specification result**: omitting the historical mean from the naive pool is sufficient to manufacture four significant, robustness-checked, Bonferroni-surviving positives on mean-reverting targets — demonstrated here by refuting this audit's own earlier findings, and reproduced under controlled conditions on synthetic data (§4.7). The audit's guards were not weak; they were aimed at the wrong question.
+4. A discipline of *honest bounding*: removing fabricated confidence, requiring a beat over the strongest baseline — including the mean — using ablation to attribute any win to a mechanism rather than overclaiming, and reporting the superseded map alongside the corrected one so the change is auditable rather than quietly absorbed.
 5. A companion application contribution — **benchmark-conditioned anchoring** (§6.6): a program-aided method that makes a small, offline language-model system produce physically coherent estimates by anchoring each series to the signal its *own* backtest identified, with every anchor regressed against the same real data and honestly separated into a validated pass-through predictor (fuel) and magnitude guards that do not forecast (electricity, food).
 
 ### 1.5 Roadmap
@@ -99,7 +103,7 @@ Because high-frequency retail RON95 is not freely available as a long gold serie
 The validity foundation. At each step t, models train only on data through t and predict t+1 (expanding window, minimum train = 24 months). A leakage-guard test asserts no future information enters any feature. This is what makes the accuracy claim defensible rather than in-sample.
 
 ### 4.2 Forecaster panel
-Seven methods: random-walk, drift, seasonal-naive, ARIMA(1,1,1), ETS (additive trend), Ridge regression, and HistGradientBoosting. The first three are baselines; the last four are candidates.
+Eight methods: random-walk, drift, seasonal-naive, the **historical mean**, ARIMA(1,1,1), ETS (additive trend), Ridge regression, and HistGradientBoosting. The first four are baselines; the last four are candidates. The historical mean is the expanding-window unconditional mean of the training window (no leakage): it is the optimal constant predictor, and for a mean-reverting series it — not the random walk — is the baseline to beat (§4.7).
 
 ### 4.3 Metrics
 MAE, RMSE, MAPE, MASE, and skill = 1 − RMSE_model/RMSE_baseline.
@@ -114,13 +118,21 @@ Split-conformal intervals at nominal 50/80/90/95%, with an empirical-coverage ca
 Forecasting uses only information available *before* the reference month (lagged features + previous value). Nowcasting adds *within-month observable* drivers (contemporaneous oil/FX/fuel) plus the previous print — modelling the real situation in which those inputs are known before the PSA release. An eligibility rule keeps only genuinely pre-release information.
 
 ### 4.7 Baseline discipline (the hollow-win guard)
-A candidate must beat the *strongest* of {random-walk, seasonal-naive, drift}, not the weakest. This prevents a "win" that merely clears a baseline no one would use; it is enforced in code and unit-tested.
+A candidate must beat the *strongest* of {random-walk, seasonal-naive, drift, **historical mean**}, not the weakest. This prevents a "win" that merely clears a baseline no one would use; it is enforced in code and unit-tested.
+
+**Why the mean belongs in the pool.** The choice of baseline pool is not cosmetic; on a mean-reverting target it decides the verdict. A random walk predicts *last month's value*, so on a series that reverts it is systematically wrong by roughly √2 times the series' standard deviation, while the constant mean is wrong by one standard deviation. Every month-on-month inflation target in this audit is such a rate. A pool of {random-walk, seasonal-naive, drift} therefore sets the bar at a predictor that is *structurally weak for this class of target*, and any model that merely reverts to the mean clears it — scoring as "skill" what is actually the absence of a random walk.
+
+That failure mode is not hypothetical here. In a controlled test (`test_mean_baseline_rejects_the_beat_the_random_walk_artifact`) a target is constructed as `0.6 × Δfuel + noise` while only the fuel *level* is offered as a feature, so the driver is unrecoverable by construction. Ridge accordingly does no better than predicting the mean — it is measurably **worse than the constant** (RMSE 0.643 vs 0.623) — yet it beats the random walk (0.871) by 26%, and under a mean-free pool that scored as `beats_best_naive`. The guard is symmetric: the same test suite requires that when the true driver *is* supplied, Ridge still wins decisively (91% skill over the mean, DM p < 0.001), so the stricter bar rejects the artifact without making the audit vacuously null.
+
+Adding the mean cannot manufacture a false *negative* in the forecasting results either: on the persistent level series (fuel, FX, YoY inflation) the mean is a catastrophic predictor (skill vs random walk ≈ −1.7 to −2.1), so it never becomes the binding baseline there and the §5.1 efficiency verdicts are untouched. The correction bites exactly where it should — on mean-reverting rates — and nowhere else. Its consequences for the nowcast verdicts are reported in §5.3–§5.8, and the derivation is documented in `docs/defense/mean-baseline-finding.md`, with the superseded (mean-free) map retained for comparison in `corrected_predictability_map.json`.
 
 ### 4.8 Ablation and robustness
 A **driver-only ablation** drops the own-lag (previous MoM) and restricts candidates to the driver regressors, isolating any within-month information edge from time-series dynamics. A **longer-sample re-run** rebuilds features on the 2007–2026 window and repeats the MoM nowcast and ablation.
 
 ### 4.9 Multiple comparisons
-Because the audit conducts several confirmatory Diebold–Mariano tests — each of the form "beats the strongest naive baseline" — testing them at α = 0.05 individually inflates the family-wise false-positive rate. The confirmatory family is the six tests that return a `beats_best_naive` verdict with a computable p-value (headline MoM at both samples, food MoM, electricity MoM, the electricity within-month driver, and the transport within-month driver); the efficiency findings are excluded, since accepting a null raises a power question (quantified in §5.1), not a false-positive one. Two corrections are applied and reported (`multiple_testing.json`, regenerated by `benchmark.multiple_testing`): the **Bonferroni** procedure controlling the family-wise error rate (the strictest), and the **Benjamini–Hochberg** step-up controlling the false-discovery rate. Both the individual and the adjusted p-values are reported, so a claim's status under each regime is explicit rather than left to the reader (§5.8).
+Where an audit conducts several confirmatory Diebold–Mariano tests — each of the form "beats the strongest naive baseline" — testing them at α = 0.05 individually inflates the family-wise false-positive rate. The confirmatory family is defined *dynamically* as the tests returning a `beats_best_naive` verdict with a computable p-value; the efficiency findings are excluded, since accepting a null raises a power question (quantified in §5.1), not a false-positive one. Two corrections are applied and reported (`multiple_testing.json`, regenerated by `benchmark.multiple_testing`): the **Bonferroni** procedure controlling the family-wise error rate (the strictest), and the **Benjamini–Hochberg** step-up controlling the false-discovery rate.
+
+Under the corrected baseline pool (§4.7) this family is **empty**, and the machinery reports `n_tests = 0`. The procedure is retained, and unit-tested against synthetic families, for two reasons: a future genuine positive must still be corrected, and the earlier draft's experience is itself instructive. That draft ran six confirmatory tests and reported that four survived Bonferroni — arithmetically correct, and completely uninformative about the actual error, because a family-wise correction guards against testing *many* hypotheses and offers no protection when every hypothesis is measured against an unsuitable baseline. Multiple-comparison control is not a substitute for baseline specification (§5.8).
 
 ### 4.10 Integrity infrastructure
 The fabricated "90% confidence" from the original application was removed and replaced with the conformal interval. A frozen `accuracy_report.json` plus a hash-chained, two-phase track record make results tamper-evident and quotable.
@@ -174,38 +186,46 @@ The Phase-2 gated feature ablation selected the `passthrough_lags` variant as th
 
 **YoY nowcast.** Adding within-month oil/FX/fuel plus the previous print, before the PSA release, still yields **no_better_than_naive** (n = 61). Year-on-year inflation overlaps 11 of 12 months with its prior value, so persistence is mechanically near-unbeatable.
 
-**MoM nowcast — the numeric "yes."** Targeting month-on-month inflation, the honest bar is to beat the strongest of {random-walk, seasonal-naive, drift} by a DM test. The result is **beats_best_naive**:
+**MoM nowcast — a null once the baseline is right.** Targeting month-on-month inflation, the honest bar is to beat the strongest of {random-walk, seasonal-naive, drift, mean} by a DM test (§4.7). The result is **no_better_than_naive**, and the binding baseline is the **historical mean**:
 
 | Method | RMSE (n = 61) |
 |---|---|
-| ARIMA | **0.380** |
+| ARIMA | 0.380 |
+| **mean (best naive)** | **0.396** |
 | Ridge | 0.398 |
 | ETS | 0.414 |
-| random_walk (best naive) | 0.453 |
-| drift | 0.458 |
+| random_walk | 0.453 |
 | HGB | 0.457 |
+| drift | 0.458 |
 | seasonal_naive | 0.534 |
 
-ARIMA beats the random walk by **+16.2% skill, DM p = 0.032**. Month-on-month inflation carries genuine within-month signal that the annual frame hides.
+The decisive comparison is which baseline the candidate is measured against:
 
-![Month-on-month inflation nowcast: ARIMA predictions track the pre-release actuals more closely than the random walk.](../../ph_economic_ai/benchmark/artifacts/figures/nowcast_mom.png)
+| Comparison | Skill | DM p |
+|---|---|---|
+| ARIMA vs random-walk | +16.2% | 0.032 |
+| **ARIMA vs mean** | **+4.1%** | **0.358** |
+| Ridge vs mean | −0.5% | 0.947 |
 
-**Figure 2.** Month-on-month inflation nowcast (n = 61): ARIMA (own-dynamics) versus the random-walk baseline against the realized pre-release actual. The ARIMA edge (+16.2%, DM p = 0.032) strengthens to +16.3% (p = 0.001) on the 2007–2026 sample (§5.4).
+Almost the whole of the apparent +16.2% is the gap between the *random walk and the mean*, not between the model and a serious baseline: on a mean-reverting rate the random walk is wrong by roughly √2 standard deviations while a constant is wrong by one. Against the mean, ARIMA retains a residual +4.1% that is nowhere near significance (p = 0.36), and Ridge is *worse than the constant*. The honest verdict is therefore that **month-on-month inflation is not nowcastable beyond a naive baseline** at this sample size. The earlier positive was an artifact of a baseline pool that omitted the mean.
 
-**Driver-only ablation.** Dropping the own-lag and restricting to driver regressors gives **driver_edge = False** (n = 61): driver-only Ridge (RMSE 0.399) is directionally better than the random walk (0.453, −12%) but does not clear DM significance. The MoM win is therefore attributable to inflation's **own short-run dynamics** (captured by ARIMA), with the contemporaneous-driver edge suggestive but not significant.
+![Month-on-month inflation nowcast: ARIMA and the naive baselines against the realized pre-release actual.](../../ph_economic_ai/benchmark/artifacts/figures/nowcast_mom.png)
+
+**Figure 2.** Month-on-month inflation nowcast (n = 61): ARIMA (own-dynamics) against the realized pre-release actual. ARIMA's apparent +16.2% edge is measured against the random walk; against the historical mean — the appropriate naive for a mean-reverting rate — the edge falls to +4.1% and is not significant (p = 0.36).
+
+**Driver-only ablation.** Dropping the own-lag and restricting to driver regressors likewise gives **driver_edge = False** (n = 61). This verdict is unchanged by the correction: the contemporaneous-driver edge was never significant.
 
 ### 5.4 Robustness (RQ4)
 Rebuilding features on the 2007–2026 window (n = 143, spanning the GFC, the 2014 oil crash, and COVID) and re-running:
 
 | Metric | n = 61 | n = 143 |
 |---|---|---|
-| MoM verdict | beats_best_naive | beats_best_naive |
-| best method | ARIMA | ARIMA |
-| skill vs best naive | +16.2% | **+16.3%** |
-| DM p | 0.032 | **0.001** |
+| MoM verdict | no_better_than_naive | no_better_than_naive |
+| best naive | mean | mean |
+| skill vs best naive | 0.0 | 0.0 |
 | driver_edge | False | False |
 
-The MoM win **holds and strengthens** (p tightens from 0.032 to 0.001) across ~2.3× the data and a far more heterogeneous regime mix — robust, not fragile. The driver edge remains directional (driver-only Ridge 0.374 vs RW 0.413, −9.5%) but never significant: the earlier underpowered signal resolves into an honest negative rather than a confirmation.
+The null **holds across ~2.3× the data** and a far more heterogeneous regime mix. This is the mirror image of the earlier reading: what previously "held and strengthened" (p tightening from 0.032 to 0.001 against the random walk) was the *stability of the baseline artifact*, not of a forecasting edge. A larger, more varied sample estimates the historical mean more precisely, so a mean-reverting target becomes harder to beat, not easier — the correct robustness intuition, and the opposite of what the mean-free pool implied.
 
 ### 5.5 A spurious positive caught: the Transport-CPI nowcast
 
@@ -222,35 +242,47 @@ A robustness re-test dissolved it. PSA's three most recent prints are **prelimin
 
 The entire "edge" rested on roughly three unreliable observations. The **canonical verdict is therefore that Transport MoM inflation is also efficient** — no robust within-month fuel edge — consistent with the rest of the map. More importantly, this is a worked example of the audit doing its job: it caught a positive that a naive analysis would have published, traced it to preliminary real-time data, and reported the robust null. The robustness re-test (`driver_edge_robust`) is baked into the pipeline, so the check is permanent and reproducible.
 
+Under the corrected baseline pool the transport case is now **doubly rejected**: it fails the preliminary-data robustness check *and* fails against the historical mean. Two independent guards catch the same false positive — but only the second would have caught it had the data been clean, which is the point of §4.7.
+
 ### 5.6 Food inflation: a second own-dynamics positive and a clean null driver
 
 The same protocol was applied to **Food & non-alcoholic beverages** — the largest contributor to Philippine headline inflation — with a food-appropriate predictor panel: free global agri-commodity futures (rice, wheat, corn, soybean) plus oil and FX, all observable within the month. The PSA Food-CPI gold (OpenSTAT, COICOP division 01, 2018 = 100) provides the target; n = 151 backtest months (2007–2026).
 
-Two results emerge, and they sharpen the central finding rather than extend it:
+Two results emerge, and both are nulls under the corrected pool:
 
-| Test | Verdict | best | skill vs best naive | DM p |
+| Test | Verdict | best naive | skill vs best naive | DM p |
 |---|---|---|---|---|
-| Full nowcast (drivers + own-lag) | beats_best_naive | ARIMA | +16.0% | 0.0046 |
-| Driver-only ablation, full sample (n = 151) | no_better_than_naive | random_walk | 0.0 (Ridge −8%, n.s.) | — |
-| Driver-only ablation, robust (drop 6 preliminary months, n = 145) | no_better_than_naive | random_walk | 0.0 | — |
+| Full nowcast (drivers + own-lag) | no_better_than_naive | mean | 0.0 | — |
+| Driver-only ablation, full sample (n = 151) | no_better_than_naive | mean | 0.0 | — |
+| Driver-only ablation, robust (drop 6 preliminary months, n = 145) | no_better_than_naive | mean | 0.0 | — |
 
-First, **food MoM inflation is predictable** — ARIMA beats the strongest naive baseline by ~16% (DM p = 0.0046) — but, exactly as for headline inflation, the gain comes from the series' **own short-run dynamics**, not from the contemporaneous drivers. This is a *second, independent confirmation* of the own-dynamics nowcast result.
+First, the apparent own-dynamics positive **does not survive the mean**. ARIMA's RMSE is 0.663 against the mean's 0.689 — a residual **+3.7%**, DM p = 0.456. Measured against the random walk (0.790) the same model shows +16.0% at p = 0.0046, which is the number the earlier draft reported. As with headline inflation (§5.3), essentially the whole apparent edge is the random-walk-to-mean gap.
 
-Second, and in instructive contrast to Transport, the food-commodity **driver edge is a clean null**: dropping the own-lag, the global agri/oil/FX predictors do not significantly beat naive (Ridge 0.727 vs random-walk 0.790, −8%, not significant), and the verdict is **stable** — `driver_edge_robust = False` at both n = 151 and n = 145. Where Transport produced a spurious full-sample edge that the robustness check had to dissolve, Food produces no edge to begin with. Global commodity prices simply carry no robust within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). Transport and Food bracket the driver question from two sides — a false positive caught and a true null confirmed — and Electricity (§5.7) supplies the third: a *confirmed* positive.
+Second, the food-commodity **driver edge remains a clean null**, and is now null by a wider margin: driver-only Ridge (0.702) is *worse* than the constant (0.689), a skill of **−1.9%** (p = 0.72). The verdict is stable at both n = 151 and n = 145 (`driver_edge_robust = False`). Global commodity prices carry no within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). This conclusion is unchanged by the correction — it was a null before and is a null now, which is exactly the kind of result that should be insensitive to the baseline pool.
 
-### 5.7 Electricity: a robust within-month driver edge
+### 5.7 Electricity: the flagship edge does not survive the mean
 
-Electricity completes the driver question, and overturns the design's prior expectation. The hypothesis was that retail electricity, being regulated and smoothed, would show *no* within-month signal. Using the PSA `04.5.1 - Electricity` gold and free energy predictors (Brent, natural gas, FX), the nowcast (n = 151) instead yields the audit's first robustly-significant driver edge:
+Electricity was the audit's strongest apparent positive, and it is the one the correction overturns most sharply. Using the PSA `04.5.1 - Electricity` gold and free energy predictors (Brent, natural gas, FX), the driver-only nowcast (n = 151) gave the headline result of the earlier draft: Ridge **+28.3% over the best naive, DM p = 0.0011**, stable across sub-samples (≤2023-12 +26%, p = 0.006; 2007–2016 +30%, p = 0.020; 2016–2026 +29%, p = 0.035) and surviving the trailing-preliminary robustness check. Every check the audit had *was* passed.
 
-| Test | Verdict | best | skill vs best naive | DM p |
-|---|---|---|---|---|
-| Full nowcast (drivers + own-lag) | beats_best_naive | Ridge | +26.6% | 0.0005 |
-| Driver-only ablation, full (n = 151) | **beats_best_naive** | Ridge | **+28.3%** | **0.0011** |
-| Driver-only, robust (drop 6 preliminary, n = 145) | **beats_best_naive** | Ridge | **+28.4%** | **0.0012** |
+The baseline pool was the check it lacked. The RMSEs make the situation unambiguous:
 
-Unlike Transport, the edge is no artifact: it survives the trailing-preliminary check (`driver_edge_robust = True`) and is stable across sub-samples — ≤2023-12 (+26%, p = 0.006), the first half 2007–2016 (+30%, p = 0.020), and the second half 2016–2026 (+29%, p = 0.035). It is not period-specific.
+| Method | RMSE (driver-only, n = 151) |
+|---|---|
+| **mean** | **2.3515** |
+| Ridge | 2.3936 |
+| ARIMA | 2.4925 |
+| random_walk | 3.3399 |
 
-The mechanism reconciles the surprise. The Meralco generation charge is a **formulaic, near-deterministic pass-through of fuel costs** (gas and oil) that is observable within the month and published before the PSA CPI print. Regulation here does not smooth the signal away — it *codifies* it, making electricity the most nowcastable component of all. This is an information-timing edge (the rate change is largely already determined from observable fuel), not a claim to beat a market. Electricity is therefore the second genuinely useful nowcast in this thesis, alongside headline MoM inflation, and the only one driven by *contemporaneous observables* rather than own-dynamics.
+| Comparison | Skill | DM p |
+|---|---|---|
+| Ridge vs random-walk | +28.3% | 0.0011 |
+| **Ridge vs mean** | **−1.8%** | **0.371** |
+
+Ridge is **worse than predicting the historical mean**. The entire +28.3% is the distance between the random walk and a constant — the signature of a mean-reverting target measured against a baseline unsuited to it, and precisely the failure mode reproduced under controlled conditions in §4.7. The corrected verdict is **no_better_than_naive**, with `driver_edge_robust = False`.
+
+The mechanism story must be withdrawn with the result. The Meralco generation charge *is* a formulaic pass-through of observable fuel costs, and that remains true as institutional description; what the data do not support is the claim that this makes the monthly CPI print **nowcastable beyond a naive baseline**. A plausible mechanism was doing the work of evidence — a caution worth stating plainly, because the mechanism's plausibility is exactly what made the result feel safe. Sub-sample stability did not help either: an artifact rooted in the target's statistical character is stable by construction, so stability corroborated the wrong thing.
+
+This is the single largest change the correction produces, and it removes the thesis's only claimed positive driven by contemporaneous observables.
 
 ### 5.8 The predictability map (synthesis)
 
@@ -258,38 +290,62 @@ The mechanism reconciles the surprise. The Meralco generation charge is a **form
 |---|---|---|
 | Fuel / FX / YoY inflation | 1-month forecast | efficient (no method beats RW) |
 | YoY inflation | nowcast (pre-release) | no better than naive |
-| **MoM inflation (headline)** | **nowcast (pre-release)** | **predictable — ARIMA +16%, robust (p = 0.001, n = 143)**; own-dynamics |
-| **MoM inflation (food)** | **nowcast (pre-release)** | **predictable — ARIMA +16% (p = 0.005)**; own-dynamics |
-| Food-CPI MoM | nowcast, driver-only | clean null — `driver_edge_robust = False` |
-| Transport-CPI MoM | nowcast, driver-only | apparent +14.8% edge **not robust** (preliminary-data artifact) → efficient |
-| **Electricity-CPI MoM** | **nowcast, driver-only** | **robust driver edge — Ridge +28%, p ≈ 0.001, `driver_edge_robust = True`** |
+| MoM inflation (headline) | nowcast (pre-release) | no better than naive (ARIMA +4.1% vs mean, p = 0.36) |
+| MoM inflation (headline, n = 143) | nowcast, long sample | no better than naive |
+| MoM inflation (food) | nowcast (pre-release) | no better than naive (ARIMA +3.7% vs mean, p = 0.46) |
+| Food-CPI MoM | nowcast, driver-only | clean null — Ridge −1.9% vs mean |
+| Transport-CPI MoM | nowcast, driver-only | rejected twice — preliminary-data artifact *and* fails vs mean |
+| Electricity-CPI MoM | nowcast, driver-only | no better than naive — Ridge **−1.8% vs mean** (p = 0.37) |
 
-![Predictability map: skill vs the strongest naive baseline per target — electricity and MoM inflation predictable, fuel/FX/YoY efficient, transport rejected.](../../ph_economic_ai/benchmark/artifacts/figures/predictability_map.png)
+Every target in the audit now returns the same verdict: **no detectable edge over a properly-chosen naive baseline.** The map is uniform.
 
-**Figure 3.** The predictability map — skill over the strongest naive baseline per target. Predictable channels (electricity +28%, MoM inflation +16%) sit above the line; efficient ones (fuel, FX, YoY) at zero; the transport edge is shown as rejected on robustness.
+This is a weaker set of claims than the earlier draft made, and a stronger thesis. A predictability audit whose answer is "efficient almost everywhere" reproduces Meese–Rogoff and Atkeson–Ohanian for a new market and adds a methodological result of its own: that the *choice of naive baseline* silently determines the verdict, and that the omission of the historical mean is sufficient to manufacture four significant positives — one of which (electricity, p = 0.001) survived sub-sample stability checks, a robustness re-test, and a Bonferroni correction. Every guard in the audit passed. Only the baseline was wrong.
 
-![Audit verdicts: predictable, efficient, and rejected targets classified by the same protocol.](../../ph_economic_ai/benchmark/artifacts/figures/audit_verdicts.png)
+![Predictability map: skill vs the strongest naive baseline per target — no target shows a detectable edge once the historical mean is in the baseline pool.](../../ph_economic_ai/benchmark/artifacts/figures/predictability_map.png)
 
-**Figure 4.** Audit verdicts by target: the same protocol produces a confirmed true positive (electricity), a confirmed null (food drivers), and a rejected false positive (transport) — the three-way discrimination that earns trust in the positives.
+**Figure 3.** The predictability map — skill over the strongest naive baseline per target, with the historical mean in the pool. Every bar sits at or below zero: no target is predictable beyond naive. (Compare the superseded mean-free map in `corrected_predictability_map.json`, where four of these bars appear significantly positive.)
 
-**Multiple-comparison correction (§4.9).** Over the six confirmatory tests, four survive the strict Bonferroni family-wise threshold (α/6 = 0.0083): **electricity MoM** (p = 0.0005), the **electricity within-month driver** (p = 0.0011), **long-sample headline MoM** (p = 0.001), and **food MoM** (p = 0.0046) — Bonferroni-adjusted p ≤ 0.028 for all four. The two weaker positives survive only the less-conservative Benjamini–Hochberg FDR: the **short-sample headline MoM** (p = 0.032), which the long-sample re-run already supersedes, and the **transport driver** (p = 0.021), which the robustness check independently rejects as a preliminary-data artifact. The headline findings therefore hold under the most conservative correction available; the two that do not are precisely the two already down-weighted for independent reasons. (`multiple_testing.json`.)
+![Audit verdicts by target under the corrected baseline pool.](../../ph_economic_ai/benchmark/artifacts/figures/audit_verdicts.png)
+
+**Figure 4.** Audit verdicts by target. The same protocol that previously produced a three-way split (positive / null / rejected) returns a uniform null once the baseline pool is corrected.
+
+**Multiple-comparison correction (§4.9).** The confirmatory family is defined as the tests returning `beats_best_naive` with a computable p-value. Under the corrected pool that family is **empty**: there are no positives left to correct, and `multiple_testing.json` records `n_tests = 0`. This is worth stating explicitly rather than silently dropping the section, because it inverts the earlier finding. The previous draft reported that four of six confirmatory tests survived the strict Bonferroni threshold — and that was arithmetically correct. A family-wise correction controls for testing *many hypotheses*; it offers no protection whatever against every hypothesis being measured against the wrong baseline. The correction machinery is retained and unit-tested against synthetic families so that a future genuine positive would still be classified correctly.
+
+### 5.9 Search interest does not nowcast inflation
+
+A recurring claim in applied work is that public attention — social posts, search volume — carries early signal about prices. Because the companion application (§6.6) reasons over exactly this kind of chatter, the claim is tested here with the same machinery rather than assumed.
+
+Monthly Google Trends search interest for four price-salient terms (`presyo ng gas`, `diesel price`, `Meralco bill`, `bigas presyo`, PH geography, 2016–2026) is joined to the headline and food MoM nowcast frames and run through the identical walk-forward + Diebold–Mariano `mom_verdict` against the mean-inclusive pool. Three specifications are tested per target: search terms alone, drivers alone, and drivers plus search terms.
+
+| Target | sentiment only | drivers only | drivers + sentiment |
+|---|---|---|---|
+| Headline MoM (n = 61) | no better than naive | no better than naive | no better than naive |
+| Food MoM (n = 75) | no better than naive | no better than naive | no better than naive |
+
+**Search interest does not nowcast Philippine fuel or food inflation beyond a naive baseline**, alone or as an increment to the drivers (`sentiment_nowcast.json`).
+
+One measurement note matters for interpreting this null, because it nearly produced a vacuous one. Google Trends normalises every term within a *single query* against one shared 0–100 scale fixed by the highest observed point. Querying the four terms together let the highest-volume English term set the scale and collapsed the low-volume Tagalog terms to a near-constant zero — `presyo ng gas` was nonzero in 1 month of 127. A regression on a constant cannot fail to be uninformative, so that null would have carried no evidential weight. Re-querying each term in its own payload restores within-term variation (`presyo ng gas`: 22 nonzero months, 16 distinct values; `bigas presyo`: 94 and 27), at the cost of cross-term level comparability, which no part of this analysis uses. The reported null is therefore a null about *search interest*, not an artifact of a degenerate feature.
 
 ---
 
 ## 6. Discussion
 
 ### 6.1 The efficient-vs-forecastable boundary
-The same series is "efficient" at the annual frame and "forecastable" monthly. The reconciliation is persistence: YoY inflation shares eleven of twelve months with its lag, so the naive forecast is mechanically excellent and little room remains; the MoM transform removes that overlap and exposes a short-run autoregressive structure ARIMA can exploit. Predictability was not absent — it was hidden by the framing.
+The boundary this audit set out to draw turns out to lie in an unexpected place: not between series, but between *baselines*. The MoM transform does expose short-run autoregressive structure that the YoY frame hides — ARIMA's RMSE genuinely improves on the random walk's at every MoM target. What the corrected pool shows is that this structure is almost entirely **mean reversion**, and mean reversion is what a constant already captures. Removing the twelve-month overlap does not reveal exploitable signal; it reveals that the random walk was never the right yardstick for the transformed series. The honest boundary is therefore: efficient at one month, and efficient in the nowcast too — with the caveat that "efficient" here means "no edge detectable at these sample sizes" (§5.1's ~25% MDE), not "no edge exists."
 
 ### 6.2 Reproducing landmark results for an emerging market
 Finding FX and inflation efficient at one month reproduces Meese–Rogoff and Atkeson–Ohanian outside their original developed-economy settings, adding external validity rather than novelty for its own sake.
 
 ### 6.3 Honesty as method
-Three design choices each prevented a specific overclaim: removing the fabricated 90% confidence (replaced by measured conformal coverage); requiring a beat over the *strongest* baseline (the hollow-win guard); and the driver-only ablation (which stopped "MoM is predictable" from silently becoming "the drivers predict inflation"). The longer-sample re-test then asked whether the one positive survived more and more varied data. This is the discipline that separates a credible finding from a dashboard number.
+Several design choices each prevented a specific overclaim: removing the fabricated 90% confidence (replaced by measured conformal coverage); requiring a beat over the *strongest* baseline (the hollow-win guard); the driver-only ablation (which stopped "MoM is predictable" from silently becoming "the drivers predict inflation"); the real-time-data robustness re-test; and the multiple-comparison correction.
 
-The Transport-CPI nowcast (§5.5) is the sharpest illustration. A full-sample run produced an apparently significant fuel edge (+14.8%, p = 0.021) — precisely the bold "AI nowcasts fuel-driven inflation" headline one might want to claim. A real-time-data robustness check showed it rested on three preliminary, not-yet-revised PSA observations and vanished once they were removed. The same discipline that confirmed the one true positive (headline MoM) here *rejected* a false one. A method that only ever confirms is not doing robustness; a method that rejects its own most attractive result when the data do not support it is.
+The Transport-CPI nowcast (§5.5) illustrates the discipline working as designed. A full-sample run produced an apparently significant fuel edge (+14.8%, p = 0.021) — precisely the bold "AI nowcasts fuel-driven inflation" headline one might want to claim. A real-time-data robustness check showed it rested on three preliminary, not-yet-revised PSA observations and vanished once they were removed. A method that only ever confirms is not doing robustness.
 
-The Food-CPI nowcast (§5.6) and the Electricity-CPI nowcast (§5.7) complete the picture from the remaining two directions. Food's driver edge is a *clean* null — not significant at either window, with no spurious result to explain away. Electricity's, by contrast, is a *robust* positive that survives every check the same protocol applied to Transport. So the three components answer the driver question from all three sides at once: a **rejected false positive** (Transport), a **confirmed null** (Food), and a **confirmed true positive** (Electricity). The lesson is not that drivers never help — it is that the within-month driver channel is exploitable *exactly where the pass-through is mechanical and observable*: electricity's regulated generation charge is a formulaic fuel pass-through, whereas food is locally determined and transport's apparent edge was a fragile data artifact. A protocol that can produce, and correctly distinguish, all three outcomes — rather than only ever confirming — is what earns trust in the positives it reports. (The own-dynamics MoM result, meanwhile, reproduces independently for both headline and food inflation, a separate and equally robust finding.)
+The Electricity-CPI result (§5.7) illustrates the harder lesson, and is the more valuable of the two. Its +28.3% driver edge passed *every* guard listed above: it was significant, it survived the preliminary-data re-test, it was stable across both sample halves and earlier cutoffs, it had a compelling and institutionally accurate mechanism, and it cleared a Bonferroni family-wise correction. It was nonetheless an artifact — the model was worse than a constant, and the entire edge was the random-walk-to-mean gap on a mean-reverting target.
+
+The instructive point is *how* the guards failed. None malfunctioned; each answered a question that was not the one that mattered. Significance testing asks whether an edge over the chosen baseline is real, not whether the baseline is appropriate. Sub-sample stability asks whether an effect is period-specific — but an artifact rooted in the target's statistical character is stable everywhere, so stability actively corroborated the error. Multiple-comparison correction asks whether many tests inflate false positives, not whether all of them share a common misspecification. And a plausible mechanism supplied narrative confirmation that made the number feel safe. Robustness checks compound only if they are *independent*; five checks that all take the baseline as given provide the reassurance of five but the coverage of one.
+
+The strongest version of "honesty as method" is therefore not a longer checklist but a willingness to publish the refutation of one's own headline result. The superseded map is retained in `corrected_predictability_map.json` and the derivation in `docs/defense/mean-baseline-finding.md`, so a reader can audit the change rather than take it on trust.
 
 ### 6.4 What the MoM result is and is not
 It is a robust, significant ability to nowcast month-on-month inflation slightly ahead of publication, driven by the series' *own dynamics*. For **headline and food** inflation it is *not* evidence that contemporaneous drivers significantly improve the nowcast (electricity is the exception — §5.7), and it is *not* a claim to forecast levels months ahead. The honest interval, not a point estimate, is the deliverable.
@@ -322,9 +378,11 @@ Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88
 
 ## 7. Conclusion and Future Work
 
-This thesis replaces the assertion "AI predicts the economy" with a measured map of what is and is not predictable in Philippine macro data. One-month forecasts of fuel, FX, and year-on-year inflation are informationally efficient. Two genuine nowcast positives emerge: **month-on-month inflation** (headline and food), which beats the strongest naive baseline by ~16% via the series' *own short-run dynamics* (headline robust to DM p = 0.001 over a 2.3× larger, regime-varied sample); and **electricity inflation**, the one component where a *within-month driver edge* is robustly significant (~28%, DM p ≈ 0.001, stable across sub-samples), because its regulated generation charge is a formulaic, observable fuel pass-through. The within-month driver question is thereby answered from all three sides — a rejected false positive (transport), a confirmed null (food), and a confirmed true positive (electricity). The contribution is a reproducible, honestly-bounded audit protocol for a data-poor economy that can produce, and correctly distinguish, all three outcomes.
+This thesis replaces the assertion "AI predicts the economy" with a measured map of what is and is not predictable in Philippine macro data, and the map is uniformly negative. One-month forecasts of fuel, FX, and year-on-year inflation are informationally efficient, reproducing Meese–Rogoff and Atkeson–Ohanian for an emerging market. No month-on-month nowcast target — headline inflation, food, electricity, or transport — shows a detectable edge over the strongest naive baseline once that pool includes the historical mean. Search-interest data adds nothing either (§5.9). Subject to the power bound of §5.1, the answer to "can this be predicted?" is no, almost everywhere.
 
-**Future work.** (i) Productise the two useful nowcasts — especially the electricity driver-edge signal — with live, dated, hash-chained track records of matured predictions. (ii) Sharpen the electricity result with true PH gas/coal generation-fuel series in place of the Henry Hub `NG=F` proxy, and probe the lead–lag structure of the generation-charge pass-through. (iii) Extend the audit to the remaining CPI components (housing, water, services) via the same free PSA OpenSTAT commodity-group source and robustness check — fuel, transport, food, and electricity are done. (iv) Confirm the headline within-month driver edge at weekly resolution with true MOPS data. (v) Re-evaluate the Transport-CPI null once the 2026 prints are finalised, since it is partly a consequence of preliminary vintages. (vi) Strengthen the application's electricity anchor (§6.6) from a magnitude guard toward a predictor by replacing its raw-oil driver with the natural-gas-weighted generation-fuel series the electricity nowcast (§5.7) uses, and extend the same regress-against-real-data validation to the food and electricity anchors' lead–lag structure.
+The more durable contribution is methodological, and it is a negative result about method rather than about the Philippines. An earlier version of this audit reported four significant positives, one of which — the electricity within-month driver edge — cleared every guard the protocol had: significance, sub-sample stability, a real-time-data robustness re-test, a Bonferroni family-wise correction, and a mechanism that was institutionally accurate. It was still an artifact of a single specification choice: a baseline pool that omitted the constant mean, on targets that are mean-reverting rates. The lesson is that robustness checks compound only when they are *independent*, and that a stack of guards which all take the baseline as given offers the reassurance of five checks and the coverage of one. Baseline specification is not a preliminary to the analysis; on a mean-reverting target it *is* the analysis.
+
+**Future work.** (i) Re-examine whether any within-month driver channel survives at higher frequency, where the mean is a weaker competitor because there is less time to revert — the electricity generation-charge pass-through remains institutionally real even though it does not beat a constant monthly, and weekly MOPS data would test it properly. (ii) Quantify the power of these nulls target-by-target, as §5.1 does for fuel, so "no detectable edge" carries an explicit minimum-detectable-effect everywhere rather than only for the flagship. (iii) Audit whether the published nowcasting literature on mean-reverting rate targets shares this baseline omission; the artifact reproduced here is not specific to Philippine data and the check is cheap. (iv) Extend the audit to the remaining CPI components (housing, water, services) through the same PSA OpenSTAT source. (v) Re-evaluate the Transport-CPI series once the 2026 prints are finalised. (vi) Revisit the application's electricity anchor (§6.6), whose justification rested on the now-withdrawn driver edge; its role as a *magnitude guard* is unaffected, but it should no longer be described as approaching a predictor.
 
 ---
 
@@ -389,7 +447,20 @@ This thesis replaces the assertion "AI predicts the economy" with a measured map
 - Swarm-size ablation (§6.7): regenerate with `python -m ph_economic_ai.tools.swarm_ablation --repeats 8`; committed as `swarm_ablation.json` (per-variant estimate ranges, spreads, and overlap verdicts).
 
 ### Appendix B — Full panels
-All values are reproduced verbatim from the committed `accuracy_report.json` (regenerate with `python -m ph_economic_ai.benchmark.run`). DM p-values are vs the random-walk baseline (HLN-corrected); skill = 1 − RMSE/RMSE_baseline.
+All values are reproduced verbatim from the committed `accuracy_report.json` (regenerate with `python -m ph_economic_ai.benchmark.run`). DM p-values in the per-panel tables are vs the **random-walk** baseline (HLN-corrected); skill = 1 − RMSE/RMSE_baseline.
+
+**B.0 The historical mean across every MoM panel.** Because the per-panel tables below quote skill and DM p against the random walk, and the corrected verdict is decided against the *mean* (§4.7), the mean's RMSE is collected here for every panel. The mean ignores features, so its value is identical for a full and a driver-only specification on the same target.
+
+| Panel | n | best candidate RMSE | **mean RMSE** | random-walk RMSE | candidate vs mean |
+|---|---|---|---|---|---|
+| B.3 Headline MoM | 61 | ARIMA 0.3799 | **0.3961** | 0.4532 | +4.1% (p = 0.36) |
+| B.4 Headline MoM (long) | 143 | — | **0.3625** | — | not significant |
+| B.5 Transport driver-only | 151 | Ridge 1.5740 | **1.5312** | 2.0355 | −2.8% (worse) |
+| B.7 Food full | 151 | ARIMA 0.6633 | **0.6890** | 0.7897 | +3.7% (p = 0.46) |
+| B.7 Food driver-only | 151 | Ridge 0.7020 | **0.6890** | 0.7897 | −1.9% (worse) |
+| B.8 Electricity driver-only | 151 | Ridge 2.3936 | **2.3515** | 3.3399 | −1.8% (p = 0.37) |
+
+In four of the six panels the best candidate is *worse than a constant*; in the remaining two the residual edge is small and insignificant. Every `beats_best_naive` verdict in the earlier draft therefore rested on the random-walk column, and none survives the mean column. The superseded verdicts are preserved in the per-panel tables below, marked as such, so the change is auditable.
 
 **B.1 Fuel one-month forecast — seven-method efficiency panel** (RON95, n = 52). Skill and DM p are vs random walk.
 
@@ -424,7 +495,9 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 | ETS | 0.4135 | 0.3735 |
 | Ridge | 0.3980 | 0.3604 |
 | HGB | 0.4574 | 0.4297 |
-| **Verdict** | beats_best_naive (+16.2%, DM p = 0.032) | beats_best_naive (+16.3%, DM p = 0.001) |
+| **mean** | **0.3961** | **0.3625** |
+| **Verdict (corrected)** | no_better_than_naive (best naive = mean) | no_better_than_naive (best naive = mean) |
+| *Superseded (vs random walk)* | *beats_best_naive +16.2%, p = 0.032* | *beats_best_naive +16.3%, p = 0.001* |
 
 **B.4 Headline MoM driver-only ablation** (own-lag dropped; candidates = Ridge, HGB).
 
@@ -448,7 +521,9 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 | ETS | 1.6328 | — | — |
 | Ridge | 1.6116 | 1.5740 | 1.3138 |
 | HGB | 1.7342 | 1.7375 | 1.4131 |
-| **Verdict** | no_better_than_naive | beats_best_naive (+14.8%, DM p = 0.021) | no_better_than_naive (driver_edge_robust = False) |
+| **mean** | **1.5312** | **1.5312** | **1.4159** |
+| **Verdict (corrected)** | no_better_than_naive | no_better_than_naive (best naive = mean) | no_better_than_naive (driver_edge_robust = False) |
+| *Superseded (vs random walk)* | *no_better_than_naive* | *beats_best_naive +14.8%, p = 0.021* | *no_better_than_naive* |
 
 **B.6 Phase-2 gated feature ablation** (fuel forecast, n = 52). `band90` = 90% conformal half-width (₱/L). Selected variant: `passthrough_lags`.
 
@@ -473,7 +548,9 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 | ETS | 0.7285 | — | — |
 | Ridge | 0.7020 | 0.7274 | 0.7029 |
 | HGB | 0.7386 | 0.7878 | 0.7554 |
-| **Verdict** | beats_best_naive (ARIMA +16.0%, DM p = 0.0046) | no_better_than_naive | no_better_than_naive (`driver_edge_robust` = False) |
+| **mean** | **0.6890** | **0.6890** | — |
+| **Verdict (corrected)** | no_better_than_naive (best naive = mean) | no_better_than_naive | no_better_than_naive (`driver_edge_robust` = False) |
+| *Superseded (vs random walk)* | *beats_best_naive ARIMA +16.0%, p = 0.0046* | *no_better_than_naive* | *no_better_than_naive* |
 
 **B.8 Electricity-CPI MoM nowcast** (n = 151; best naive = random_walk). The driver-only edge is robustly significant at both windows.
 
@@ -486,7 +563,9 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 | ETS | 2.5308 | — | — |
 | **Ridge** | **2.4520** | **2.3936** | **2.4317** |
 | HGB | 2.9348 | 2.8522 | 2.8944 |
-| **Verdict** | beats_best_naive (Ridge +26.6%, DM p = 0.0005) | beats_best_naive (+28.3%, p = 0.0011) | beats_best_naive (+28.4%, p = 0.0012; `driver_edge_robust` = True) |
+| **mean** | **2.3515** | **2.3515** | — |
+| **Verdict (corrected)** | no_better_than_naive (best naive = mean) | no_better_than_naive (Ridge **-1.8%** vs mean, p = 0.37) | no_better_than_naive (`driver_edge_robust` = False) |
+| *Superseded (vs random walk)* | *beats_best_naive Ridge +26.6%, p = 0.0005* | *beats_best_naive +28.3%, p = 0.0011* | *beats_best_naive +28.4%, p = 0.0012* |
 
 *Sub-sample stability (driver-only): ≤2023-12 +26.3% (p = 0.006); first half +29.9% (p = 0.020); second half +28.7% (p = 0.035) — the edge is not period-specific.*
 
