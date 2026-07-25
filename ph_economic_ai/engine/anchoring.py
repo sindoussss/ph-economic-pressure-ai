@@ -95,12 +95,13 @@ def fuel_passthrough_anchor(
 
 
 # ── Electricity: a fuel pass-through anchor (a magnitude guard) ───────────────
-# The generation charge is a formulaic fuel pass-through, and the benchmark found
-# electricity-CPI predictable within the month via that formula (Ridge +28%,
-# DM p ≈ 0.001). This anchor is a simpler proxy: a fuel-cost shock scaled by the
-# fuel share of the generation charge. Regressed against 175 months of real PSA
-# electricity CPI (tools/anchor_backtest.py) it does NOT predict the monthly move
-# (corr ~0.03–0.13 — the benchmark's edge needs the actual formula, not raw oil),
+# The generation charge is a formulaic fuel pass-through — true as institutional
+# description, but NOT a forecasting edge: an earlier draft read a Ridge +28% result
+# as making electricity-CPI predictable within the month; under the corrected
+# baseline pool (§4.7) that edge is gone (Ridge is 1.8% worse than a constant).
+# This anchor is a fuel-cost shock scaled by the fuel share of the generation
+# charge. Regressed against 175 months of real PSA electricity CPI
+# (tools/anchor_backtest.py) it does NOT predict the monthly move (corr ~0.03–0.13),
 # but its magnitude is right (scale ratio ~1.0). That is the anchor's job here:
 # keep a weak model's estimate physically sized, not forecast the series.
 
@@ -130,8 +131,10 @@ def electricity_passthrough_anchor(
 
 # ── Food: a *persistence* anchor, deliberately not a commodity one ─────────────
 # The benchmark found food-CPI a clean null on commodity drivers, so anchoring
-# food to oil would be anchoring it to noise; what it found predictable is food's
-# own dynamics. Anchoring to the recent trend follows that. Regressed against 172
+# food to oil would be anchoring it to noise; the series' own recent level is the
+# better-scaled quantity, which is what this anchors to. (An earlier draft called
+# food's own dynamics "predictable"; under the corrected baseline pool that is a
+# null too — the anchor's magnitude role is unaffected.) Regressed against 172
 # months of real PSA food CPI (tools/anchor_backtest.py), persistence and oil are
 # both weak and within sampling noise of each other (corr ~0.18 vs ~0.21), and a
 # plain mean is competitive — monthly food CPI is close to unpredictable here. So

@@ -230,7 +230,7 @@ The Phase-2 gated feature ablation selected the `passthrough_lags` variant as th
 | ARIMA | 0.380 |
 | **mean (best naive)** | **0.396** |
 | Ridge | 0.398 |
-| ETS | 0.414 |
+| ETS | 0.4135 |
 | random_walk | 0.453 |
 | HGB | 0.457 |
 | drift | 0.458 |
@@ -548,7 +548,8 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 | seasonal_naive | 0.5343 | 0.4761 |
 | Ridge (driver-only) | 0.3993 | 0.3739 |
 | HGB (driver-only) | 0.4431 | 0.4272 |
-| **driver_edge** | False (not DM-significant) | False (not DM-significant) |
+| **mean** | **0.3961** | **0.3625** |
+| **driver_edge** | False (best naive = mean) | False (best naive = mean) |
 
 **B.5 Transport-CPI MoM nowcast — full sample vs robust** (best naive = seasonal_naive full / random_walk robust). Full-sample driver-only edge vanishes after dropping the 6 preliminary PSA months.
 
@@ -592,7 +593,7 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 | **Verdict (corrected)** | no_better_than_naive (best naive = mean) | no_better_than_naive | no_better_than_naive (`driver_edge_robust` = False) |
 | *Superseded (vs random walk)* | *beats_best_naive ARIMA +16.0%, p = 0.0046* | *no_better_than_naive* | *no_better_than_naive* |
 
-**B.8 Electricity-CPI MoM nowcast** (n = 151; best naive = random_walk). The driver-only edge is robustly significant at both windows.
+**B.8 Electricity-CPI MoM nowcast** (n = 151; best naive = **mean**). The driver-only edge is significant against the random walk at both windows and disappears against the mean, which is the whole of §5.7.
 
 | Method | Full nowcast RMSE | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
 |---|---|---|---|
