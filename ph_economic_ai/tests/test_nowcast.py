@@ -112,7 +112,7 @@ def test_build_nowcast_frame_mom_variant(monkeypatch):
     assert cpi_like == ['prev_mom']
 
 
-from ph_economic_ai.benchmark.nowcast import mom_verdict, run_mom_nowcast
+from ph_economic_ai.benchmark.nowcast import BASELINE_POOL, mom_verdict, run_mom_nowcast
 
 
 def test_mom_verdict_beats_best_naive():
@@ -143,22 +143,50 @@ def test_mom_verdict_hollow_win_guard():
     assert v['best_method'] == 'seasonal_naive'
 
 
-def test_run_mom_nowcast_beats_on_constructed_signal():
-    idx = pd.date_range('2016-01', periods=110, freq='MS').strftime('%Y-%m')
-    rng = np.random.default_rng(2)
-    fuel = 60 + np.cumsum(rng.normal(0, 1.0, 110))
+def _mom_signal_frame(n=110, seed=2, with_driver=True):
+    """target = 0.6 * (change in fuel) + noise. `with_driver` decides whether the
+    recoverable driver (the CHANGE) is actually offered as a feature, or only the
+    level — from which the change cannot be recovered."""
+    idx = pd.date_range('2016-01', periods=n, freq='MS').strftime('%Y-%m')
+    rng = np.random.default_rng(seed)
+    fuel = 60 + np.cumsum(rng.normal(0, 1.0, n))
     dfuel = np.r_[0.0, np.diff(fuel)]
-    target = 0.6 * dfuel + rng.normal(0, 0.05, 110)
-    frame = pd.DataFrame({
-        'oil': 70 + rng.normal(0, 1, 110),
-        'fx': 55 + rng.normal(0, 0.1, 110),
-        'fuel': fuel,
-        'prev_mom': np.r_[target[0], target[:-1]],
-        'target': target,
-    }, index=idx)
-    res = run_mom_nowcast(min_train=24, frame=frame)
+    target = 0.6 * dfuel + rng.normal(0, 0.05, n)
+    cols = {'oil': 70 + rng.normal(0, 1, n), 'fx': 55 + rng.normal(0, 0.1, n),
+            'fuel': fuel}
+    if with_driver:
+        cols['dfuel'] = dfuel
+    cols['prev_mom'] = np.r_[target[0], target[:-1]]
+    cols['target'] = target
+    return pd.DataFrame(cols, index=idx)
+
+
+def test_run_mom_nowcast_beats_on_constructed_signal():
+    """The bar is high but not unreachable: given the ACTUAL driver, a model must
+    still win decisively — otherwise the mean baseline would make the audit
+    vacuously null and prove nothing."""
+    res = run_mom_nowcast(min_train=24, frame=_mom_signal_frame())
     assert res['verdict'] == 'beats_best_naive'
     assert res['best_method'] in ('ridge', 'hgb', 'arima', 'ets')
+    assert res['best_naive'] == 'mean'          # the mean is the bar it cleared
+    assert res['best_skill_vs_naive'] > 0.5     # a real edge, not a sliver
+
+
+def test_mean_baseline_rejects_the_beat_the_random_walk_artifact():
+    """Regression guard for the finding behind the corrected map.
+
+    Same target, but only the fuel LEVEL is offered — the change is unrecoverable,
+    so ridge can do no better than predict the mean. It is genuinely WORSE than a
+    constant, yet still beats the random walk (which is a poor baseline on a
+    mean-reverting rate). Without the mean in the pool that scored as
+    'beats_best_naive'. It must now be a null."""
+    frame = _mom_signal_frame(with_driver=False)
+    res = run_mom_nowcast(min_train=24, frame=frame)
+    rm = res['rmse_by_method']
+    assert rm['ridge'] > rm['mean']             # worse than a constant...
+    assert rm['ridge'] < rm['random_walk']      # ...yet beats the random walk
+    assert res['verdict'] == 'no_better_than_naive'   # correctly rejected
+    assert res['best_naive'] == 'mean'
 
 
 def test_run_mom_nowcast_insufficient_data():
@@ -183,7 +211,15 @@ def test_run_mom_nowcast_respects_methods_param():
         'target': target,
     }, index=idx)
     res = run_mom_nowcast(min_train=24, frame=frame, methods=['random_walk', 'ridge'])
-    assert set(res['rmse_by_method']) == {'random_walk', 'ridge'}
+    # `methods` chooses the CANDIDATES, but the baseline pool is always enforced on
+    # top: a caller must not be able to weaken the naive bar by omitting baselines,
+    # because mom_verdict silently drops pool members it has no RMSE for.
+    assert {'random_walk', 'ridge'} <= set(res['rmse_by_method'])
+    assert set(BASELINE_POOL) <= set(res['rmse_by_method'])
+    res_full = run_mom_nowcast(min_train=24, frame=frame,
+                               methods=['random_walk', 'ridge'],
+                               baseline_pool=('random_walk',))
+    assert set(res_full['rmse_by_method']) == {'random_walk', 'ridge'}   # pool honoured
 
 
 def _driver_signal_frame(n=110, seed=5):
@@ -202,7 +238,8 @@ def test_driver_ablation_detects_driver_edge():
     assert res['driver_edge'] is True
     assert res['verdict'] == 'beats_best_naive'
     assert res['best_method'] in ('ridge', 'hgb')
-    assert set(res['rmse_by_method']) == {'random_walk', 'seasonal_naive', 'drift', 'ridge', 'hgb'}
+    assert set(res['rmse_by_method']) == {'random_walk', 'seasonal_naive', 'drift',
+                                          'mean', 'ridge', 'hgb'}   # mean enforced
 
 
 def test_driver_ablation_absent_when_pure_ar_noise_drivers():

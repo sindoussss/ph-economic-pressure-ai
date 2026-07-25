@@ -83,7 +83,15 @@ from ph_economic_ai.benchmark.metrics import rmse as _rmse
 from ph_economic_ai.benchmark.significance import diebold_mariano
 from ph_economic_ai.benchmark.targets import load_inflation_mom
 
-BASELINE_POOL = ('random_walk', 'seasonal_naive', 'drift')
+# The historical MEAN is part of the naive pool. Every MoM target here is a
+# mean-reverting *rate*, for which the mean — not the random walk — is the strong
+# naive: omitting it lets simple reversion masquerade as forecasting skill. With
+# the mean in the pool, 6 of 8 MoM 'beats_best_naive' verdicts become nulls, and
+# the flagship electricity driver edge is reproducible by Ridge on pure noise.
+# On persistent *level* series (fuel/FX/YoY) the mean is a terrible predictor
+# (skill vs RW ≈ -1.8), so the efficiency nulls are unaffected — it cannot
+# manufacture a false positive. See docs/defense/mean-baseline-finding.md.
+BASELINE_POOL = ('random_walk', 'seasonal_naive', 'drift', 'mean')
 
 
 def mom_verdict(rmse_by_method: dict, loss_by_method: dict,
@@ -123,6 +131,12 @@ def run_mom_nowcast(min_train: int = 24, baseline_pool=BASELINE_POOL, frame=None
     if len(frame) < min_train + 5:
         return {'verdict': 'insufficient_data', 'n': int(len(frame))}
     methods = list(PANEL_METHODS) if methods is None else list(methods)
+    # Every baseline in the pool must actually be evaluated: `mom_verdict` keeps
+    # only pool members it has an RMSE for, so an unevaluated baseline is silently
+    # dropped and the verdict is measured against a weaker naive than intended.
+    # (Pool members can never win — mom_verdict excludes them from candidates —
+    # so this only ever makes the bar honest, never easier.)
+    methods += [m for m in baseline_pool if m not in methods]
 
     feature_cols = [c for c in frame.columns if c != 'target']
     y = frame['target'].to_numpy(dtype=float)

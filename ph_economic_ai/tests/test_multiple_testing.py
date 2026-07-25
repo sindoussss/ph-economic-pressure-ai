@@ -52,31 +52,50 @@ def test_empty_family_does_not_crash():
 
 # ── The actual family from the frozen report ──────────────────────────────────
 
+_CANDIDATE_PATHS = [
+    ('nowcast_mom',), ('mom_longsample', 'mom'), ('food_nowcast', 'mom'),
+    ('electricity_nowcast', 'mom'), ('electricity_nowcast', 'driver_ablation'),
+    ('transport_nowcast', 'driver_ablation'),
+]
+
+
+def _node(report, path):
+    node = report
+    for key in path:
+        node = node.get(key, {}) if isinstance(node, dict) else {}
+    return node
+
+
 def test_family_is_the_confirmatory_tests_only():
+    """The family is DERIVED from the report's verdicts, never hardcoded — so this
+    stays honest whichever way the verdicts fall."""
     report = json.loads(
         (Path(mt._ARTIFACTS) / 'accuracy_report.json').read_text())
     family = mt.build_family(report)
-    # every member is a real 'beats naive' test with a p-value
-    assert len(family) >= 5
     assert all(f['dm_p'] is not None for f in family)
-    labels = {f['test'] for f in family}
-    assert any('Electricity MoM' in l for l in labels)
-    assert any('Food MoM' in l for l in labels)
+    expected = sum(1 for p in _CANDIDATE_PATHS
+                   if _node(report, p).get('verdict') == 'beats_best_naive'
+                   and _node(report, p).get('dm_p') is not None)
+    assert len(family) == expected      # exactly the real positives, no more
 
 
-def test_headline_positives_survive_bonferroni():
-    """The paper's defense: electricity and long-sample MoM survive even the
-    strictest family-wise correction."""
+def test_corrected_pool_leaves_no_confirmatory_positives():
+    """With the historical mean in the baseline pool (§4.7), every MoM verdict is a
+    null — so the confirmatory family is empty and there is nothing left to
+    correct. The empty family must be handled, not crash."""
     result = mt.run()
-    survivors = ' '.join(result['survive_bonferroni'])
-    assert 'Electricity MoM' in survivors
-    assert 'long, n=143' in survivors
-    assert result['n_tests'] == 6
+    assert result['n_tests'] == 0
+    assert result['survive_bonferroni'] == []
+    assert result['survive_bh_only'] == []
+    assert result['bonferroni_threshold'] is None      # no division by zero
 
 
-def test_weak_positives_do_not_survive_bonferroni():
-    """Honest: short-sample MoM and the transport artifact fail FWER."""
-    result = mt.run()
-    weak = ' '.join(result['survive_bh_only'])
-    assert 'short, n=61' in weak
-    assert 'Transport' in weak
+def test_survivor_logic_still_discriminates_on_a_synthetic_family():
+    """Machinery guard: now that the real family is empty, keep proving the
+    correction can still separate a strong positive from a weak one, so a future
+    genuine finding would be classified correctly."""
+    fam = [{'test': 'strong', 'skill_vs_naive': 0.30, 'dm_p': 0.0005},
+           {'test': 'weak', 'skill_vs_naive': 0.10, 'dm_p': 0.032}]
+    r = mt.correct(fam)
+    assert r['survive_bonferroni'] == ['strong']       # p < 0.05/2
+    assert r['survive_bh_only'] == ['weak']            # FDR only

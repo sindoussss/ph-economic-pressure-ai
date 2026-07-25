@@ -20,28 +20,65 @@ def _skill(d, *keys):
     return float(d) if isinstance(d, (int, float)) else 0.0
 
 
+def _node(d, *keys):
+    """Walk to a nested dict node, tolerating absent branches."""
+    for k in keys:
+        d = (d or {}).get(k, {})
+    return d if isinstance(d, dict) else {}
+
+
+def _verdict_note(node: dict, positive: str = 'predictable',
+                  negative: str = 'efficient') -> tuple[str, str]:
+    """Derive the label and its annotation from the REPORT, never a literal.
+
+    These were hardcoded to 'predictable' with fixed p-values, so the figure kept
+    asserting a positive after the underlying verdict had changed — the chart is a
+    claim, and it has to be re-derived from the artifact like every other number.
+    """
+    beat = node.get('verdict') == 'beats_best_naive'
+    if not beat:
+        return negative, f"no edge vs {node.get('best_naive') or 'naive'}"
+    p, n = node.get('dm_p'), node.get('n')
+    bits = [b for b in (f'p={p:.3g}' if isinstance(p, (int, float)) else None,
+                        f'n={n}' if n else None) if b]
+    return positive, ' · '.join(bits) or 'significant'
+
+
 def build_rows(report: dict) -> list:
     """Assemble the six predictability-map bars from the real benchmark numbers."""
     el = report.get('electricity_nowcast') or {}
     tr = report.get('transport_nowcast') or {}
+    el_drv, tr_drv = _node(el, 'driver_ablation'), _node(tr, 'driver_ablation')
+    mom = _node(report, 'mom_longsample', 'mom')
+    food_mom = _node(report, 'food_nowcast', 'mom')
+    food_drv = _node(report, 'food_nowcast', 'driver_ablation')
+
+    el_v, el_n = _verdict_note(el_drv)
+    if el_v == 'predictable' and not el.get('driver_edge_robust'):
+        el_v, el_n = 'rejected', 'not robust'      # robustness gate overrides
+    tr_v, tr_n = _verdict_note(tr_drv)
+    if tr_v == 'predictable' and not tr.get('driver_edge_robust'):
+        tr_v, tr_n = 'rejected', 'data artifact'
+    mom_v, mom_n = _verdict_note(mom)
+    fm_v, fm_n = _verdict_note(food_mom)
+    fd_v, fd_n = _verdict_note(food_drv)
+
     return [
         {'label': 'Electricity inflation\n(within-month drivers)',
-         'skill': _skill(el, 'driver_ablation', 'best_skill_vs_naive'),
-         'verdict': 'predictable' if el.get('driver_edge_robust') else 'efficient',
-         'note': 'robust · p<0.01'},
+         'skill': _skill(el_drv, 'best_skill_vs_naive'),
+         'verdict': el_v, 'note': el_n},
         {'label': 'MoM inflation\n(headline · own dynamics)',
-         'skill': _skill(report, 'mom_longsample', 'mom', 'best_skill_vs_naive'),
-         'verdict': 'predictable', 'note': 'p=0.001 · n=143'},
+         'skill': _skill(mom, 'best_skill_vs_naive'),
+         'verdict': mom_v, 'note': mom_n},
         {'label': 'Food inflation\n(MoM · own dynamics)',
-         'skill': _skill(report, 'food_nowcast', 'mom', 'best_skill_vs_naive'),
-         'verdict': 'predictable', 'note': 'p<0.01'},
+         'skill': _skill(food_mom, 'best_skill_vs_naive'),
+         'verdict': fm_v, 'note': fm_n},
         {'label': 'Transport inflation\n(commodity drivers)',
-         'skill': _skill(tr, 'driver_ablation', 'best_skill_vs_naive'),
-         'verdict': 'predictable' if tr.get('driver_edge_robust') else 'rejected',
-         'note': 'rejected · data artifact'},
+         'skill': _skill(tr_drv, 'best_skill_vs_naive'),
+         'verdict': tr_v, 'note': tr_n},
         {'label': 'Food\n(commodity drivers)',
-         'skill': _skill(report, 'food_nowcast', 'driver_ablation', 'best_skill_vs_naive'),
-         'verdict': 'efficient', 'note': 'no edge'},
+         'skill': _skill(food_drv, 'best_skill_vs_naive'),
+         'verdict': fd_v, 'note': fd_n},
         {'label': '1-mo fuel · FX · YoY inflation',
          'skill': _skill(report, 'skill', 'vs_random_walk'),
          'verdict': 'efficient', 'note': 'no method beats RW'},

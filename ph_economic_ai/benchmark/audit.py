@@ -3,14 +3,23 @@ Diebold-Mariano test and assign an efficient/predictable verdict.
 """
 from ph_economic_ai.benchmark.efficiency import run_panel
 
-PANEL_METHODS = ['random_walk', 'drift', 'seasonal_naive', 'arima', 'ets', 'ridge', 'hgb']
+PANEL_METHODS = ['random_walk', 'drift', 'seasonal_naive', 'mean',
+                 'arima', 'ets', 'ridge', 'hgb']
+
+# Naive baselines. One baseline out-performing another says nothing about
+# predictability — a mean-reverting series makes the historical mean beat the
+# random walk by construction — so baselines are never eligible to be the method
+# that earns a 'predictable' verdict. (Mirrors nowcast.mom_verdict, which already
+# excludes its pool members from the candidate set.)
+BASELINES = frozenset({'random_walk', 'drift', 'seasonal_naive', 'mean'})
 
 
 def verdict_from_panel(panel: list):
-    """('predictable', best_row) if any method significantly beats random walk
+    """('predictable', best_row) if any *candidate* significantly beats random walk
     (dm_p < 0.05 and skill > 0); else ('efficient', random_walk_row)."""
     beats = [r for r in panel
-             if r.get('dm_p') is not None and r['dm_p'] < 0.05 and r['skill_vs_rw'] > 0]
+             if r['method'] not in BASELINES
+             and r.get('dm_p') is not None and r['dm_p'] < 0.05 and r['skill_vs_rw'] > 0]
     if beats:
         return 'predictable', max(beats, key=lambda r: r['skill_vs_rw'])
     rw = next((r for r in panel if r['method'] == 'random_walk'), panel[0])

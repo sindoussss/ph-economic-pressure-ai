@@ -52,9 +52,10 @@ def main():
               f"band90=P{r['band90']:.2f} rmse=P{r['rmse']:.2f}{mark}")
 
     # -- Efficiency panel + pass-through mechanism --
-    panel_methods = ['random_walk', 'drift', 'seasonal_naive', 'arima', 'ets', 'ridge', 'hgb']
+    # Use the canonical list rather than a local copy: a duplicated panel silently
+    # drifts from the audit's (it did — this one omitted the historical mean).
     efficiency_rows = efficiency_mod.run_panel(
-        frame, panel_methods, MIN_TRAIN, VARIANTS['passthrough_lags']['cols'])
+        frame, audit_mod.PANEL_METHODS, MIN_TRAIN, VARIANTS['passthrough_lags']['cols'])
     passthrough_stats = passthrough_mod.estimate_passthrough(df)
     print('Efficiency panel (skill vs RW | DM p):')
     for r in sorted(efficiency_rows, key=lambda x: -x['skill_vs_rw']):
@@ -302,6 +303,18 @@ def main():
     print(f"Power: fuel forecast min detectable skill = "
           f"{_pw['min_detectable_skill_pct']}% at {_pw['power']:.0%} power "
           f"(observed {_pw['observed_skill'] * 100:+.1f}%)")
+
+    # Sentiment keystone: does social search interest nowcast inflation beyond
+    # naive? Ties the app's exploratory social layer to the validated spine, so it
+    # belongs in the one-command run rather than being invoked by hand.
+    from ph_economic_ai.benchmark import sentiment_nowcast
+    _sn = sentiment_nowcast.run()
+    sentiment_nowcast._write(_sn)
+    if _sn.get('status') == 'computed':
+        print(f"Sentiment nowcast: edge_anywhere={_sn['sentiment_edge_anywhere']} — "
+              f"{_sn['finding']}")
+    else:
+        print(f"Sentiment nowcast: {_sn['status']} (run tools.refresh_social --trends)")
 
 
 if __name__ == '__main__':
