@@ -519,10 +519,12 @@ class SimMainWindow(QMainWindow):
     def _start_sector_debates(self, scenario_dict: dict):
         """Run food and electricity sector debates in parallel with the gas simulation.
 
-        Each sector is anchored to what its own benchmark found predictable: food
-        to its recent own-trend (commodity drivers are a null for it), electricity
-        to the formulaic fuel pass-through in its generation charge. The anchor is
-        injected as a prior so the weak agents start from the right scale.
+        Each sector is anchored to the quantity carrying the right *scale*: food to
+        its recent own-trend (commodity drivers are a null for it), electricity to
+        the formulaic fuel pass-through in its generation charge. The anchor is
+        injected as a prior so the weak agents start from the right magnitude — it
+        is a guard, not a forecast, and under the corrected baseline pool (§4.7)
+        neither sector is predictable beyond naive.
         """
         brief = self._live_brief  # may be None if still fetching — that's OK
 

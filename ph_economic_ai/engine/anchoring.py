@@ -148,11 +148,16 @@ def food_persistence_anchor(
 ) -> float:
     """% month-on-month food-inflation anchor from own persistence.
 
-    The base is the trailing mean of recent monthly food inflation — the
-    own-dynamics the benchmark found predictable — plus a small transport term
-    so a large fuel shock can nudge it. The transport coefficient is small by
-    design: the benchmark rejected commodity drivers for food, so fuel must not
-    dominate this number.
+    The base is the trailing mean of recent monthly food inflation, plus a small
+    transport term so a large fuel shock can nudge it. The transport coefficient
+    is small by design: the benchmark rejected commodity drivers for food, so
+    fuel must not dominate this number.
+
+    This is a **magnitude guard, not a predictor**. An earlier draft justified it
+    as "the own-dynamics the benchmark found predictable"; under the corrected
+    baseline pool (§4.7) food own-dynamics is a null as well. The anchor's actual
+    job — keeping a weak model's estimate on the right scale — is unaffected, as
+    it never depended on the trend being forecastable.
     """
     usable = [p for p in recent_mom_pcts if p is not None]
     base = statistics.fmean(usable) if usable else _FOOD_DEFAULT_MOM_PCT
