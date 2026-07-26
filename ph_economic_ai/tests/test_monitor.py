@@ -214,3 +214,80 @@ def test_main_window_has_monitor_tab(app):
         assert win._stack.currentIndex() == 7            # nav routes to it
     finally:
         win.close()
+
+
+# ── streamed cards (50-agent roster) ──────────────────────────────────────────
+
+def test_agent_start_opens_a_live_card_before_any_text(app):
+    """The card must exist before the first token, or a minutes-long run shows a
+    frozen panel between turns."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    panel._on_forum_event('agent_start', {
+        'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas'})
+    assert panel._feed_count() == 1
+    assert panel._live_card is not None
+    assert panel._live_card._body.text() == ''          # opened empty, not "(no reading)"
+
+
+def test_tokens_accumulate_into_the_live_card(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    panel._on_forum_event('agent_start', {
+        'name': 'Diego Ocampo', 'occupation': 'Crude & FX Trader', 'sector': 'gas'})
+    for chunk in ('Pump prices ', 'are climbing ', 'on crude.'):
+        panel._on_forum_event('agent_token', {'name': 'Diego Ocampo', 'sector': 'gas',
+                                              'text': chunk})
+    assert panel._live_card._body.text() == 'Pump prices are climbing on crude.'
+
+
+def test_long_stream_is_trimmed_to_the_tail(app):
+    """Tokens arrive faster than a human reads; the tail is what is being written."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    panel._on_forum_event('agent_start', {'name': 'A', 'occupation': 'x', 'sector': 'gas'})
+    panel._on_forum_event('agent_token', {'name': 'A', 'sector': 'gas', 'text': 'y' * 900})
+    shown = panel._live_card._body.text()
+    assert len(shown) <= 321 and shown.startswith('…')
+
+
+def test_agent_message_replaces_the_live_card_with_the_finished_one(app):
+    """One card per turn — the streamed card is swapped, not left behind, so the feed
+    does not end up with 100 cards for 50 agents."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    d = {'name': 'Andrea Lim', 'occupation': 'Commuter Sentiment Analyst', 'sector': 'gas'}
+    panel._on_forum_event('agent_start', d)
+    panel._on_forum_event('agent_token', {'name': 'Andrea Lim', 'sector': 'gas',
+                                          'text': 'rising'})
+    panel._on_forum_event('agent_message', dict(d, message='Pump prices are rising.',
+                                                estimate=1.0, unit='PHP/L'))
+    assert panel._feed_count() == 1                     # replaced, not appended
+    assert panel._live_card is None
+
+
+def test_a_dropped_agent_leaves_no_orphan_card(app):
+    """If an agent produces nothing, the moderator/judge turn must still clear the
+    open card rather than leaving a permanently blank one in the feed."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    panel._on_forum_event('agent_start', {'name': 'Ghost', 'occupation': 'x',
+                                          'sector': 'gas'})
+    panel._on_forum_event('moderator', {'sector': 'gas', 'text': 'Stay on the present read.'})
+    assert panel._live_card is None
+    assert panel._feed_count() == 1                     # only the moderator card
+
+
+def test_tokens_before_any_card_are_ignored(app):
+    """A stray token must not crash the panel — events can arrive out of order across
+    the thread boundary."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    panel = PressureMonitorPanel(FakeRag())
+    panel._clear_feed()
+    panel._on_forum_event('agent_token', {'name': 'nobody', 'sector': 'gas', 'text': 'hi'})
+    assert panel._feed_count() == 0
