@@ -243,17 +243,71 @@ class PressureMonitorPanel(QWidget):
             self._typing.setText(
                 f"✎ {d.get('name', '')} · {d.get('occupation', '')} "
                 f"is reading {d.get('sector', '')}…")
-        elif kind == 'agent_message':
-            self._typing.setText('')
+            # Open the card immediately so its text can fill in as tokens arrive. A
+            # 50-agent run is minutes long on one GPU; watching a card write itself is
+            # the difference between "working" and "frozen".
             if not self._feed_has_real:            # drop the convening placeholder
                 self._clear_feed()
                 self._feed_has_real = True
+            self._live_card = self._chat_card(d, live=True)
+            self._live_text = ''
+            self._add_feed(self._live_card)
+        elif kind == 'agent_token':
+            self._append_token(d.get('text', ''))
+        elif kind == 'agent_message':
+            self._typing.setText('')
+            if not self._feed_has_real:
+                self._clear_feed()
+                self._feed_has_real = True
+            # Swap the streaming card for the finished one, which adds the estimate
+            # badge and the honest source list. If no card was opened (a headless
+            # replay, or tokens never arrived) just append the finished card.
+            self._drop_live_card()
             self._add_feed(self._chat_card(d))
             self._update_graph(d)
         elif kind == 'moderator':
+            self._drop_live_card()
             self._add_feed(self._moderator_card(d))
         elif kind == 'judge':
+            self._drop_live_card()
             self._add_feed(self._judge_card(d))
+
+    def _append_token(self, text: str) -> None:
+        """Append streamed text to the open card, keeping it readable.
+
+        Tokens arrive faster than a human reads, so the body is trimmed to the same
+        320-character window the finished card uses — the tail is what is being
+        written, so the tail is what is shown.
+        """
+        card = getattr(self, '_live_card', None)
+        body = getattr(card, '_body', None) if card is not None else None
+        if body is None or not text:
+            return
+        # Accumulate RAW and normalise only for display. Collapsing whitespace on the
+        # accumulator strips each chunk's trailing space before the next one arrives,
+        # so "prices " + "are" renders as "pricesare".
+        self._live_text = getattr(self, '_live_text', '') + text
+        shown = ' '.join(self._live_text.split())
+        if len(shown) > 320:
+            shown = '…' + shown[-320:]
+        try:
+            body.setText(shown)
+        except RuntimeError:
+            self._live_card = None       # widget already deleted (feed cleared mid-run)
+
+    def _drop_live_card(self) -> None:
+        card = getattr(self, '_live_card', None)
+        self._live_card = None
+        self._live_text = ''
+        if card is None:
+            return
+        try:
+            idx = self._feed.indexOf(card)
+            if idx >= 0:
+                self._feed.takeAt(idx)
+            card.deleteLater()
+        except RuntimeError:
+            pass
 
     def _update_graph(self, d: dict):
         if self._kg_builder is None:
@@ -297,7 +351,10 @@ class PressureMonitorPanel(QWidget):
 
     # ── forum chat cards (right column) ────────────────────────────────────────
 
-    def _chat_card(self, d: dict) -> QFrame:
+    def _chat_card(self, d: dict, live: bool = False) -> QFrame:
+        """One agent's card. `live` returns it mid-stream: the body label is exposed as
+        `card._body` so arriving tokens can be appended, and the estimate badge is
+        omitted until the agent has actually produced a number."""
         sector = d.get('sector', '')
         color = _SECTOR_COLOR.get(sector, _T3)
         card = QFrame()
@@ -334,7 +391,7 @@ class PressureMonitorPanel(QWidget):
         msg = ' '.join((d.get('message') or '').split())
         if len(msg) > 320:
             msg = msg[:320] + '…'
-        body = QLabel(msg or '(no reading)')
+        body = QLabel(msg if msg else ('' if live else '(no reading)'))
         body.setWordWrap(True)
         body.setStyleSheet(f'font-size:12px;color:{_T2};')
         v.addWidget(body)
@@ -345,6 +402,8 @@ class PressureMonitorPanel(QWidget):
             badge.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};margin-top:2px;')
             v.addWidget(badge)
         h.addLayout(v, stretch=1)
+        if live:
+            card._body = body          # the token sink for this agent's turn
         return card
 
     def _judge_card(self, d: dict) -> QFrame:

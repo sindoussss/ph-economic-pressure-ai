@@ -33,6 +33,23 @@ def _fake_complete(messages, tier=None, max_tokens=None, **kw):
             'CAUSAL CHAIN: oil up -> pump up -> households pay more. ' + est)
 
 
+def _patch_llm(monkeypatch, complete_fn=None):
+    """Patch BOTH seams.
+
+    The forum streams only when an event sink is attached, so a test that attaches
+    one and patches `complete` alone would silently make real network calls — with a
+    50-agent roster that is a multi-minute hang, which is exactly how this was found.
+    Deriving the stream fake from the complete fake also means the two paths can
+    never disagree about what an agent said.
+    """
+    fn = complete_fn or _fake_complete
+    monkeypatch.setattr(llm_mod, 'complete', fn)
+    monkeypatch.setattr(
+        llm_mod, 'stream',
+        lambda m, tier=None, max_tokens=None, **kw: iter(
+            [fn(m, tier=tier, max_tokens=max_tokens, **kw)]))
+
+
 def test_food_magnitude_is_anchor_guarded(monkeypatch, tmp_path):
     """A weak-model +5%/month food read (a YoY-leak error) must be clamped back to
     the anchor band, not shown as-is — the §6.6 guard the Monitor was bypassing."""
@@ -90,7 +107,7 @@ def test_cites_only_sources_actually_retrieved(monkeypatch, tmp_path):
             return [{'source': s, 'text': 'crude up 3pct'} for s in (sources or [])
                     if s not in ('RedditPH', 'GoogleTrends')]
 
-    monkeypatch.setattr(llm_mod, 'complete', _fake_complete)
+    _patch_llm(monkeypatch)
     seen = []
     brief = forum.run_monitor(PartialRag(), corpus_dir=tmp_path / 'empty',
                               as_of=date(2026, 7, 24), sectors=('gas',), rounds=1,
@@ -187,3 +204,165 @@ def test_forum_handles_unparseable_estimates(monkeypatch, tmp_path):
                               as_of=date(2026, 7, 24), rounds=1, live=False)
     for r in brief.readings:
         assert r.estimate is None and r.direction == 'unknown' and r.confidence == 0
+
+
+# ── 50-agent roster, adaptive rebuttals, streaming ────────────────────────────
+
+def test_roster_is_fifty_agents_across_three_sectors():
+    from ph_economic_ai.engine.forum import _capability_agents, roster_size
+    assert roster_size() == 50
+    names = [a.name for s in ('gas', 'food', 'electricity')
+             for a in _capability_agents(s)]
+    assert len(set(names)) == 50, 'names must be unique - the UI keys cards on them'
+
+
+def test_each_channel_keeps_its_lane_at_scale():
+    """Every one of the 50 belongs to exactly one evidence channel and carries its own
+    vantage; without that, 17 agents per channel would be clones and the forum would
+    just be an expensive single model."""
+    from ph_economic_ai.engine.forum import _capability_agents
+    for sector in ('gas', 'food', 'electricity'):
+        for a in _capability_agents(sector):
+            lanes = sum(x in a.system_prompt for x in
+                        ('ONLY to public attention', 'ONLY to reported events',
+                         'ONLY to the underlying market'))
+            assert lanes == 1, f'{a.name} does not sit in exactly one lane'
+            assert 'vantage point is' in a.system_prompt
+
+
+def test_agents_are_interleaved_by_channel():
+    """A live viewer should see all three lanes in the first few cards rather than six
+    consecutive social reads."""
+    from ph_economic_ai.engine.forum import _capability_agents
+    lanes = set()
+    for a in _capability_agents('gas')[:3]:
+        lanes.add('social' if 'public attention' in a.system_prompt
+                  else 'news' if 'reported events' in a.system_prompt else 'market')
+    assert lanes == {'social', 'news', 'market'}
+
+
+def test_per_channel_cap_shrinks_the_roster():
+    from ph_economic_ai.engine.forum import roster_size
+    assert roster_size(per_channel=1) == 9          # the original 3x3 cast
+    assert roster_size(per_channel=2) == 18
+    assert roster_size(per_channel=1) < roster_size()
+
+
+def _ctx(sector='gas', unit='PHP/L'):
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    return SectorContext(sector=sector, unit=unit, verdict_note='', anchor=0.0)
+
+
+def test_round_two_only_invites_the_divergent():
+    """A second full round would roughly double a multi-minute run, mostly on agents
+    restating themselves. Only the outliers answer the moderator."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = _ctx()
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=2)
+    agents = _capability_agents('gas')
+    resp = [AgentResponse(a.name, 1, '', 'x', 1.0) for a in agents[:5]]
+    resp.append(AgentResponse(agents[5].name, 1, '', 'x', 9.0))      # the outlier
+    picked = [a.name for a in f._divergent(ctx, resp, agents, k=2)]
+    assert picked[0] == agents[5].name
+    assert len(picked) == 2
+
+
+def test_divergent_skips_agents_with_no_estimate():
+    """An agent with no parsable number has nothing to defend - usually a dropped
+    call - so spending a rebuttal on it is waste."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = _ctx()
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=2)
+    agents = _capability_agents('gas')
+    resp = [AgentResponse(agents[0].name, 1, '', 'x', 1.0),
+            AgentResponse(agents[1].name, 1, '', 'x', 2.0),
+            AgentResponse(agents[2].name, 1, '', 'x', None)]
+    got = [a.name for a in f._divergent(ctx, resp, agents, k=3)]
+    assert agents[2].name not in got
+
+
+def test_consensus_uses_every_agents_latest_word_not_the_last_round():
+    """The bug adaptive rebuttals would otherwise introduce: filtering history by
+    round number would cut a 50-agent consensus down to the few who rebutted."""
+    from ph_economic_ai.engine.forum import Forum, _latest_per_agent
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = _ctx()
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=2)
+    hist = [AgentResponse(f'A{i}', 1, '', 'x', 1.0) for i in range(10)]
+    hist.append(AgentResponse('A0', 2, '', 'x', 3.0))               # A0 rebuts
+    latest = _latest_per_agent(hist)
+    assert len(latest) == 10                                        # all ten, not one
+    assert next(r for r in latest if r.agent_name == 'A0').price_estimate == 3.0
+    assert f._aggregate(ctx, hist).confidence > 0
+
+
+def test_prior_context_is_capped_so_the_last_speaker_is_not_flooded():
+    """Unbounded history does not scale: the 50th agent would receive ~3,400 tokens
+    of prior statements, overflowing a 3b context and slowing every later call."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents, _PRIOR_TURNS
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = _ctx()
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
+    # Zero-padded ids so no marker is a prefix of another: 'stmt-3' would otherwise
+    # match inside 'stmt-39' and inflate the count.
+    hist = [AgentResponse(f'A{i}', 1, '', f'stmt-{i:03d}', 1.0) for i in range(40)]
+    msgs, _ = f._agent_prompt(_capability_agents('gas')[0], ctx, hist, '')
+    body = msgs[-1]['content']
+    assert 'stmt-039' in body                            # most recent kept
+    assert 'stmt-000' not in body                        # oldest dropped
+    assert 'earlier turns omitted' in body               # and said so, not silently
+    assert sum(f'stmt-{i:03d}' in body for i in range(40)) == _PRIOR_TURNS
+
+
+def test_judge_compresses_a_large_roster_but_keeps_the_extremes(monkeypatch):
+    """50 full statements would overflow the deep tier. The extremes are what a judge
+    resolving a disagreement needs verbatim; the rest collapse to name/estimate."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.debate import AgentResponse
+    seen = {}
+
+    def spy(messages, tier=None, max_tokens=None, **kw):
+        seen['body'] = messages[-1]['content']
+        return 'On balance rising. ESTIMATE: +1.00/L'
+
+    monkeypatch.setattr(llm_mod, 'complete', spy)
+    ctx = _ctx()
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
+    finals = [AgentResponse(f'A{i}', 1, '', f'view {i}', float(i)) for i in range(30)]
+    f._judge_sector(ctx, finals)
+    body = seen['body']
+    assert 'view 0' in body and 'view 29' in body         # both extremes verbatim
+    assert 'Other analysts' in body                        # the middle summarised
+    assert len(body) < 6000                                # and it stays bounded
+
+
+def test_streaming_emits_tokens_only_when_someone_is_listening(monkeypatch, tmp_path):
+    """Tokens exist to fill a card live, so a headless run takes the cheaper
+    `complete` path - which is also the seam the rest of these tests patch."""
+    _patch_llm(monkeypatch)
+    seen = []
+    forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'x', as_of=date(2026, 7, 24),
+                      sectors=('gas',), rounds=1, live=False,
+                      on_event=lambda k, d: seen.append((k, d)))
+    assert 'agent_token' in [k for k, _ in seen]
+    tok = next(d for k, d in seen if k == 'agent_token')
+    assert tok['text'] and 'name' in tok and 'sector' in tok
+
+
+def test_headless_run_never_streams(monkeypatch, tmp_path):
+    used = []
+
+    def spy_complete(messages, tier=None, max_tokens=None, **kw):
+        used.append(1)
+        return _fake_complete(messages, tier=tier, max_tokens=max_tokens, **kw)
+
+    def boom(*a, **k):
+        raise AssertionError('a headless run must not stream')
+
+    monkeypatch.setattr(llm_mod, 'complete', spy_complete)
+    monkeypatch.setattr(llm_mod, 'stream', boom)
+    forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'x', as_of=date(2026, 7, 24),
+                      sectors=('gas',), rounds=1, live=False)       # no on_event
+    assert used

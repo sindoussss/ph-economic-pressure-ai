@@ -20,13 +20,15 @@ from ph_economic_ai.engine.pressure_brief import PressureBrief
 def run_pressure_monitor(rag, corpus_dir=None, as_of=None, window: str = 'this_week',
                          sectors=('gas', 'food', 'electricity'), rounds: int = 2,
                          run_tournament: bool = True, live: bool = True,
-                         on_event: Optional[Callable[[str, dict], None]] = None
+                         on_event: Optional[Callable[[str, dict], None]] = None,
+                         per_channel: Optional[int] = None
                          ) -> tuple[PressureBrief, Outlook]:
     """Stage 1 (Monitor) then Stage 2 (Outlook). Returns (brief, outlook). `live`
     makes the social layer hybrid (fresh when possible, frozen fallback)."""
     kwargs = {} if corpus_dir is None else {'corpus_dir': corpus_dir}
     brief = run_monitor(rag, as_of=as_of, window=window, sectors=sectors,
-                        rounds=rounds, live=live, on_event=on_event, **kwargs)
+                        rounds=rounds, live=live, on_event=on_event,
+                        per_channel=per_channel, **kwargs)
     outlook = run_outlook(brief, rag=rag, run_tournament=run_tournament)
     return brief, outlook
 
@@ -40,18 +42,20 @@ class MonitorThread(QThread):
     error_occurred = pyqtSignal(str)
 
     def __init__(self, rag, window: str = 'this_week', rounds: int = 2,
-                 run_tournament: bool = True, live: bool = True, parent=None):
+                 run_tournament: bool = True, live: bool = True,
+                 per_channel: Optional[int] = None, parent=None):
         super().__init__(parent)
         self._rag = rag
         self._window = window
         self._rounds = rounds
         self._run_tournament = run_tournament
         self._live = live
+        self._per_channel = per_channel      # None = the full ~50-agent roster
 
     def run(self):
         try:
             brief = run_monitor(self._rag, window=self._window, rounds=self._rounds,
-                                live=self._live,
+                                live=self._live, per_channel=self._per_channel,
                                 on_event=lambda kind, data: self.forum_event.emit(kind, data))
             self.monitor_ready.emit(brief)
             outlook = run_outlook(brief, rag=self._rag,
