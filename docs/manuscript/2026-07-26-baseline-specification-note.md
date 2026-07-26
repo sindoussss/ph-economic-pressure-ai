@@ -94,6 +94,10 @@ The derivation uses the true $\mu$; an implementation uses an expanding-window s
 
 Maximum absolute error 0.011, with the small negative bias attributable to finite-sample estimation of the mean. The sign change occurs at ρ = 0.5 as derived.
 
+![S(rho) with simulation and real targets.](../../ph_economic_ai/benchmark/artifacts/figures/fig5_spurious_skill.png)
+
+**Figure 1.** S(ρ) (black), simulated through a walk-forward backtest (crosses), and five real month-on-month targets at their measured ρ (circles). Shaded: where an uninformative forecaster is credited with positive skill.
+
 ### 3.3 Validation against real targets
 
 Applied to five real month-on-month macroeconomic targets (Philippine CPI components and aggregates, 2007–2026), measuring each series' ρ and comparing the predicted spurious skill against the mean-versus-random-walk gap actually observed in a walk-forward backtest:
@@ -143,6 +147,10 @@ Three observations.
 
 **More data makes it worse.** The rate rises with n in every row (43.3% → 99.7% at ρ = 0; 19.7% → 87.7% at ρ = 0.2). This is the most practically damaging property. "Re-estimate on a longer sample" is the reflexive robustness response to a suspicious result, and here it *amplifies* the error: a larger sample estimates the spurious mean-versus-random-walk gap more precisely, tightening the p-value. A researcher following standard practice will read the artifact strengthening as confirmation.
 
+![False-positive rate by rho, both pools.](../../ph_economic_ai/benchmark/artifacts/figures/fig6_size_distortion.png)
+
+**Figure 2.** Rejection rate on data containing no signal. Pool A (red) is catastrophically oversized below ρ = ½ and worsens with n; Pool B (blue) is at zero throughout. Dotted line: nominal α = 5%.
+
 ### 4.3 Power
 
 A correction that merely blinds the test is not a correction. Repeating the experiment with a genuine, contemporaneously observable driver (β = 0.6 on the first feature):
@@ -184,7 +192,11 @@ The decomposition by transformation is the structural result:
 | Level | **0 / 11 (0%)** |
 | Log | **0 / 10 (0%)** |
 
-**Every differenced series in FRED-MD is affected; no series left in levels is.** This is the mechanism of §3.1 stated in reverse. A random walk is a good benchmark exactly when a series is persistent; differencing exists to remove persistence. The standard stationarity transformation therefore moves a target out of the regime where the random-walk benchmark is appropriate and into the regime where it is structurally weak — silently, because the transformation is applied for an unrelated and entirely correct reason.
+**Every differenced series in FRED-MD is affected; no series left in levels is.**
+
+![FRED-MD rho distribution by transform.](../../ph_economic_ai/benchmark/artifacts/figures/fig7_fredmd_exposure.png)
+
+**Figure 3.** Lag-1 autocorrelation across 126 FRED-MD series after each series' recommended transform, split by whether it involved differencing. The groups barely overlap. This is the mechanism of §3.1 stated in reverse. A random walk is a good benchmark exactly when a series is persistent; differencing exists to remove persistence. The standard stationarity transformation therefore moves a target out of the regime where the random-walk benchmark is appropriate and into the regime where it is structurally weak — silently, because the transformation is applied for an unrelated and entirely correct reason.
 
 The most affected series are ordinary quantities whose transformed form carries *negative* autocorrelation, where S(ρ) exceeds +42%:
 
