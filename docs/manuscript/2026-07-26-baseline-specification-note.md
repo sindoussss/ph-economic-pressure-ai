@@ -202,7 +202,7 @@ The most affected series are ordinary quantities whose transformed form carries 
 
 ## 6. A worked case: five robustness checks, one artifact
 
-The following is drawn from the author's own predictability audit of Philippine macroeconomic series, and is reported because it documents the failure mode end to end rather than in the abstract.
+The following is drawn from the author's own predictability audit of Philippine macroeconomic series, and is reported because it documents the failure mode end to end rather than in the abstract. That audit — including the full corrected predictability map, the affected targets in detail, and the withdrawn results in their original form — is reported separately in [`2026-06-10-thesis-manuscript.md`](2026-06-10-thesis-manuscript.md); only what bears on the baseline question is reproduced here.
 
 The audit examined whether electricity CPI inflation could be nowcast from within-month observable energy drivers (Brent, natural gas, FX) before the statistical agency's release. The driver-only specification returned, on n = 151 walk-forward months, **Ridge +28.3% over the best naive baseline, DM p = 0.0011**. The result then passed, in sequence:
 

@@ -1,5 +1,13 @@
 # Strata v2.0.0
 
+> ⚠️ **Findings superseded (2026-07-26).** These release notes are a historical record and
+> are left unedited. The predictability results they describe were **withdrawn**: the naive
+> baseline pool omitted the historical mean, and with it added every month-on-month positive
+> becomes a null (the electricity "driver edge" model is in fact worse than a constant).
+> Do not cite the numbers below as current. See
+> [`docs/manuscript/2026-06-10-thesis-manuscript.md`](manuscript/2026-06-10-thesis-manuscript.md)
+> and [`docs/manuscript/2026-07-26-baseline-specification-note.md`](manuscript/2026-07-26-baseline-specification-note.md).
+
 The "real product" release. **Same science as v1.0.0 — a far more polished, honest, and populated app.** No finding changed; the validated benchmark is byte-for-byte the same. What changed is everything around it.
 
 ## What's new since v1.0.0

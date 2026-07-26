@@ -24,7 +24,17 @@ Most "AI predicts the economy" claims are never tested against a hard baseline. 
 
 **The map is uniformly negative, and that is the finding.** An earlier version of this audit reported four significant positives — including a flagship electricity "driver edge" (Ridge +28.3%, DM p = 0.0011) that survived sub-sample stability tests, a preliminary-data robustness re-test, a plausible institutional mechanism, *and* a Bonferroni correction. All of them were measured against a baseline pool of {random-walk, seasonal-naive, drift}, which omits the **historical mean**. Every month-on-month target here is a mean-reverting rate, for which the random walk is structurally weak and the constant mean is the baseline to beat. With the mean in the pool, every positive disappears: the electricity model is in fact *worse than a constant*.
 
-The audit's guards did not malfunction — each answered a question other than "is the baseline appropriate?", and robustness checks only compound when they are independent. The superseded map is kept in [`corrected_predictability_map.json`](ph_economic_ai/benchmark/artifacts/) and the derivation in [`docs/defense/mean-baseline-finding.md`](docs/defense/mean-baseline-finding.md) so the change is auditable. Full write-up: [`docs/manuscript/2026-06-10-thesis-manuscript.md`](docs/manuscript/2026-06-10-thesis-manuscript.md).
+The audit's guards did not malfunction — each answered a question other than "is the baseline appropriate?", and robustness checks only compound when they are independent. The superseded map is kept in [`corrected_predictability_map.json`](ph_economic_ai/benchmark/artifacts/) so the change is auditable.
+
+**How far does this generalise?** Three results say it is not specific to this data:
+
+| Result | Finding | Module |
+|---|---|---|
+| Closed form | A model carrying no information beyond the mean scores **S(ρ) = 1 − [2(1−ρ)]^(−1/2)** over a random walk — positive iff **ρ < ½**, ≈ **+29%** at ρ = 0. Matches simulation to ≤ 0.011 and all five real targets to ≤ 0.022. | [`baseline_theory.py`](ph_economic_ai/benchmark/baseline_theory.py) |
+| Size distortion | On data with **nothing in it**, a mean-free pool returns a significant edge in **99.7%** of runs (ρ = 0, n = 151) against a nominal 5% — and the rate **grows with sample size**. With the mean: 0.0%, retaining 80.7% power. | [`baseline_size.py`](ph_economic_ai/benchmark/baseline_size.py) |
+| Exposure | **80.2%** of FRED-MD's 126 series sit below ρ = ½ after their own *recommended* stationarity transform — **every** differenced series, **no** series in levels. Differencing removes exactly the persistence that makes a random walk valid. | [`vulnerability_survey.py`](ph_economic_ai/benchmark/vulnerability_survey.py) |
+
+**Write-ups.** The Philippine audit: [`2026-06-10-thesis-manuscript.md`](docs/manuscript/2026-06-10-thesis-manuscript.md). The methodological result standalone, without the application: [`2026-07-26-baseline-specification-note.md`](docs/manuscript/2026-07-26-baseline-specification-note.md). Derivation and defence notes: [`docs/defense/`](docs/defense/).
 
 ## Reproduce the benchmark (no LLM required)
 
@@ -33,7 +43,7 @@ pip install -r requirements.txt
 python -m ph_economic_ai.benchmark.run
 ```
 
-This runs the full walk-forward audit and writes artifacts to `ph_economic_ai/benchmark/artifacts/` (`accuracy_report.json`, tables, figures). No API key, no GPU, no Qt — anyone can verify the numbers above. The boundary is enforced by `tests/test_benchmark_isolation.py`, which fails if `benchmark/` ever grows a dependency on the app.
+This runs the full walk-forward audit — including the baseline size study, the FRED-MD census, the minimum-detectable-effect for every null, and the sentiment keystone — and writes artifacts to `ph_economic_ai/benchmark/artifacts/` (`accuracy_report.json`, `baseline_theory.json`, `baseline_size.json`, `vulnerability_survey.json`, `power.json`, tables, figures). No API key, no GPU, no Qt — anyone can verify the numbers above. The boundary is enforced by `tests/test_benchmark_isolation.py`, which fails if `benchmark/` ever grows a dependency on the app.
 
 ## Run the app (interactive simulator)
 
