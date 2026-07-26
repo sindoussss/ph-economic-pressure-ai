@@ -161,7 +161,11 @@ The crossover at ρ = ½ is exact, and only ρ enters — so the result holds fo
 | **Electricity MoM** | **+0.002** | **+29.2%** | **+29.6%** | 0.004 |
 | Transport MoM | +0.140 | +23.8% | +24.8% | 0.010 |
 
-The closed form accounts for the observed gap on every target to within 0.022. Inverting it is diagnostic: the audit's flagship electricity "driver edge" of **+28.3%** implies ρ ≈ 0.027, and electricity MoM in fact measures ρ = +0.002. The headline result of the earlier draft is therefore quantitatively explained by the target's own autocorrelation, with no reference to any driver, model, or mechanism. A referee can apply the same inversion to any reported edge: if the implied ρ matches the target's measured ρ, the edge is consistent with pure baseline weakness.
+The closed form accounts for the observed gap on every target to within 0.022.
+
+![S(rho) against the target's lag-1 autocorrelation: the closed form, the simulation check, and every real target at its measured rho.](../../ph_economic_ai/benchmark/artifacts/figures/fig5_spurious_skill.png)
+
+**Figure 5.** The closed form S(ρ) (black), the same quantity simulated through the project's walk-forward backtest (crosses), and the five real month-on-month targets at their measured ρ (circles). The shaded region is where a forecaster carrying no information beyond the unconditional mean is nonetheless credited with positive skill over the random walk. Electricity MoM sits at ρ ≈ 0, where that credit is ≈ +29%. Inverting it is diagnostic: the audit's flagship electricity "driver edge" of **+28.3%** implies ρ ≈ 0.027, and electricity MoM in fact measures ρ = +0.002. The headline result of the earlier draft is therefore quantitatively explained by the target's own autocorrelation, with no reference to any driver, model, or mechanism. A referee can apply the same inversion to any reported edge: if the implied ρ matches the target's measured ρ, the edge is consistent with pure baseline weakness.
 
 **Why every robustness check passed.** S(ρ) is a property of the *target*, not of the estimation. It requires no data mining, no leakage, and no overfitting — so it does not decay out of sample, does not vary across sub-samples, is untouched by a real-time-vintage re-test, and is unaffected by multiple-comparison correction. Any guard that does not interrogate the baseline will pass it, which is exactly what §5.7 records.
 
@@ -184,6 +188,11 @@ Three things follow, and together they are the substance of this thesis's method
 *The distortion is confined to ρ < ½, exactly where the closed form says it must be.* At ρ = 0.5 the rate collapses to ~1%, and at ρ = 0.7 to zero. §4.7 derives that crossover analytically from two variance calculations; this simulation reaches the same threshold from an entirely different direction, sharing no assumption beyond stationarity.
 
 *More data makes it worse.* The rate rises with n in every row — 43.3% → 99.7% at ρ = 0, 19.7% → 87.7% at ρ = 0.2. This is the most practically damaging property, because "re-run it on a longer sample" is the reflexive response to a suspicious result. Here that move *amplifies* the error: a larger sample estimates the spurious mean-versus-random-walk gap more precisely, so the p-value tightens. It is exactly what happened in the earlier draft, where the long-sample re-run moved the headline MoM result from p = 0.032 to p = 0.001 and was reported as the finding having "held and strengthened" (§5.4).
+
+
+![False-positive rate against rho for both sample sizes and both baseline pools.](../../ph_economic_ai/benchmark/artifacts/figures/fig6_size_distortion.png)
+
+**Figure 6.** Rejection rate on simulated data containing no signal, so every rejection is a false positive. The mean-free pool (red) is catastrophically oversized below ρ = ½ and worsens with sample size — the gap between the dashed (n = 61) and solid (n = 151) lines. With the mean in the pool (blue) the rate is zero everywhere. The dotted line is the nominal α = 5%.
 
 **Power is preserved.** A fix that merely blinds the audit would be no fix. Repeating the experiment with a genuine, contemporaneously-observable driver (β = 0.6), the mean-inclusive pool detects it in **80.7%** of replications at ρ = 0, n = 151 and 73.0% at ρ = 0.35. The corresponding without-mean figures (100% and 96.3%) must not be read as superior power: on those same targets that pool has a 43–100% false-positive rate, so its "detections" confound size with power. Only the corrected column measures detection of real signal. At n = 61 power falls to 13–17%, an honest reflection of the sample size rather than a defect of the correction, and consistent with the 13.2% minimum detectable effect reported for that target in §5.11.
 
@@ -418,6 +427,10 @@ The decomposition by transformation is the structural result, and it is unambigu
 | Log difference (growth rate) | 48 / 52 (92.3%) |
 | Level | 0 / 11 (0%) |
 | Log | 0 / 10 (0%) |
+
+![Distribution of lag-1 autocorrelation across FRED-MD, split by whether the series was differenced.](../../ph_economic_ai/benchmark/artifacts/figures/fig7_fredmd_exposure.png)
+
+**Figure 7.** Lag-1 autocorrelation across the 126 FRED-MD series after each series' own recommended stationarity transformation, separated by whether that transformation involved differencing. The two groups barely overlap: differenced series (red) sit below the ρ = ½ threshold, series left in levels (blue) sit well above it.
 
 **Every differenced series in FRED-MD is vulnerable; no series left in levels is.** That is not a coincidence but the mechanism stated in reverse. A random walk is a good baseline exactly when a series is persistent, and the purpose of differencing is to remove persistence. The standard stationarity transformation therefore moves a series out of the regime where the random-walk benchmark is appropriate and into the regime where it is structurally weak — and it does so silently, because the transformation is applied for an unrelated and entirely correct reason.
 

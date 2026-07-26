@@ -338,6 +338,14 @@ def main():
     except FileNotFoundError:
         print('Vulnerability census: skipped (run tools.refresh_fredmd first)')
 
+    # Figures for the baseline-specification results. Rendered from the artifacts
+    # just written, so a figure can never assert a number the report contradicts.
+    try:
+        from ph_economic_ai.benchmark import baseline_figures
+        baseline_figures.main()
+    except Exception as _bf_err:
+        print(f'baseline figures: skipped ({type(_bf_err).__name__}: {_bf_err})')
+
     # Sentiment keystone: does social search interest nowcast inflation beyond
     # naive? Ties the app's exploratory social layer to the validated spine, so it
     # belongs in the one-command run rather than being invoked by hand.
