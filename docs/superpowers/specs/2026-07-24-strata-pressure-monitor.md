@@ -15,9 +15,17 @@
   refresh with a frozen-snapshot fallback; the validated benchmark stays frozen.
 - **Home "Run" chains** the Monitor forum, then the tournament swarm.
 
-Pending: run `refresh_social` (or rely on the hybrid live refresh, which needs
-`pip install pytrends praw` + Reddit creds) for real social data; adopt the
-mean-baseline correction (the verdict gate tightens when the frozen report flips).
+Both former pending items are now **done** (2026-07-26):
+- **Google Trends refreshed** and the keystone run: `sentiment_nowcast.json` reports a
+  clean null — search interest does not nowcast PH fuel/food inflation beyond naive.
+  One gotcha, recorded because it nearly produced a vacuous null: Trends normalises all
+  terms in a *single* query against one shared 0–100 scale, which crushed the
+  low-volume Tagalog terms to near-constant zero. Query **one term per payload**.
+  Reddit was dropped — its API now gates access behind a research proposal, and the
+  forum runs on Trends + news + market without it.
+- **Mean-baseline correction adopted canonically.** The verdict gate did tighten as
+  predicted: `outlook.sector_basis` now returns `efficient` for every sector, because
+  no target in the frozen report beats naive any more.
 One-click, monitor-led expansion of the Strata app, inspired by BettaFish's moderated
 forum but bounded by the Strata benchmark.
 

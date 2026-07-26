@@ -1,5 +1,12 @@
 # Thesis Manuscript Outline — Predictability of the Philippine Economy
 
+> ⚠️ **Superseded (2026-07-26).** This is the original outline scaffold. Its working
+> title and its results are both out of date: the audit's four positives were
+> withdrawn once the naive baseline pool included the historical mean, and the map is
+> now uniformly null. Kept as a record of the original design — do not cite its
+> numbers. Current: [`2026-06-10-thesis-manuscript.md`](2026-06-10-thesis-manuscript.md)
+> and [`2026-07-26-baseline-specification-note.md`](2026-07-26-baseline-specification-note.md).
+
 > **Status:** Outline scaffold, drafted from the committed specs (`docs/superpowers/specs/`) and benchmark artifacts (`ph_economic_ai/benchmark/artifacts/`). Every number below is from a committed artifact; citations marked `[ref]` are seeded in the specs' §10. Fill prose around these bullets.
 
 **Working title:**
