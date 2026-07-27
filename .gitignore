@@ -68,3 +68,13 @@ jarvis/Training/
 jarvis/**/checkpoint-*/
 jarvis/deepseek-*/
 jarvis/jarvis-lora-adapter/
+
+# ── Per-run social snapshots ──────────────────────────────────────────────────
+# `engine/live_social.py` and `tools/refresh_social.py` write a dated file here on
+# every live run, so without this the directory accumulates a new blob per run and
+# they drift into commits unnoticed. Ignored BY PATTERN rather than by directory:
+# the spec treats a frozen social snapshot as legitimate committed data, so a
+# deliberately curated file under a different name can still be added with -f.
+# A missing directory is handled: load_social_snapshot returns zero posts.
+ph_economic_ai/assets/corpus/social/reddit_*.jsonl
+ph_economic_ai/assets/corpus/social/trends_*.jsonl
