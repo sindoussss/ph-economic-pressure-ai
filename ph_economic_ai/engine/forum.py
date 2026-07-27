@@ -27,7 +27,8 @@ from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.auto_assemble import (
     SECTOR_SOURCES, SectorContext, auto_assemble)
 from ph_economic_ai.engine.debate import (
-    Agent, AgentResponse, _extract_electricity_change, _extract_percent,
+    Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
+    _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
     _extract_price, _parse_think)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
@@ -36,6 +37,45 @@ _EXTRACTORS: dict[str, Callable] = {
     'gas': _extract_price, 'food': _extract_percent,
     'electricity': _extract_electricity_change,
 }
+
+# Parse-sanity ceilings, shared with engine.debate. These are not economic
+# judgements — they reject values that can only be a misparse, overwhelmingly the
+# model quoting an absolute PRICE where a CHANGE was asked for. A live run had two
+# agents return +150.00/L and +100.00/L, which the unguarded gas extractor passed
+# straight onto their cards.
+_PLAUSIBLE = {
+    'gas': _MAX_REALISTIC_FUEL_PHP_L,
+    'food': _MAX_REALISTIC_FOOD_PCT,
+    'electricity': _MAX_REALISTIC_ELEC_PHP_KWH,
+}
+
+
+def _extract_guarded(sector: str, statement: str) -> tuple[Optional[float], Optional[float]]:
+    """Parse an estimate into (accepted, rejected).
+
+    Splitting the two keeps the card honest in the way the swarm already is: an
+    agent that produced nothing and an agent whose number we threw away are
+    different events, and collapsing both to "no estimate" hides the second. The
+    rejected value is carried through so the UI can say the number was discarded
+    rather than silently dropping it.
+
+    Asymmetry worth knowing: `_extract_percent` and `_extract_electricity_change`
+    already apply their own ceilings internally and return None, so for food and
+    electricity an implausible value arrives here as "no estimate" and cannot be
+    reported as rejected. Only `_extract_price` (gas) hands the raw value over —
+    which is why gas was the sector that put +150.00/L on a card. The guard below
+    closes that hole; unifying the *reporting* would mean changing extractors the
+    swarm also depends on, so it is deliberately left alone.
+    """
+    value = _EXTRACTORS[sector](statement)
+    if value is None:
+        return None, None
+    ceiling = _PLAUSIBLE.get(sector)
+    if ceiling is not None and abs(value) > ceiling:
+        return None, value
+    return value, None
+
+
 # How many prior turns an agent is shown, and how many statements the judge reads
 # verbatim. Both exist because the roster is ~50: unbounded context would overflow
 # the local models and slow every successive call.
@@ -53,10 +93,26 @@ _TOLERANCE = {
     'food': anchoring.FOOD_TOLERANCE_PCT,
     'electricity': anchoring.ELECTRICITY_TOLERANCE_PHP_KWH,
 }
+# The final line every agent must emit.
+#
+# These read as instructions, NOT as templates, because a small model will copy a
+# template verbatim: with the previous wording ("ESTIMATE: +₱X.XX/L") a live
+# 17-agent run had agents literally answer "ESTIMATE: +₱X.XX/L", placeholder and
+# all, which parses to nothing. That single formatting choice was losing most of
+# the roster's estimates. Each line therefore names the quantity, gives a worked
+# example with a real number, and says outright not to echo the placeholder.
 _EST_LINE = {
-    'gas': 'ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L',
-    'food': 'ESTIMATE: +X.X% or ESTIMATE: -X.X%',
-    'electricity': 'ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh',
+    'gas': ('ESTIMATE: <the peso-per-litre CHANGE you expect, signed> '
+            '(worked example — "ESTIMATE: +0.85/L" for a rise of 85 centavos, or '
+            '"ESTIMATE: -0.40/L" for a fall. Write your own number; never write '
+            'X.XX.)'),
+    'food': ('ESTIMATE: <the percent month-on-month CHANGE you expect, signed> '
+             '(worked example — "ESTIMATE: +0.4%" or "ESTIMATE: -0.2%". Write your '
+             'own number; never write X.X.)'),
+    'electricity': ('ESTIMATE: <the peso-per-kWh CHANGE you expect, signed> '
+                    '(worked example — "ESTIMATE: +0.30/kWh" or '
+                    '"ESTIMATE: -0.15/kWh". Write your own number; never write '
+                    'X.XX.)'),
 }
 
 # Capability channels: each agent stays strictly in its lane so the three do NOT
@@ -298,15 +354,26 @@ class Forum:
                       history: list[AgentResponse], steer: str
                       ) -> tuple[list[dict], list[str]]:
         query = f"Current {ctx.sector} price pressure in the Philippines, {self._window}."
-        # Only the most recent turns. Passing the whole history does not scale: with a
-        # 50-agent roster the last speaker would receive ~3,400 tokens of prior
-        # statements, which overflows a 3b context window and makes every successive
-        # call slower than the one before it. A forum participant attends to the last
-        # few speakers anyway.
-        recent = history[-_PRIOR_TURNS:]
-        prior = '\n'.join(f"{r.agent_name}: {r.statement[:280]}" for r in recent)
-        if len(history) > len(recent):
-            prior = f"({len(history) - len(recent)} earlier turns omitted)\n" + prior
+        # Round 1 is DELIBERATELY BLIND: an agent forming its opening read sees no
+        # other agent's statement.
+        #
+        # Two reasons, one scientific and one practical. Agreement between agents
+        # that have read each other is herding, not corroboration — and the
+        # confidence number on the card is computed from exactly that agreement, so
+        # showing prior statements makes it measure the wrong thing. Practically, a
+        # 3b model shown neighbouring text copies it: a live 17-agent run returned
+        # only 8 distinct openings out of 20, with a DOE beat reporter reciting the
+        # social lane's "no recent chatter" verbatim.
+        #
+        # Prior statements appear only for a rebuttal (round > 1), where responding
+        # to what others said is the entire point, and even then capped at
+        # `_PRIOR_TURNS`.
+        prior = ''
+        if steer and history:
+            recent = history[-_PRIOR_TURNS:]
+            prior = '\n'.join(f"{r.agent_name}: {r.statement[:280]}" for r in recent)
+            if len(history) > len(recent):
+                prior = f"({len(history) - len(recent)} earlier turns omitted)\n" + prior
         sc = ctx.social_counts or {}
         social_note = (f"Social posts mentioning {ctx.sector} in the snapshot — today "
                        f"{sc.get('today', 0)}, this week {sc.get('this_week', 0)}, "
@@ -323,7 +390,16 @@ class Forum:
             + (f"Moderator steer: {steer}\n\n" if steer else '')
             + (f"Prior statements:\n{prior}\n\n" if prior else '')
             + challenge
-            + "Give a short present-tense read from your channel only. End with:\n"
+            # Small local models echo their input. Live runs opened with "BENCHMARK
+            # NOTE:", "Retrieved context:" and even a neighbour's name — the prompt
+            # read back rather than answered — so the scaffolding is named here and
+            # ruled out explicitly.
+            + "Write in your OWN words as this analyst. Do not repeat these headings "
+              "('BENCHMARK NOTE', 'Retrieved context', 'Prior statements'), do not "
+              "quote the context verbatim, and do not begin with another analyst's "
+              "name.\n"
+            + "Give a short present-tense read from your channel only, then end with "
+              "exactly these two lines:\n"
             "CAUSAL CHAIN: <trigger> → <effect> → <household impact>\n"
             + _EST_LINE[ctx.sector]
         )
@@ -394,7 +470,10 @@ class Forum:
         except Exception:
             return None, ''
         _, statement = _parse_think(text)
-        return _EXTRACTORS[ctx.sector](statement), statement.strip()
+        # The judge is guarded too: it reads agent numbers, so it can repeat an
+        # implausible one back.
+        accepted, _ = _extract_guarded(ctx.sector, statement)
+        return accepted, statement.strip()
 
     def _emit(self, kind: str, data: dict):
         if self._on_event:
@@ -458,7 +537,6 @@ class Forum:
 
     def _run_sector(self, ctx: SectorContext) -> SectorReading:
         agents = _capability_agents(ctx.sector, self._per_channel)
-        extractor = _EXTRACTORS[ctx.sector]
         history: list[AgentResponse] = []
         cited: set[str] = set()          # sources genuinely retrieved this sector
         steer = ''
@@ -471,14 +549,16 @@ class Forum:
                 cited |= set(used)
                 text = self._speak(agent, msgs, ctx.sector, rnd)
                 thinking, statement = _parse_think(text)
+                accepted, rejected = _extract_guarded(ctx.sector, statement)
                 resp = AgentResponse(agent_name=agent.name, round_num=rnd,
                                      thinking=thinking, statement=statement,
-                                     price_estimate=extractor(statement))
+                                     price_estimate=accepted)
                 history.append(resp)
                 self._emit('agent_message', {
                     'name': agent.name, 'occupation': agent.role, 'sector': ctx.sector,
                     'round': rnd, 'message': statement,
-                    'estimate': resp.price_estimate, 'unit': ctx.unit,
+                    'estimate': accepted, 'rejected_estimate': rejected,
+                    'unit': ctx.unit,
                     'sources': used})          # what it actually read, not its wishlist
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 this_round = [r for r in history if r.round_num == rnd]

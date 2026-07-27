@@ -13,7 +13,8 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from ph_economic_ai.engine import anchoring, llm
 from ph_economic_ai.engine.rag import RagEngine
-from ph_economic_ai.engine.debate import AgentResponse, _parse_think, _extract_price
+from ph_economic_ai.engine.debate import (
+    AgentResponse, _MAX_REALISTIC_FUEL_PHP_L, _extract_price, _parse_think)
 from ph_economic_ai.engine.live_data import LiveDataBrief
 
 
@@ -101,7 +102,10 @@ _MASTER_JUDGE_CALLS = 1
 _AGENT_MAX_TOKENS = 750
 _JUDGE_MAX_TOKENS = 1800
 _MASTER_MAX_TOKENS = 2000
-_MAX_REALISTIC_FUEL_CHANGE = 8.0
+# Single source of truth: the same parse-sanity bound the Forum uses, kept in
+# debate.py beside the food and electricity ones so the two debate systems
+# cannot drift to different notions of a plausible fuel move.
+_MAX_REALISTIC_FUEL_CHANGE = _MAX_REALISTIC_FUEL_PHP_L
 
 # Role processing order within a round (Critic and ConfidenceScorer last so they
 # can score agents they've already seen)
