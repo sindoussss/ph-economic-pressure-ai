@@ -123,13 +123,26 @@ class AgentTrustStore:
             return [dict(row) for row in cur.fetchall()]
 
     def get_ungraded_runs(self, min_age_days: float = 5.0) -> list[dict]:
-        """Return runs not yet graded and older than min_age_days."""
+        """Return runs not yet graded and older than min_age_days.
+
+        A non-positive `min_age_days` means "no age filter" and skips the clock
+        comparison entirely. That is both the obvious reading of the argument and a
+        fix for a real race: a run saved and queried in the same instant differs
+        from `julianday('now')` by around a millisecond (~1.2e-08 days), so on a
+        loaded machine the two can resolve equal or inverted and a just-saved run
+        vanishes from its own query. That flake was rare enough to survive many
+        green suites and only appeared when the CPU was saturated.
+        """
         with self._lock:
-            cur = self._conn.execute(
-                "SELECT * FROM runs WHERE actual_price_change IS NULL "
-                "AND (julianday('now') - julianday(timestamp)) >= ?",
-                (min_age_days,),
-            )
+            if min_age_days <= 0:
+                cur = self._conn.execute(
+                    'SELECT * FROM runs WHERE actual_price_change IS NULL')
+            else:
+                cur = self._conn.execute(
+                    "SELECT * FROM runs WHERE actual_price_change IS NULL "
+                    "AND (julianday('now') - julianday(timestamp)) >= ?",
+                    (min_age_days,),
+                )
             return [dict(row) for row in cur.fetchall()]
 
     def apply_ground_truth_grade(self, run_id: int, actual_change: float) -> None:

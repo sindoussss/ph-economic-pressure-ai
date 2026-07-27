@@ -125,3 +125,20 @@ def test_apply_ground_truth_grade_idempotent(store):
     store.apply_ground_truth_grade(run_id, actual_change=1.05)
     trust_after_second = store.get_trust('Idempotent Agent')
     assert trust_after_first == trust_after_second
+
+
+def test_just_saved_run_is_returned_at_zero_min_age(store):
+    """Regression for a load-sensitive flake: a run saved and queried in the same
+    instant differs from julianday('now') by ~1ms, so the clock comparison could
+    resolve equal-or-inverted and drop the row from its own query. A non-positive
+    min_age_days now means 'no age filter' and skips the comparison."""
+    for _ in range(50):                       # repeat: the race is timing-dependent
+        store.save_run(scenario={}, final_estimate=1.0, confidence_pct=60)
+        assert store.get_ungraded_runs(min_age_days=0)
+
+
+def test_positive_min_age_still_filters(store):
+    """The age filter must still work — the fix must not turn it into a no-op."""
+    store.save_run(scenario={}, final_estimate=1.0, confidence_pct=60)
+    assert store.get_ungraded_runs(min_age_days=0) != []
+    assert store.get_ungraded_runs(min_age_days=5) == []      # far too new
