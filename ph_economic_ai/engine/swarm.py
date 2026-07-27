@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import re
 import statistics
@@ -184,6 +185,22 @@ def _extract_fuel_change(text: str) -> Optional[float]:
     """Extract a signed PHP/L fuel price change, rejecting absolute-price parses."""
     accepted, _ = parse_fuel_estimate(text)
     return accepted
+
+
+def _scenario_seed(scenario: dict, *parts: object) -> int:
+    """A per-call seed derived from the scenario plus a local identifier.
+
+    The scenario is what makes two runs "the same run"; the extra parts keep the
+    agents from collapsing into one voice. Without this the app was resampling
+    from scratch every time — two runs ten minutes apart on identical inputs
+    disagreed by more than a peso per litre, which is also what dragged the
+    agreement percentage down, since it counts agents within +/-1.00 as agreeing.
+    """
+    try:
+        key = json.dumps(scenario, sort_keys=True, default=str)
+    except Exception:
+        key = repr(sorted(scenario.items())) if isinstance(scenario, dict) else repr(scenario)
+    return llm.derive_seed(key, *parts)
 
 
 def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[float]) -> int:
@@ -608,7 +625,9 @@ class GroupArena:
         if self._on_event:
             self._on_event('agent_typing', self._group_id, agent.name)
         full_text = ''
-        for token in llm.stream(messages, tier=agent.tier, max_tokens=_AGENT_MAX_TOKENS):
+        seed = _scenario_seed(self._scenario, self._group_id, agent.name)
+        for token in llm.stream(messages, tier=agent.tier,
+                                max_tokens=_AGENT_MAX_TOKENS, seed=seed):
             full_text += token
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
@@ -795,15 +814,20 @@ class RegionalJudge:
             )},
         ]
 
-    def _call(self, messages: list[dict], tier: str = _JUDGE_TIER) -> str:
-        full = ''.join(llm.stream(messages, tier=tier, max_tokens=_JUDGE_MAX_TOKENS))
+    def _call(self, messages: list[dict], tier: str = _JUDGE_TIER,
+              tag: str = 'judge') -> str:
+        # `tag` distinguishes the three prompts this method serves; without it all
+        # three would share a seed and the judge would answer itself identically.
+        seed = _scenario_seed(self._scenario, self._judge_id, tag)
+        full = ''.join(llm.stream(messages, tier=tier,
+                                  max_tokens=_JUDGE_MAX_TOKENS, seed=seed))
         _, statement = _parse_think(full)
         return statement
 
     def run(self) -> RegionalVerdict:
-        def1 = self._call(self._defense_prompt(self._s1, self._s2))
-        def2 = self._call(self._defense_prompt(self._s2, self._s1))
-        synthesis = self._call(self._synthesis_prompt(def1, def2))
+        def1 = self._call(self._defense_prompt(self._s1, self._s2), tag='defense1')
+        def2 = self._call(self._defense_prompt(self._s2, self._s1), tag='defense2')
+        synthesis = self._call(self._synthesis_prompt(def1, def2), tag='synthesis')
         estimate, rejected = parse_fuel_estimate(synthesis)
         # Measured, not assumed. This was previously a hardcoded 0.75 whenever
         # the estimate merely parsed, which the report then displayed as "agent
@@ -913,7 +937,8 @@ class MasterJudge:
     def run(self) -> MasterVerdict:
         full = ''.join(
             llm.stream(self._build_prompt(), tier=_JUDGE_TIER,
-                       max_tokens=_MASTER_MAX_TOKENS)
+                       max_tokens=_MASTER_MAX_TOKENS,
+                       seed=_scenario_seed(self._scenario, 'master'))
         )
         _, statement = _parse_think(full)
 
