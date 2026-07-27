@@ -397,9 +397,20 @@ class PressureMonitorPanel(QWidget):
         v.addWidget(body)
 
         est = d.get('estimate')
+        rejected = d.get('rejected_estimate')
         if est is not None:
             badge = QLabel(f'estimate  {est:+.2f} {d.get("unit", "")}')
             badge.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};margin-top:2px;')
+            v.addWidget(badge)
+        elif rejected is not None:
+            # Show that a number was produced and discarded. Dropping it silently
+            # would make a magnitude hallucination look identical to an agent that
+            # simply had nothing to say.
+            badge = QLabel(f'estimate discarded  ({rejected:+.2f} {d.get("unit", "")} '
+                           f'— implausible for one month)')
+            badge.setStyleSheet(f'font-size:11px;font-weight:600;color:{_T3};'
+                                f'margin-top:2px;font-style:italic;')
+            badge.setWordWrap(True)
             v.addWidget(badge)
         h.addLayout(v, stretch=1)
         if live:

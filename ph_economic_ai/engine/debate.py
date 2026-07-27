@@ -403,6 +403,12 @@ def _parse_think(text: str) -> tuple[str, str]:
 # and moves by tenths of a peso month to month.
 _MAX_REALISTIC_FOOD_PCT = 10.0
 _MAX_REALISTIC_ELEC_PHP_KWH = 3.0
+# Fuel moves by pesos, not tens of pesos, in a month. A "+150.00/L" is the model
+# quoting an absolute pump PRICE where a CHANGE was asked for — the single most
+# common misparse in live runs. This bound lived only in swarm.py, so the Forum
+# (which uses `_extract_price` directly) had no guard at all and put +150.00/L on
+# an agent card. It belongs here with the other two parse-sanity bounds.
+_MAX_REALISTIC_FUEL_PHP_L = 8.0
 
 
 def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
@@ -412,9 +418,18 @@ def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
     instruction, so that line — not the surrounding reasoning — is the answer.
     Taking the last match matters because agents restate and revise; taking the
     first would lock in a number the agent went on to reject.
+
+    The sign is OPTIONAL here and defaults to positive. Callers still require an
+    explicit sign in their *prose* fallback, where it is what distinguishes a
+    change from a baseline mention like "a base of ₱60/L" — but on the ESTIMATE
+    line the agent has been asked for a change, so an unsigned number is a change
+    with the "+" dropped. Requiring it here cost real coverage: in a live 17-agent
+    run, 11 agents produced an ESTIMATE line that this regex rejected purely for a
+    missing plus. Relaxing it raises the misparse risk in exchange, which is what
+    the per-sector plausibility ceilings exist to absorb.
     """
     hits = re.findall(
-        rf'ESTIMATE\s*:\s*([+\-])\s*{unit_pattern}',
+        rf'ESTIMATE\s*:\s*\**\s*([+\-])?\s*{unit_pattern}',
         text,
         flags=re.IGNORECASE,
     )

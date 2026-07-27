@@ -298,23 +298,6 @@ def test_consensus_uses_every_agents_latest_word_not_the_last_round():
     assert f._aggregate(ctx, hist).confidence > 0
 
 
-def test_prior_context_is_capped_so_the_last_speaker_is_not_flooded():
-    """Unbounded history does not scale: the 50th agent would receive ~3,400 tokens
-    of prior statements, overflowing a 3b context and slowing every later call."""
-    from ph_economic_ai.engine.forum import Forum, _capability_agents, _PRIOR_TURNS
-    from ph_economic_ai.engine.debate import AgentResponse
-    ctx = _ctx()
-    f = Forum(FakeRag(), [ctx], as_of='2026-07-24', window='this_week', rounds=1)
-    # Zero-padded ids so no marker is a prefix of another: 'stmt-3' would otherwise
-    # match inside 'stmt-39' and inflate the count.
-    hist = [AgentResponse(f'A{i}', 1, '', f'stmt-{i:03d}', 1.0) for i in range(40)]
-    msgs, _ = f._agent_prompt(_capability_agents('gas')[0], ctx, hist, '')
-    body = msgs[-1]['content']
-    assert 'stmt-039' in body                            # most recent kept
-    assert 'stmt-000' not in body                        # oldest dropped
-    assert 'earlier turns omitted' in body               # and said so, not silently
-    assert sum(f'stmt-{i:03d}' in body for i in range(40)) == _PRIOR_TURNS
-
 
 def test_judge_compresses_a_large_roster_but_keeps_the_extremes(monkeypatch):
     """50 full statements would overflow the deep tier. The extremes are what a judge
@@ -366,3 +349,149 @@ def test_headless_run_never_streams(monkeypatch, tmp_path):
     forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'x', as_of=date(2026, 7, 24),
                       sectors=('gas',), rounds=1, live=False)       # no on_event
     assert used
+
+
+# ── estimate plausibility guard (found by a live run) ─────────────────────────
+
+def test_absolute_price_is_rejected_not_shown_as_a_change():
+    """A live 17-agent gas run produced +150.00/L and +100.00/L — the model quoting
+    a pump PRICE where a CHANGE was asked for. The unguarded gas extractor put both
+    on agent cards."""
+    from ph_economic_ai.engine.forum import _extract_guarded
+    accepted, rejected = _extract_guarded('gas', 'ESTIMATE: +150.00/L')
+    assert accepted is None and rejected == 150.0
+
+
+def test_plausible_values_still_pass():
+    from ph_economic_ai.engine.forum import _extract_guarded
+    for sector, text, want in [('gas', 'ESTIMATE: +1.20/L', 1.2),
+                               ('food', 'ESTIMATE: +0.8%', 0.8),
+                               ('electricity', 'ESTIMATE: +0.30/kWh', 0.3)]:
+        accepted, rejected = _extract_guarded(sector, text)
+        assert accepted == want and rejected is None
+
+
+def test_no_estimate_is_distinct_from_a_rejected_one():
+    """The distinction the swarm already draws: 'said nothing' and 'said something
+    absurd' are different events and must not collapse."""
+    from ph_economic_ai.engine.forum import _extract_guarded
+    assert _extract_guarded('gas', 'prices feel high lately') == (None, None)
+    assert _extract_guarded('gas', 'ESTIMATE: +99.00/L')[1] == 99.0
+
+
+def test_forum_and_swarm_share_one_fuel_bound():
+    """Two debate systems must not drift to different notions of a plausible move."""
+    from ph_economic_ai.engine import swarm
+    from ph_economic_ai.engine.debate import _MAX_REALISTIC_FUEL_PHP_L
+    from ph_economic_ai.engine.forum import _PLAUSIBLE
+    assert _PLAUSIBLE['gas'] == _MAX_REALISTIC_FUEL_PHP_L
+    assert swarm._MAX_REALISTIC_FUEL_CHANGE == _MAX_REALISTIC_FUEL_PHP_L
+
+
+def test_rejected_estimate_reaches_the_event(monkeypatch, tmp_path):
+    """The UI can only report a discarded number if the event carries it."""
+    def absurd(messages, tier=None, max_tokens=None, **kw):
+        return 'Pumps are moving. CAUSAL CHAIN: a -> b -> c. ESTIMATE: +150.00/L'
+
+    _patch_llm(monkeypatch, absurd)
+    seen = []
+    brief = forum.run_monitor(FakeRag(), corpus_dir=tmp_path / 'x',
+                              as_of=date(2026, 7, 26), sectors=('gas',), rounds=1,
+                              live=False, on_event=lambda k, d: seen.append((k, d)))
+    msg = next(d for k, d in seen if k == 'agent_message')
+    assert msg['estimate'] is None
+    assert msg['rejected_estimate'] == 150.0
+    # and nothing absurd survives into the sector reading
+    assert brief.readings[0].estimate is None or abs(brief.readings[0].estimate) <= 8.0
+
+
+# ── round-1 independence (found by a live run) ────────────────────────────────
+
+def test_round_one_agents_do_not_see_each_other():
+    """Agreement between agents that have read each other is herding, not
+    corroboration — and the card's confidence number is computed from exactly that
+    agreement. A live run also showed a 3b model copying its neighbours verbatim:
+    8 distinct openings out of 20, with a news reporter reciting the social lane's
+    line. Round 1 is therefore blind."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-26', window='this_week', rounds=2)
+    history = [AgentResponse('Someone Else', 1, '', 'CRUDE IS SURGING WILDLY', 4.0)]
+    msgs, _ = f._agent_prompt(_capability_agents('gas')[0], ctx, history, steer='')
+    body = msgs[-1]['content']
+    assert 'CRUDE IS SURGING WILDLY' not in body
+    # the SECTION must be absent; the phrase itself still appears in the anti-echo
+    # instruction that names the headings an agent must not parrot
+    assert 'Prior statements:\n' not in body
+
+
+def test_rebuttal_agents_do_see_the_debate():
+    """Responding to what others said is the whole point of a rebuttal, so the
+    blindness is lifted once the moderator has spoken."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-26', window='this_week', rounds=2)
+    history = [AgentResponse('Someone Else', 1, '', 'CRUDE IS SURGING WILDLY', 4.0)]
+    msgs, _ = f._agent_prompt(_capability_agents('gas')[0], ctx, history,
+                              steer='Stay on the present read.')
+    body = msgs[-1]['content']
+    assert 'CRUDE IS SURGING WILDLY' in body
+    assert 'Stay on the present read.' in body
+
+
+def test_prompt_forbids_echoing_its_own_scaffolding():
+    """Live agents opened with 'BENCHMARK NOTE:' and 'Retrieved context:' — the
+    prompt read back instead of answered."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-26', window='this_week', rounds=1)
+    body = f._agent_prompt(_capability_agents('gas')[0], ctx, [], '')[0][-1]['content']
+    assert 'in your OWN words' in body
+    assert "another analyst's name" in body
+
+
+def test_blind_round_one_keeps_prompts_small():
+    """The independence fix is also the scale fix: with no prior statements, an
+    opening prompt does not grow with the roster."""
+    from ph_economic_ai.engine.forum import Forum, _capability_agents
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+    from ph_economic_ai.engine.debate import AgentResponse
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='', anchor=0.0)
+    f = Forum(FakeRag(), [ctx], as_of='2026-07-26', window='this_week', rounds=1)
+    agent = _capability_agents('gas')[0]
+    empty = len(f._agent_prompt(agent, ctx, [], '')[0][-1]['content'])
+    crowded = [AgentResponse(f'A{i}', 1, '', 'x' * 280, 1.0) for i in range(49)]
+    late = len(f._agent_prompt(agent, ctx, crowded, '')[0][-1]['content'])
+    assert late == empty, 'the 50th agent must get the same prompt as the first'
+
+
+# ── the estimate instruction (found by a live run) ────────────────────────────
+
+def test_estimate_line_is_an_instruction_not_a_template():
+    """A small model copies a template. With the old wording ('ESTIMATE: +P X.XX/L')
+    live agents answered with the placeholder itself, which parses to nothing — most
+    of the roster's estimates were being lost to that one formatting choice."""
+    from ph_economic_ai.engine.forum import _EST_LINE, _extract_guarded
+    for sector, line in _EST_LINE.items():
+        assert 'X.X' not in line.replace('never write X.XX', '').replace(
+            'never write X.X', ''), f'{sector} still shows a copyable placeholder'
+        assert 'worked example' in line
+        assert 'your own number' in line
+        # the worked example itself must be parsable, or we are teaching a format
+        # the parser rejects
+        import re
+        for m in re.findall(r'"(ESTIMATE:[^"]+)"', line):
+            assert _extract_guarded(sector, m)[0] is not None, f'{sector}: {m!r}'
+
+
+def test_placeholder_answer_parses_to_nothing():
+    """Guards the regression directly: if an agent ever echoes a placeholder again,
+    it must come through as 'no estimate' rather than a bogus number."""
+    from ph_economic_ai.engine.forum import _extract_guarded
+    assert _extract_guarded('gas', 'ESTIMATE: +X.XX/L') == (None, None)
+    assert _extract_guarded('food', 'ESTIMATE: +X.X%') == (None, None)
