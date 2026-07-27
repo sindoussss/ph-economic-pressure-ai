@@ -70,21 +70,58 @@ class AgentTrustStore:
         for col in ('food_estimate', 'electricity_estimate'):
             if col not in existing:
                 cur.execute(f'ALTER TABLE runs ADD COLUMN {col} REAL')
+
+        # Reproducibility columns. A run used to record only its scenario and its
+        # answer, so a stored run could not be re-derived even in principle: the
+        # retrieved evidence was gone and the sampler was unseeded. `evidence_json`
+        # keeps what the agents actually read; `run_seed` and `temperature` keep the
+        # sampling settings that produced the numbers.
+        for col, decl in (('evidence_json', 'TEXT'),
+                          ('run_seed', 'INTEGER'),
+                          ('temperature', 'REAL')):
+            if col not in existing:
+                cur.execute(f'ALTER TABLE runs ADD COLUMN {col} {decl}')
         self._conn.commit()
 
     # ── Run persistence ───────────────────────────────────────────────────────
 
     def save_run(self, scenario: dict, final_estimate: Optional[float],
-                 confidence_pct: int) -> int:
+                 confidence_pct: int, evidence: Optional[dict] = None,
+                 run_seed: Optional[int] = None,
+                 temperature: Optional[float] = None) -> int:
+        """Persist a run.
+
+        `evidence` is what the agents actually retrieved, and `run_seed` /
+        `temperature` are the sampling settings. Storing all three is what makes a
+        run reproducible: the scenario alone is not enough, because the same
+        scenario against different retrieved text, or against an unseeded sampler,
+        legitimately produces a different answer. All three are optional so older
+        callers and existing rows stay valid.
+        """
         with self._lock:
             cur = self._conn.execute(
-                'INSERT INTO runs (timestamp, scenario_json, final_estimate, confidence_pct) '
-                'VALUES (?, ?, ?, ?)',
+                'INSERT INTO runs (timestamp, scenario_json, final_estimate, '
+                'confidence_pct, evidence_json, run_seed, temperature) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
                 (datetime.now(timezone.utc).isoformat(),
-                 json.dumps(scenario), final_estimate, confidence_pct),
+                 json.dumps(scenario), final_estimate, confidence_pct,
+                 json.dumps(evidence, default=str) if evidence is not None else None,
+                 run_seed, temperature),
             )
             self._conn.commit()
             return cur.lastrowid
+
+    def get_run_evidence(self, run_id: int) -> Optional[dict]:
+        """The evidence a stored run saw, or None if it predates the column."""
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT evidence_json FROM runs WHERE run_id=?', (run_id,)).fetchone()
+        if row is None or row['evidence_json'] is None:
+            return None
+        try:
+            return json.loads(row['evidence_json'])
+        except (ValueError, TypeError):
+            return None
 
     def update_run_quality(self, run_id: int, internal_quality: float) -> None:
         with self._lock:

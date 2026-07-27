@@ -142,3 +142,50 @@ def test_positive_min_age_still_filters(store):
     store.save_run(scenario={}, final_estimate=1.0, confidence_pct=60)
     assert store.get_ungraded_runs(min_age_days=0) != []
     assert store.get_ungraded_runs(min_age_days=5) == []      # far too new
+
+
+# ── reproducibility columns (Tier 2) ──────────────────────────────────────────
+
+def test_evidence_and_sampling_settings_round_trip(store):
+    """A run used to record only its scenario and its answer, so it could not be
+    re-derived even in principle: the retrieved evidence was gone and the sampler
+    was unseeded."""
+    ev = {'gas': [{'source': 'DOEBulletin', 'text': 'gasoline +P0.85/L'}]}
+    rid = store.save_run(scenario={'oil_pct': 2.6}, final_estimate=0.85,
+                         confidence_pct=80, evidence=ev, run_seed=1234,
+                         temperature=0.2)
+    assert store.get_run_evidence(rid) == ev
+    row = store.get_ungraded_runs(min_age_days=0)[0]
+    assert row['run_seed'] == 1234
+    assert row['temperature'] == 0.2
+
+
+def test_evidence_is_optional_for_older_callers(store):
+    """Existing call sites must keep working and older rows stay valid."""
+    rid = store.save_run(scenario={}, final_estimate=1.0, confidence_pct=60)
+    assert store.get_run_evidence(rid) is None
+
+
+def test_migration_adds_columns_to_a_pre_existing_database(tmp_path):
+    """Upgrade path: a DB created before these columns existed must gain them
+    without losing its rows."""
+    import sqlite3
+    from ph_economic_ai.engine.store import AgentTrustStore
+    p = tmp_path / 'old.db'
+    con = sqlite3.connect(p)
+    con.executescript('''
+        CREATE TABLE runs (
+            run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL, scenario_json TEXT NOT NULL,
+            final_estimate REAL, confidence_pct INTEGER, internal_quality REAL,
+            actual_price_change REAL, accuracy_error REAL, graded_at TEXT);
+    ''')
+    con.execute("INSERT INTO runs (timestamp, scenario_json, final_estimate, "
+                "confidence_pct) VALUES ('2026-01-01T00:00:00+00:00', '{}', 1.0, 50)")
+    con.commit(); con.close()
+
+    s = AgentTrustStore(db_path=str(p))          # migrate on open
+    cols = {r['name'] for r in s._conn.execute('PRAGMA table_info(runs)').fetchall()}
+    assert {'evidence_json', 'run_seed', 'temperature'} <= cols
+    assert len(s.get_ungraded_runs(min_age_days=0)) == 1     # the old row survived
+    assert s.get_run_evidence(1) is None                     # and reads back cleanly

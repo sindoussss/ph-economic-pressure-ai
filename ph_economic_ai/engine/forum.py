@@ -421,7 +421,9 @@ class Forum:
                 "one-line steer for the next round.")},
         ]
         try:
-            return llm.complete(msgs, tier=self._deep, max_tokens=220).strip()
+            return llm.complete(msgs, tier=self._deep, max_tokens=220,
+                                seed=llm.derive_seed(self._as_of, ctx.sector,
+                                                     'moderator')).strip()
         except Exception:
             return ''
 
@@ -466,7 +468,8 @@ class Forum:
                 "present read. End with:\n" + _EST_LINE[ctx.sector])},
         ]
         try:
-            text = llm.complete(msgs, tier=self._deep, max_tokens=280)
+            text = llm.complete(msgs, tier=self._deep, max_tokens=280,
+                                seed=llm.derive_seed(self._as_of, ctx.sector, 'judge'))
         except Exception:
             return None, ''
         _, statement = _parse_think(text)
@@ -496,14 +499,20 @@ class Forum:
         text is identical either way — `complete` is literally
         ''.join(stream(...)) — so the debate itself is unchanged.
         """
+        # Per-agent derived seed: the same scenario reproduces this agent's turn
+        # exactly, while a different agent (or a different as-of date) still gets a
+        # different sample. A constant seed would collapse the roster to one voice;
+        # no seed at all is what made two runs ten minutes apart disagree.
+        seed = llm.derive_seed(self._as_of, self._window, sector, agent.name, rnd)
+
         if self._on_event is None:
             try:
-                return llm.complete(msgs, tier=agent.tier, max_tokens=500)
+                return llm.complete(msgs, tier=agent.tier, max_tokens=500, seed=seed)
             except Exception:
                 return ''
         parts: list[str] = []
         try:
-            for chunk in llm.stream(msgs, tier=agent.tier, max_tokens=500):
+            for chunk in llm.stream(msgs, tier=agent.tier, max_tokens=500, seed=seed):
                 if not chunk:
                     continue
                 parts.append(chunk)
@@ -621,7 +630,8 @@ class Forum:
                 [{'role': 'system', 'content': _SYNTH_SYSTEM},
                  {'role': 'user', 'content': f"Present readings:\n{body}\n\n"
                   "Write the 2-3 sentence present-pressure summary."}],
-                tier=self._deep, max_tokens=200).strip()
+                tier=self._deep, max_tokens=200,
+                seed=llm.derive_seed(self._as_of, 'synthesis')).strip()
         except Exception:
             return ''
 

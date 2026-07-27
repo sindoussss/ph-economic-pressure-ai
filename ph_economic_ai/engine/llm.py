@@ -28,6 +28,7 @@ translation and the limiter are pure and directly testable.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -43,6 +44,38 @@ import requests
 # 'deep'  — judges and synthesis. Stronger, much tighter daily quota.
 FAST = 'fast'
 DEEP = 'deep'
+
+# ── Sampling determinism ──────────────────────────────────────────────────────
+#
+# Nothing here previously set temperature or seed, so Ollama applied its own
+# default (~0.8) with a fresh random seed on every call. Measured consequence:
+# six IDENTICAL prompts returned six different fuel estimates spanning 1.08 PHP/L
+# (sd 0.359). That is the whole of the app's run-to-run instability, and it is
+# also what the swarm's "agreement" percentage was measuring — the agreement band
+# is +/-1.00 PHP/L, narrower than the sampler's own spread.
+#
+# Two settings fix it, and the distinction between them matters:
+#   * temperature lowers dispersion for every call;
+#   * a seed makes a specific call reproducible.
+# Both are needed. Temperature alone still wanders; a seed alone still samples
+# from a wide distribution.
+DEFAULT_TEMPERATURE = float(os.environ.get('STRATA_LLM_TEMPERATURE', '0.2'))
+
+
+def derive_seed(*parts: object) -> int:
+    """A stable 31-bit seed from any run identifiers.
+
+    Deliberately DERIVED, never constant. A fixed seed would make every scenario
+    return the same answer, which is hardcoding the result; hashing the scenario
+    means identical inputs reproduce exactly while different inputs still move.
+    Callers should include an agent identifier so the roster does not collapse to
+    one voice — same run, same agent, same output; different agents still differ.
+
+    Uses blake2b rather than hash(): Python salts str hashing per process, so
+    hash() would not reproduce across runs, which is the entire point.
+    """
+    raw = '\x1f'.join(str(p) for p in parts).encode('utf-8')
+    return int.from_bytes(hashlib.blake2b(raw, digest_size=4).digest(), 'big') & 0x7FFFFFFF
 
 _DEFAULT_MODELS: dict[str, dict[str, str]] = {
     'ollama': {
@@ -358,6 +391,7 @@ def to_gemini_payload(
     messages: list[dict],
     max_tokens: Optional[int],
     json_mode: bool = False,
+    temperature: Optional[float] = None,
 ) -> dict:
     """Convert OpenAI-style messages to Gemini's schema.
 
@@ -386,6 +420,8 @@ def to_gemini_payload(
         gen_config['maxOutputTokens'] = max_tokens
     if json_mode:
         gen_config['responseMimeType'] = 'application/json'
+    if temperature is not None:
+        gen_config['temperature'] = temperature      # Gemini exposes no seed
     if gen_config:
         payload['generationConfig'] = gen_config
     return payload
@@ -530,6 +566,8 @@ def _ollama_stream(
     model: str,
     max_tokens: Optional[int],
     json_mode: bool,
+    temperature: Optional[float] = None,
+    seed: Optional[int] = None,
 ) -> Iterator[dict]:
     """POST to a local Ollama and yield decoded NDJSON frames.
 
@@ -539,9 +577,16 @@ def _ollama_stream(
     swarm over-commits: a concurrency gate so parallel agents don't thrash VRAM,
     and a wall-clock deadline so a stalled stream fails loudly.
     """
-    payload: dict = {'model': model, 'messages': messages, 'stream': True}
+    options: dict = {}
     if max_tokens:
-        payload['options'] = {'num_predict': max_tokens}
+        options['num_predict'] = max_tokens
+    if temperature is not None:
+        options['temperature'] = temperature
+    if seed is not None:
+        options['seed'] = seed          # Ollama reproduces a call given the same seed
+    payload: dict = {'model': model, 'messages': messages, 'stream': True}
+    if options:
+        payload['options'] = options
     if json_mode:
         payload['format'] = 'json'
 
@@ -648,6 +693,8 @@ def stream(
     max_tokens: Optional[int] = None,
     provider: Optional[str] = None,
     json_mode: bool = False,
+    temperature: Optional[float] = None,
+    seed: Optional[int] = None,
 ) -> Iterator[str]:
     """Yield response text incrementally. Mirrors the old ollama stream shape.
 
@@ -659,8 +706,16 @@ def stream(
     key = _api_key(provider)
     cost = estimate_tokens(messages, max_tokens)
 
+    # Fall back to the configured default rather than the provider's, so a caller
+    # that says nothing still gets low-dispersion sampling. An explicit
+    # temperature=None cannot be distinguished from "unset" here, which is the
+    # intended trade: determinism should be opt-OUT, not opt-in.
+    if temperature is None:
+        temperature = DEFAULT_TEMPERATURE
+
     if provider == 'ollama':
-        frames = _ollama_stream(messages, model, max_tokens, json_mode)
+        frames = _ollama_stream(messages, model, max_tokens, json_mode,
+                                temperature=temperature, seed=seed)
         if json_mode:
             # Callers of json_mode parse the result directly, so reasoning must
             # be dropped rather than wrapped — a <think> preamble would make the
@@ -679,6 +734,10 @@ def stream(
         payload: dict = {'model': model, 'messages': messages, 'stream': True}
         if max_tokens:
             payload['max_tokens'] = max_tokens
+        if temperature is not None:
+            payload['temperature'] = temperature
+        if seed is not None:
+            payload['seed'] = seed      # OpenAI-compatible; best-effort upstream
         if json_mode:
             payload['response_format'] = {'type': 'json_object'}
         for obj in _post_sse(url, headers, payload, provider, tier, cost):
@@ -693,7 +752,8 @@ def stream(
         f'{model}:streamGenerateContent?alt=sse'
     )
     headers = {'x-goog-api-key': key, 'Content-Type': 'application/json'}
-    payload = to_gemini_payload(messages, max_tokens, json_mode=json_mode)
+    payload = to_gemini_payload(messages, max_tokens, json_mode=json_mode,
+                                temperature=temperature)
     for obj in _post_sse(url, headers, payload, provider, tier, cost):
         token = extract_gemini_token(obj)
         if token:
@@ -721,6 +781,8 @@ def complete(
     max_tokens: Optional[int] = None,
     provider: Optional[str] = None,
     json_mode: bool = False,
+    temperature: Optional[float] = None,
+    seed: Optional[int] = None,
 ) -> str:
     """Collect a full response. Convenience wrapper over `stream`.
 
@@ -730,6 +792,7 @@ def complete(
     text = ''.join(stream(
         messages, tier=tier, max_tokens=max_tokens,
         provider=provider, json_mode=json_mode,
+        temperature=temperature, seed=seed,
     ))
     return strip_json_fence(text) if json_mode else text
 

@@ -691,3 +691,91 @@ def test_embed_of_nothing_makes_no_request(monkeypatch):
 
 def _boom(*a, **k):                      # pragma: no cover - must never run
     raise AssertionError('no HTTP request should be made')
+
+
+# ── sampling determinism (Tier 1) ─────────────────────────────────────────────
+
+def test_derive_seed_is_stable_across_processes():
+    """Must not use hash(): Python salts str hashing per process, so a hash()-based
+    seed would differ between runs, which defeats the entire purpose."""
+    a = llm.derive_seed('2026-07-27', 'gas', 'Andrea Lim', 1)
+    b = llm.derive_seed('2026-07-27', 'gas', 'Andrea Lim', 1)
+    assert a == b
+    assert 0 <= a <= 0x7FFFFFFF          # Ollama wants a non-negative 32-bit int
+
+
+def test_derive_seed_separates_agents_and_scenarios():
+    """A CONSTANT seed would hardcode the answer and collapse the roster to one
+    voice. The seed must move with the scenario and with the agent."""
+    base = llm.derive_seed('2026-07-27', 'gas', 'Andrea Lim', 1)
+    assert base != llm.derive_seed('2026-07-27', 'gas', 'Diego Ocampo', 1)   # agent
+    assert base != llm.derive_seed('2026-07-28', 'gas', 'Andrea Lim', 1)     # date
+    assert base != llm.derive_seed('2026-07-27', 'food', 'Andrea Lim', 1)    # sector
+    assert base != llm.derive_seed('2026-07-27', 'gas', 'Andrea Lim', 2)     # round
+
+
+def test_ollama_payload_carries_temperature_and_seed(monkeypatch):
+    """The bug this fixes: options only ever contained num_predict, so Ollama
+    applied its own ~0.8 temperature with a fresh random seed every call."""
+    sent = {}
+
+    class _Resp:
+        status_code = 200
+
+        def iter_lines(self, *a, **k):
+            return iter([b'{"message":{"content":"ok"},"done":true}'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def close(self):
+            pass
+
+    def fake_post(url, json=None, **kw):
+        sent.update(json or {})
+        return _Resp()
+
+    monkeypatch.setattr(llm.requests, 'post', fake_post)
+    list(llm.stream([{'role': 'user', 'content': 'hi'}], tier=llm.FAST,
+                    max_tokens=50, provider='ollama', temperature=0.15, seed=1234))
+    opts = sent.get('options', {})
+    assert opts.get('temperature') == 0.15
+    assert opts.get('seed') == 1234
+    assert opts.get('num_predict') == 50
+
+
+def test_default_temperature_is_applied_when_caller_says_nothing(monkeypatch):
+    """Determinism is opt-OUT: a caller that passes nothing still gets the
+    low-dispersion default rather than the provider's."""
+    sent = {}
+
+    class _Resp:
+        status_code = 200
+
+        def iter_lines(self, *a, **k):
+            return iter([b'{"message":{"content":"ok"},"done":true}'])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(llm.requests, 'post',
+                        lambda url, json=None, **kw: (sent.update(json or {}), _Resp())[1])
+    list(llm.stream([{'role': 'user', 'content': 'hi'}], tier=llm.FAST,
+                    provider='ollama'))
+    assert sent.get('options', {}).get('temperature') == llm.DEFAULT_TEMPERATURE
+
+
+def test_gemini_payload_carries_temperature():
+    """Gemini exposes temperature but no seed — carry what it supports."""
+    payload = llm.to_gemini_payload([{'role': 'user', 'content': 'hi'}],
+                                    max_tokens=64, temperature=0.15)
+    assert payload['generationConfig']['temperature'] == 0.15
