@@ -1,0 +1,61 @@
+{
+  "measured_at": "2026-07-28 (fuel pricing week of 2026-07-28)",
+  "scenario": {
+    "oil_pct": -8.0,
+    "usd_pct": -0.1,
+    "bsp_rate": 6.5,
+    "demand_index": 75.0
+  },
+  "arms": {
+    "A_local_3b": {
+      "model": "qwen2.5:3b",
+      "provider": "ollama",
+      "responses": 32,
+      "parsed": 32,
+      "parse_rate_pct": 100.0,
+      "chain_rate_pct": 100.0,
+      "agreement_pct": 50,
+      "agreement_n": 32,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "direction_pct": 55,
+      "self_contradictions": 1,
+      "echo_exact_n": 8,
+      "echo_exact_pct": 25.0,
+      "modal_value": -2.56,
+      "modal_is_anchor": true,
+      "anchor": -2.562,
+      "estimate": -2.33,
+      "estimate_source": "agent",
+      "spread": 5.12,
+      "seconds": 293.2
+    },
+    "B_groq_8b": {
+      "model": "llama-3.1-8b-instant",
+      "provider": "groq",
+      "responses": 32,
+      "parsed": 31,
+      "parse_rate_pct": 96.9,
+      "chain_rate_pct": 37.5,
+      "agreement_pct": 52,
+      "agreement_n": 31,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "direction_pct": 84,
+      "self_contradictions": 0,
+      "echo_exact_n": 6,
+      "echo_exact_pct": 19.4,
+      "modal_value": -2.56,
+      "modal_is_anchor": true,
+      "anchor": -2.562,
+      "estimate": -2.31,
+      "estimate_source": "agent",
+      "spread": 5.56,
+      "seconds": 866.0
+    }
+  }
+}

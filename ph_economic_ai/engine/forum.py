@@ -479,6 +479,19 @@ class Forum:
               "('BENCHMARK NOTE', 'Retrieved context', 'Prior statements'), do not "
               "quote the context verbatim, and do not begin with another analyst's "
               "name.\n"
+            # Figures from model memory are the worst output this panel can
+            # produce, because they are specific, confident and wrong. A live run
+            # had a coal-import analyst report "1 USD = 50.5 PHP, a 0.5% decline
+            # from last week" when the true rate was 61.61 and no FX figure was in
+            # his context at all. The invented number is more precise than the
+            # honest answer would have been, which is exactly why a reader
+            # believes it.
+            + "NUMBERS RULE: state a specific figure (a price, a rate, a "
+              "percentage) ONLY if it appears in your retrieved context above. If "
+              "your channel gives you no figure for something, say so plainly — "
+              "'no current reading in my channel' is a valid and useful "
+              "observation. Never recall a number from memory or estimate one to "
+              "fill a gap.\n"
             + "Give a short present-tense read from your channel only, then end with "
               "exactly these two lines:\n"
             "CAUSAL CHAIN: <trigger> → <effect> → <household impact>\n"

@@ -1,0 +1,22 @@
+{
+  "run_id": 29,
+  "reported_pct": 46,
+  "responses": 31,
+  "unparseable": 8,
+  "usable": 23,
+  "contradicting": 2,
+  "agreement_as_measured": 46,
+  "agreement_refusing_contradictions": 56,
+  "direction_as_measured": 52,
+  "direction_refusing_contradictions": 57,
+  "contradicting_agents": [
+    {
+      "agent": "Western Visayas Critic",
+      "estimate": 1.5
+    },
+    {
+      "agent": "NCR Forecaster",
+      "estimate": 4.5
+    }
+  ]
+}

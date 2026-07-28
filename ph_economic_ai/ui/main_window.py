@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
-from ph_economic_ai.engine import anchoring, llm
+from ph_economic_ai.engine import anchoring, llm, recall, vintage
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
     DEFAULT_AGENTS, FOOD_AGENTS, ELECTRICITY_AGENTS,
@@ -36,6 +36,7 @@ from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
 from ph_economic_ai.ui.accuracy_view import AccuracyView
 from ph_economic_ai.ui.learning_view import LearningView
 from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+from ph_economic_ai.ui.quota_notice import QuotaNotice
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +166,27 @@ class _TopNavBar(QFrame):
         self._refresh_styles()
 
 
+def _model_identity() -> str:
+    """Which models actually answered this run, for the recall key.
+
+    The provider is resolved from the environment, so exporting a GROQ_API_KEY
+    silently switches provider and model without anything in the app changing. A
+    3b local answer and a 70b hosted answer to the same question are not the same
+    answer, and recalling one for the other would be the cache lying about what
+    produced the number.
+
+    `llm.provenance_id` reports what SERVED each tier, not what was configured
+    for it. Those differ whenever a hosted tier hit its ceiling and fell back to
+    local, and that run must not be recalled for a later one that did not fall
+    back — the two verdicts came from different models and only the provenance
+    says so.
+    """
+    try:
+        return llm.provenance_id()
+    except Exception:
+        return 'unknown'
+
+
 def _format_gas_verdict(
     estimate: float | None,
     agreement_pct: float | None = None,
@@ -239,6 +261,13 @@ class SimMainWindow(QMainWindow):
 
         self._store: AgentTrustStore = store or AgentTrustStore()
         self._current_run_id: int | None = None
+        # Recall state. `_run_key` is this run's vintage fingerprint;
+        # `_force_fresh_run` is the user's explicit override, consumed once so a
+        # forced re-run does not disable recall for the rest of the session.
+        self._run_key: str = ''
+        self._run_inputs: dict = {}
+        self._force_fresh_run: bool = False
+        self._recalled_from: int | None = None
         self._doe_checker: DOECheckerThread = DOECheckerThread(self._store)
         self._doe_checker.start()
 
@@ -256,6 +285,13 @@ class SimMainWindow(QMainWindow):
         self._sidebar = _TopNavBar()           # name preserved for downstream
         self._sidebar.nav_clicked.connect(self._on_stage_changed)
         root.addWidget(self._sidebar)
+
+        # Quota banner, directly under the nav so it is visible from any stage.
+        # A 429 used to reach the user as a stalled progress bar and a traceback
+        # in a console they may not have open.
+        self._quota_notice = QuotaNotice()
+        root.addWidget(self._quota_notice)
+        llm.on_quota_event(self._quota_notice.report)
 
         self._stack = QStackedWidget()
         root.addWidget(self._stack, stretch=1)
@@ -376,6 +412,11 @@ class SimMainWindow(QMainWindow):
             bsp_rate=scenario_dict.get('bsp_rate', 6.5),
             demand_index=scenario_dict.get('demand_index', 72.0),
         )
+        # An explicit re-run is the escape hatch from recall. The user asking for
+        # the question to be answered again has said, in the only way the UI
+        # offers, that they do not want the stored answer. Recall is a default,
+        # not a policy.
+        self._force_fresh_run = True
         self._on_run_requested(sc, self._agents, self._last_swarm_mode, self._last_parallel_n)
 
     def _on_run_requested(self, scenario, agents, swarm_mode: bool = False,
@@ -471,6 +512,31 @@ class SimMainWindow(QMainWindow):
                 brief, current_price=self._last_scenario.get('current_price'))
             self._last_scenario.update(derived)
 
+        # What makes this run recallable: a coarse bucket (this day, this pricing
+        # week, these models) and the exact inputs it was answered on. Computed
+        # here because this is the first point at which the scenario is final.
+        #
+        # Provenance is cleared first, so this key describes the models the run
+        # INTENDS to use. It is recomputed after the run from the models that
+        # actually served — see `_on_swarm_complete`. The two differ exactly when
+        # a hosted tier hit its ceiling and fell back, and a run decided by a
+        # fallback judge must not be recalled for one decided by the real thing.
+        llm.reset_provenance()
+        self._run_key = vintage.vintage_key(model_id=_model_identity())
+        self._run_inputs = vintage.input_snapshot(self._last_scenario, brief)
+
+        recalled = None if self._force_fresh_run else recall.find_recall(
+            self._store, self._run_key, self._run_inputs)
+        if recalled is not None:
+            # Nothing about the question has changed since that run, so re-asking
+            # it would spend 39 model calls to sample a different answer to the
+            # same inputs, which is what made eight runs on one afternoon disagree.
+            logging.info('run: recalled run #%s for key %s',
+                         recalled.run_id, self._run_key)
+            self._replay_recalled_run(recalled)
+            return
+        self._force_fresh_run = False
+
         if self._last_swarm_mode:
             # Gas swarm runs first; food/elec debates start in _on_swarm_complete
             base_swarm = build_swarm_agents()
@@ -558,7 +624,8 @@ class SimMainWindow(QMainWindow):
         )
         self._food_engine = DebateEngine(FOOD_AGENTS, self._rag, scenario_dict,
                                           price_extractor=_extract_percent,
-                                          data_brief=brief, anchor_note=food_note)
+                                          data_brief=brief, anchor_note=food_note,
+                                          sector='food')
         self._food_thread = DebateThread(self._food_engine, rounds=1)
         self._food_thread.debate_complete.connect(self._on_food_complete)
         self._food_thread.error_occurred.connect(
@@ -575,7 +642,8 @@ class SimMainWindow(QMainWindow):
         )
         self._elec_engine = DebateEngine(ELECTRICITY_AGENTS, self._rag, scenario_dict,
                                           price_extractor=_extract_electricity_change,
-                                          data_brief=brief, anchor_note=elec_note)
+                                          data_brief=brief, anchor_note=elec_note,
+                                          sector='electricity')
         self._elec_thread = DebateThread(self._elec_engine, rounds=1)
         self._elec_thread.debate_complete.connect(self._on_elec_complete)
         self._elec_thread.error_occurred.connect(
@@ -704,6 +772,7 @@ class SimMainWindow(QMainWindow):
                     self._current_run_id, self._food_estimate, self._elec_estimate)
             except Exception:
                 pass
+        self._attach_run_snapshot()
         self._run_synthesizer_if_ready()
 
     def _on_elec_complete(self, responses):
@@ -744,6 +813,7 @@ class SimMainWindow(QMainWindow):
                     self._current_run_id, self._food_estimate, self._elec_estimate)
             except Exception:
                 pass
+        self._attach_run_snapshot()
         self._run_synthesizer_if_ready()
 
     def _on_simulation_complete(self, responses):
@@ -807,6 +877,46 @@ class SimMainWindow(QMainWindow):
         })
         self._run_synthesizer_if_ready()
 
+    def _attach_run_snapshot(self) -> None:
+        """Store this run's answer well enough to reopen it without a model.
+
+        Called after the gas verdict lands and again as each sector finishes, so
+        the stored snapshot always reflects the most complete state of the run.
+        Until it exists `find_run_by_key` will not recall the row, which is the
+        right behaviour for a run still in flight.
+        """
+        if self._store is None or self._current_run_id is None:
+            return
+        try:
+            self._store.attach_verdict(self._current_run_id, recall.build_snapshot(
+                master_verdict=getattr(self, '_master_verdict', None),
+                food_estimate=self._food_estimate,
+                electricity_estimate=self._elec_estimate,
+                scenario=self._last_scenario,
+                inputs=self._run_inputs,
+            ))
+        except Exception:
+            # A run that finished is worth more than a snapshot of it.
+            logging.exception('recall: could not store the run snapshot')
+
+    def _replay_recalled_run(self, recalled) -> None:
+        """Put a previous run back on screen instead of re-running it.
+
+        Deliberately re-uses the ordinary completion handlers rather than a
+        parallel display path. A recalled report that renders through different
+        code than a fresh one is a report that can disagree with itself, and the
+        whole point of recall is that the two are the same answer.
+        """
+        self._recalled_from = recalled.run_id
+        self._current_run_id = recalled.run_id
+        self._master_verdict = recalled.master_verdict
+        self._food_estimate = recalled.food_estimate
+        self._elec_estimate = recalled.electricity_estimate
+
+        self._stage4.set_recall_note(recalled.describe())
+        self._on_swarm_complete_display(recalled.master_verdict, recalled=True)
+        self._landing.set_busy(False)
+
     @staticmethod
     def _fuel_horizon_days() -> float:
         """Distance to the adjustment this run is actually forecasting.
@@ -824,13 +934,41 @@ class SimMainWindow(QMainWindow):
             estimates = [r.price_estimate for r in all_responses if r.price_estimate is not None]
             scores = QualityScorer.score_responses(all_responses, estimates)
             run_quality = QualityScorer.run_quality(all_responses, estimates)
+            # Record the price the run actually reasoned from, not the fallback
+            # constant the scenario was built with. Grading subtracts this stored
+            # baseline from the observed price, so a stale value does not produce
+            # a slightly-off grade, it produces a fictional one: every graded run
+            # recorded the same -14.44 PHP/L "actual change", which is 84.38 minus
+            # the 98.82 fallback and never any week's move.
+            used_price = getattr(master_verdict, 'current_price', None)
+            if used_price is not None:
+                self._last_scenario = {**self._last_scenario,
+                                       'current_price': float(used_price)}
+            else:
+                # The fetch failed, so this run has no real baseline. Drop the
+                # key rather than storing the fallback: grading skips a run with
+                # no baseline, and a fallback stored here would be measured
+                # against as though it were an observation.
+                self._last_scenario = {k: v for k, v in self._last_scenario.items()
+                                       if k != 'current_price'}
+            # Re-key on what actually answered. If a judge fell back to local
+            # after a hosted 429, this key no longer matches the one a clean run
+            # would compute, so the two are never confused for each other.
+            self._run_key = vintage.vintage_key(model_id=_model_identity())
             self._current_run_id = self._store.save_run(
                 scenario=self._last_scenario,
                 final_estimate=master_verdict.final_estimate,
                 confidence_pct=master_verdict.confidence_pct,
                 horizon_days=self._fuel_horizon_days(),
+                run_key=self._run_key,
+                temperature=llm.DEFAULT_TEMPERATURE,
             )
             self._store.update_run_quality(self._current_run_id, run_quality)
+            self._master_verdict = master_verdict
+            # A gas-only snapshot, so a recall works even if the app is closed
+            # before the sector debates finish. `_attach_run_snapshot` overwrites
+            # it with the complete one when they do.
+            self._attach_run_snapshot()
             response_dicts = []
             for r in all_responses:
                 sc = scores.get(r.agent_name, {})
@@ -849,6 +987,16 @@ class SimMainWindow(QMainWindow):
             self._learning.refresh(self._current_run_id)
         except Exception:
             pass
+        self._stage4.set_recall_note('')
+        self._on_swarm_complete_display(master_verdict)
+
+    def _on_swarm_complete_display(self, master_verdict, recalled: bool = False):
+        """Put a gas verdict on screen. Shared by a fresh run and a recalled one.
+
+        Split out of `_on_swarm_complete` so recall renders through exactly the
+        same code as a live run. A recalled report drawn by a parallel display
+        path is a report that can disagree with itself, which defeats the point.
+        """
         self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
         self._sector_responses['gas'] = list(
             getattr(master_verdict, 'all_responses', []) or [])
@@ -886,6 +1034,13 @@ class SimMainWindow(QMainWindow):
             'history': gas_hist,
             'pressure': 'Rising' if avg > 0 else 'Stable',
         })
+        if recalled:
+            # The sector numbers came out of the snapshot, so there is nothing to
+            # debate and nothing new to synthesise. Everything past this point
+            # spends model calls, which is precisely what a recall avoids.
+            self._push_sector_forecasts()
+            return
+
         # Gas is done — now start food and electricity debates
         self._start_sector_debates(self._last_scenario)
         self._run_synthesizer_if_ready()

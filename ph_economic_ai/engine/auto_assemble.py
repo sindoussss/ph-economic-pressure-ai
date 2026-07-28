@@ -53,15 +53,26 @@ SECTOR_SOURCES: dict[str, dict[str, list[str]]] = {
         'news': ['ManilaBulletin', 'BusinessWorld', 'PHRetailFuel', 'DOEBulletin'],
         'market': ['YahooFinanceCrude', 'YahooFinanceForex'],
     },
+    # FX belongs in every market lane, because the app's own physics says so.
+    # `anchoring.electricity_passthrough_anchor(oil_pct, usd_pct)` and
+    # `fuel_passthrough_anchor` are both functions of the exchange rate: imported
+    # coal and crude are priced in dollars and sold in pesos.
+    #
+    # Leaving `YahooFinanceForex` out of the electricity and food lanes did not
+    # stop those agents discussing FX, it stopped them SOURCING it. A live run
+    # had an electricity coal-import analyst state "1 USD = 50.5 PHP, a 0.5%
+    # decline from last week" while the corpus held 61.61 and his channel could
+    # not read it: an 18 percent error with a fabricated week-on-week change,
+    # delivered with more precision than the true figure would have needed.
     'food': {
         'social': ['RedditPH', 'GoogleTrends'],
         'news': ['NFARiceRetail', 'ManilaBulletin', 'PAGASAWeather'],
-        'market': ['WBPhilFood', 'YahooFinanceCrude'],
+        'market': ['WBPhilFood', 'YahooFinanceCrude', 'YahooFinanceForex'],
     },
     'electricity': {
         'social': ['RedditPH', 'GoogleTrends'],
         'news': ['MeralcoCharge', 'WESMSpot'],
-        'market': ['YahooFinanceCrude', 'EIAElectricity'],
+        'market': ['YahooFinanceCrude', 'EIAElectricity', 'YahooFinanceForex'],
     },
 }
 

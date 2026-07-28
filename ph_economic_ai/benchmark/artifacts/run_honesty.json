@@ -1,0 +1,18 @@
+{
+  "measured_at": "2026-07-28 (fuel pricing week of 2026-07-28)",
+  "provider": "groq",
+  "models": {
+    "fast": "llama-3.1-8b-instant",
+    "deep": "llama-3.3-70b-versatile"
+  },
+  "scenario": {
+    "oil_pct": 5.0,
+    "usd_pct": 2.0,
+    "bsp_rate": 6.5,
+    "demand_index": 72.0
+  },
+  "runs": [],
+  "interpretation": [
+    "No completed runs, so nothing is measured."
+  ]
+}

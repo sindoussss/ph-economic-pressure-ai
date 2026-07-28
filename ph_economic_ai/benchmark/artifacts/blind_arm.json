@@ -1,0 +1,70 @@
+{
+  "measured_at": "2026-07-29 (fuel pricing week of 2026-07-28)",
+  "scenario": {
+    "oil_pct": -8.0,
+    "usd_pct": -0.1,
+    "bsp_rate": 6.5,
+    "demand_index": 75.0
+  },
+  "provider_fast": "ollama",
+  "provider_deep": "groq",
+  "arms": {
+    "A_shipped": {
+      "agreement_pct": 100,
+      "agreement_n": 32,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "echo_n": 0,
+      "echo_pct": 0.0,
+      "direction_pct": 100,
+      "parse_rate_pct": 100.0,
+      "opening_diversity": 0.25,
+      "distinct_estimates": 2,
+      "spread": 0.26,
+      "stdev": 0.113,
+      "estimate": -0.5622564058696624,
+      "estimate_source": "clamped",
+      "seconds": 277.8
+    },
+    "B_blind": {
+      "agreement_pct": 92,
+      "agreement_n": 32,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "echo_n": 0,
+      "echo_pct": 0.0,
+      "direction_pct": 100,
+      "parse_rate_pct": 100.0,
+      "opening_diversity": 0.25,
+      "distinct_estimates": 6,
+      "spread": 2.5,
+      "stdev": 0.477,
+      "estimate": -2.56,
+      "estimate_source": "agent",
+      "seconds": 287.5
+    },
+    "C_blind_free": {
+      "agreement_pct": 96,
+      "agreement_n": 32,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "echo_n": 0,
+      "echo_pct": 0.0,
+      "direction_pct": 100,
+      "parse_rate_pct": 100.0,
+      "opening_diversity": 0.125,
+      "distinct_estimates": 6,
+      "spread": 0.94,
+      "stdev": 0.329,
+      "estimate": -2.56,
+      "estimate_source": "agent",
+      "seconds": 274.0
+    }
+  }
+}
