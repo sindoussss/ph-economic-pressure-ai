@@ -16,9 +16,13 @@ def consensus_note() -> str:
 #: estimates scored 100 percent, and blinding them tripled the distinct values
 #: while moving the percentage 8 points.
 COLLAPSE_DISTINCT = 3
-#: Below this share of distinct statement openings, the agents are writing alike.
-#: The shipped swarm measured 0.25 — 8 distinct openings from 32 statements —
-#: which is the pattern that got the Forum's opening round blinded.
+#: Below this share of agents opening differently, the room is writing alike.
+#: A genuine halfway point: `opening_diversity` counts one statement per agent,
+#: so 1.0 is attainable. It did not used to be — the metric divided by RESPONSES
+#: while agents spoke twice, capping a 20-agent run at 0.625 and putting this
+#: threshold at four fifths of an unreachable maximum. The earlier citation here
+#: (0.25, "8 distinct openings from 32 statements") was on that broken scale and
+#: is not comparable to anything measured after 2026-07-29.
 COLLAPSE_DIVERSITY = 0.5
 
 
@@ -30,6 +34,14 @@ def agreement_caveat(n: int, distinct: int = 0, diversity: float = 0.0) -> str:
     way. These two counts are the signal that can, so when they say the room has
     collapsed, the card says so next to the number rather than leaving a reader
     to infer it from a figure that looks reassuring.
+
+    It reports the narrowing and stops there. It used to end "one view held
+    widely, not many views converging", which names a CAUSE the number cannot
+    support: a live run traced eleven identical openings not to agents copying
+    each other but to a small model returning the prompt's causal-chain template
+    verbatim. Same measurement, opposite diagnosis. The retry in
+    `swarm.unfilled_scaffold` handles that case now, and the wording no longer
+    asserts which of the two a reader is looking at.
     """
     if n < 2:
         return ''
@@ -43,7 +55,8 @@ def agreement_caveat(n: int, distinct: int = 0, diversity: float = 0.0) -> str:
         return ''
     return ('this reads as consensus but the room has narrowed: '
             + ' and '.join(problems)
-            + ' — treat it as one view held widely, not many views converging')
+            + ' — read the number as weaker than it looks, and check the '
+              'agents’ own words before relying on it')
 
 
 def agreement_basis(n: int, regions: tuple[int, int] = (0, 0),

@@ -30,7 +30,7 @@ from ph_economic_ai.engine.auto_assemble import (
 from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
-    _extract_price, _parse_think)
+    _extract_price, _parse_think, unfilled_scaffold)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
 # Per-sector estimate parsing, agreement band, and the "flat" threshold.
@@ -386,10 +386,20 @@ def _direction(sector: str, value: Optional[float]) -> str:
 
 
 def _driver_text(statement: str) -> Optional[str]:
-    """The causal-chain line only — without the trailing ESTIMATE line."""
+    """The causal-chain line only — without the trailing ESTIMATE line.
+
+    None when the agent returned the template rather than filling it in. This
+    text is shown to the reader as the DRIVER behind a sector's number, and the
+    Forum asks for the chain as `<trigger> → <effect> → <household impact>`;
+    a small model that echoes that back would have put those three words on the
+    card as if they were findings. Measured in the swarm on 2026-07-29, where
+    eleven of twenty agents returned the bracketed template intact.
+    """
     if 'CAUSAL CHAIN:' not in statement:
         return None
     part = statement.split('CAUSAL CHAIN:')[-1].split('ESTIMATE:')[0]
+    if unfilled_scaffold(f'CAUSAL CHAIN: {part}'):
+        return None
     return part.strip()[:160] or None
 
 

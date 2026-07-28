@@ -15,7 +15,8 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from ph_economic_ai.engine import anchoring, llm, vintage
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
-    AgentResponse, _MAX_REALISTIC_FUEL_PHP_L, _extract_price, _parse_think)
+    AgentResponse, _MAX_REALISTIC_FUEL_PHP_L, _SCAFFOLD_RETRY_PROMPT,
+    _extract_price, _parse_think, unfilled_scaffold)
 from ph_economic_ai.engine.live_data import LiveDataBrief
 
 
@@ -302,6 +303,45 @@ _ESTIMATE_RETRY_PROMPT = (
 # that lands mid-thought yields nothing, which is the failure being fixed.
 _AGENT_RETRY_MAX_TOKENS = 250
 _JUDGE_RETRY_MAX_TOKENS = 800
+
+
+def _strip_chain_line(statement: str) -> str:
+    """The agent's prose without its causal-chain line."""
+    return '\n'.join(ln for ln in (statement or '').splitlines()
+                     if 'CAUSAL CHAIN' not in ln.upper()).strip()
+
+
+def _reask_for_causal_chain(
+    messages: list[dict], statement: str, *, tier: str, max_tokens: int, seed: int,
+) -> str:
+    """Ask once more for a chain the agent actually filled in.
+
+    The unfilled line is REPLACED rather than appended to. `_reask_for_estimate`
+    appends because the original reasoning is what the Critic reads and the
+    report shows, and it is still good. Here the offending line contains no
+    reasoning to keep — it is this codebase's own template read back — and
+    leaving it in place would also leave `opening_diversity` reading the
+    template. Any prose the agent wrote around it survives.
+    """
+    followup = list(messages) + [
+        {'role': 'assistant', 'content': statement},
+        {'role': 'user', 'content': _SCAFFOLD_RETRY_PROMPT},
+    ]
+    try:
+        full = ''.join(llm.stream(followup, tier=tier, max_tokens=max_tokens,
+                                  seed=seed))
+    except Exception:
+        logging.exception('swarm: causal chain retry call failed')
+        return statement
+    _, reply = _parse_think(full)
+    reply = (reply or '').strip()
+    # A retry that returns the template again has told us nothing. Keep the
+    # original so the failure stays visible rather than being papered over.
+    if not reply or unfilled_scaffold(reply):
+        logging.info('swarm: causal chain retry returned the template again')
+        return statement
+    prose = _strip_chain_line(statement)
+    return f'{prose}\n{reply}'.strip() if prose else reply
 
 
 _DIRECTION_RETRY_PROMPT = (
@@ -1283,14 +1323,29 @@ class GroupArena:
         if this_round and (not self._blind_round_one
                            or agent.role in _PEER_READING_ROLES):
             user_parts.append(f"\nThis round so far:\n{this_round}")
+        # The chain line reads as an INSTRUCTION, not a template. `engine.forum`
+        # learned this first and wrote it down at `_EST_LINE`: a small model copies
+        # a template verbatim, and a live 17-agent Forum run answered
+        # "ESTIMATE: +₱X.XX/L", placeholder and all. That remedy was never carried
+        # across to the swarm's chain line, and on 2026-07-29 eleven of twenty
+        # swarm agents opened with "CAUSAL CHAIN: [scenario shock] -> ..." intact.
+        # Same failure, already-proven fix: name what belongs in each link, show a
+        # worked example with real content, and say outright not to echo it.
         user_parts.append(
             "\nYou MUST cite specific data from the DATA BRIEF when available. "
             "Give your analysis and end with ALL THREE lines. The DIRECTION and "
             "the sign of the ESTIMATE must agree with each other and with your "
             "causal chain:\n"
-            "CAUSAL CHAIN: [scenario shock] -> [market effect] -> [retail mechanism] -> [consumer impact]\n"
+            "CAUSAL CHAIN: <name the shock> -> <the market it moves> -> "
+            "<how that reaches the pump> -> <what a household pays> "
+            "(worked example — \"CAUSAL CHAIN: Brent +5% -> import cost up -> "
+            "DOE weekly pass-through -> jeepney fares rise\". Write your own "
+            "chain; never copy the words in the angle brackets.)\n"
             "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            "ESTIMATE: <the peso-per-litre CHANGE you expect, signed> "
+            "(worked example — \"ESTIMATE: +0.85/L\" for a rise of 85 centavos, "
+            "or \"ESTIMATE: -0.40/L\" for a fall. Write your own number; "
+            "never write X.XX.)"
         )
         return [
             {'role': 'system', 'content': agent.system_prompt},
@@ -1308,6 +1363,17 @@ class GroupArena:
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
         thinking, statement = _parse_think(full_text)
+        # Before the estimate, because an agent that returned the template has
+        # not reasoned yet and its number is whatever it was anchored with. The
+        # retry can also surface the estimate the first reply never gave.
+        if unfilled_scaffold(statement):
+            logging.info('swarm group %s: %s returned the causal-chain template, '
+                         're-asking', self._group_id, agent.name)
+            statement = _reask_for_causal_chain(
+                messages, statement, tier=agent.tier,
+                max_tokens=_AGENT_RETRY_MAX_TOKENS,
+                seed=_vintage_seed(self._group_id, agent.name, 'chain'),
+            )
         estimate = _extract_fuel_change(statement)
         if estimate is None:
             logging.info('swarm group %s: %s gave no parseable estimate, re-asking',
