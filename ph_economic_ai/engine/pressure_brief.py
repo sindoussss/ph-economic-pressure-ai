@@ -18,6 +18,12 @@ class SectorReading:
     estimate: Optional[float]   # present-state signed change, in `unit`
     unit: str                   # '₱/L' | '%' | '₱/kWh'
     confidence: int             # agent agreement %, NOT a probability
+    # Share of agents agreeing on the DIRECTION (sign) of the move. Coarser than
+    # `confidence`, which needs magnitudes within a tight band: live runs showed
+    # eight agents unanimous that prices rise while split between +1.0 and +2.5,
+    # reading 100% here and 50% there. Both are true; they answer different
+    # questions, and the direction one is the question a household actually asks.
+    direction_agreement: int = 0
     drivers: list[str] = field(default_factory=list)   # salient present-tense points
     sources: list[str] = field(default_factory=list)   # snapshot/RAG sources used
 

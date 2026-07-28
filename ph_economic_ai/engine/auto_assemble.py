@@ -30,6 +30,23 @@ from ph_economic_ai.benchmark.paths import ACCURACY_REPORT as _REPORT
 # RagEngine's existing sources.
 SECTOR_UNIT = {'gas': '₱/L', 'food': '%', 'electricity': '₱/kWh'}
 
+def sector_corpus(sector: str) -> list[str]:
+    """Every source for a sector, regardless of channel.
+
+    An agent may READ the whole sector corpus and still SPEAK only to its channel.
+    Channels exist so three agents do not write the same paragraph; they were never
+    meant to hide evidence from each other. A social agent that cannot see the
+    price data disagrees with the market agent because it is blind, not because it
+    read the same facts differently.
+    """
+    out: list[str] = []
+    for channel_sources in SECTOR_SOURCES.get(sector, {}).values():
+        for s in channel_sources:
+            if s not in out:
+                out.append(s)
+    return out
+
+
 SECTOR_SOURCES: dict[str, dict[str, list[str]]] = {
     'gas': {
         'social': ['RedditPH', 'GoogleTrends'],

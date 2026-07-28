@@ -20,12 +20,13 @@ both, because patching only `complete` lets a streamed test make real calls.
 """
 from __future__ import annotations
 
+import statistics
 from typing import Callable, Optional
 
 from ph_economic_ai.engine import llm
 from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.auto_assemble import (
-    SECTOR_SOURCES, SectorContext, auto_assemble)
+    SECTOR_SOURCES, SectorContext, auto_assemble, sector_corpus)
 from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
@@ -81,10 +82,35 @@ def _extract_guarded(sector: str, statement: str) -> tuple[Optional[float], Opti
 # the local models and slow every successive call.
 _PRIOR_TURNS = 6
 _JUDGE_VERBATIM = 8
-#: Agents invited to rebut the moderator in round 2 (the most divergent).
-_REBUTTAL_AGENTS = 4
+#: CAP on how many agents may revise in round 2. Not a target: only agents whose
+#: estimate sits OUTSIDE the agreement band are invited, and if fewer than this
+#: many are outside, fewer are called.
+#:
+#: Was 4, which meant 46 of a 50-agent roster never saw the group's centre and
+#: were locked to a round-1 answer given before any feedback existed. Agreement
+#: was then measured over a roster that had mostly never been told what the room
+#: thought. Inviting the agents the metric counts as disagreeing is not pressure:
+#: those are the only ones whose revision can move the number, and the Delphi line
+#: offers them "revise, or hold and cite" symmetrically.
+_REBUTTAL_AGENTS = 16
 
-_BAND = {'gas': 0.20, 'food': 0.3, 'electricity': 0.10}   # "agree" if within this of the mean
+# "Agree" if within this of the centre. Gas was 0.20, which is FINER than the
+# 0.5-peso grid the models actually emit on: measured over every live estimate
+# this session, 9 of 11 distinct values sat on that grid, so two agents giving the
+# closest DIFFERENT answers the model can express were always scored as
+# disagreeing. A band narrower than the instrument's resolution is an exact-match
+# test wearing a tolerance's clothes.
+#
+# 0.50 is not chosen because it flatters the number. It is the widest band at
+# which BOTH genuine-split controls still read 50 percent (clusters 1.5 and 0.9
+# apart). At 1.00 the 0.9-apart control jumps to 100 percent, merging agents who
+# really do disagree, so 1.00 is disqualified despite giving better live figures.
+# The stopping rule is where the control breaks, not where the output looks good.
+#
+# food and electricity are UNCHANGED: their output quantum has not been measured,
+# and moving them on gas's evidence would be the unprincipled version of this
+# change. See `04 Engineering/Multi-Agent System` for the band study.
+_BAND = {'gas': 0.50, 'food': 0.3, 'electricity': 0.10}
 _FLAT = {'gas': 0.05, 'food': 0.05, 'electricity': 0.02}  # |estimate| below this reads as flat
 # Magnitude-guard band per sector — how far a consensus may sit from the anchor
 # before it is more likely a weak-model error than a real signal (engine.anchoring).
@@ -122,7 +148,14 @@ _CHANNEL_TEMPLATES = {
                'searching for and posting about {sector} prices RIGHT NOW (search-interest '
                'spikes, public complaints). Do NOT analyse markets or policy; that is other '
                'agents\' job. If the retrieved context shows no fresh social signal, say so '
-               'plainly and keep your read tentative rather than inventing a mood.'),
+               'plainly and keep your read tentative rather than inventing a mood.\n'
+               'CRITICAL: attention is NOT direction. Search interest measures how worried '
+               'people are, not which way prices move, and this was tested: on this '
+               'project\'s own benchmark these exact search terms do NOT predict fuel or '
+               'food inflation any better than a naive baseline. Report WHAT people are '
+               'attending to and how intensely. Never infer a price direction from mention '
+               'volume: falling mentions do not mean falling prices, and a spike does not '
+               'mean a rise.'),
     'news': ('You speak ONLY to reported events — announcements, rate changes, and official '
              'actions in the news about Philippine {sector} prices RIGHT NOW. Do NOT restate '
              'social mood or raw market prices; name the concrete event and its source.'),
@@ -221,13 +254,48 @@ _MODERATOR_SYSTEM = (
     'and enforce the benchmark note: keep the agents on the PRESENT read and stop any '
     'agent that drifts into a confident forward forecast. One short paragraph.'
 )
+def _next_change_label(sector: str) -> str:
+    """The dated event this sector's pressure actually shows up in.
+
+    Fuel moves on the weekly DOE adjustment; the CPI-derived sectors move on the
+    PSA release. Naming it keeps the judge anchored to a real date without turning
+    a present read into a forecast, and it answers what users actually asked: not
+    only how much, but when.
+    """
+    from ph_economic_ai.engine import price_calendar
+    try:
+        event = (price_calendar.describe_next_fuel_adjustment() if sector == 'gas'
+                 else price_calendar.describe_next_cpi_release())
+        return f"{event['label']} ({event['when']})"
+    except Exception:
+        return 'the next scheduled adjustment'
+
+
 _JUDGE_SYSTEM = (
     'You are the forum judge. You have just heard specialist analysts — a social-mood '
     'reader, a news reader, and a market reader — debate the CURRENT pressure on one '
-    'Philippine price. Do NOT introduce new facts. Weigh what they said, trusting '
+    'Philippine price. Weigh what they said, trusting '
     'concrete cited data over vibes, resolve their disagreement into a SINGLE present '
     'read, and stay honest to the benchmark note (a present read, never a confident '
-    'forecast). One or two sentences, then the estimate line.'
+    'forecast). One or two sentences, then the estimate line.\n'
+    'WEIGHTING RULE: the social-mood reader speaks to attention, not to direction. '
+    'Search interest and mention volume were tested on this project\'s own benchmark '
+    'and do NOT predict inflation better than a naive baseline. Social input may '
+    'describe what the public is worried about; it may NOT on its own decide whether '
+    'your estimate is positive or negative. A direction must rest on the news reader\'s '
+    'concrete events or the market reader\'s price mechanics. If both of those are '
+    'silent or conflicting, say the read is weak and keep the estimate near zero rather '
+    'than borrowing a direction from mood.\n'
+    'EVIDENCE RULE: you are given the retrieved evidence the analysts drew on. Use '
+    'it to CHECK them, not to replace them. If an analyst asserts a figure or event '
+    'the evidence does not support, say so and discount that analyst rather than '
+    'averaging it in. You may NOT introduce a driver no analyst raised: the analysts '
+    'do the analysis and you resolve it. If the evidence contradicts the whole panel, '
+    'report the disagreement rather than substituting your own read.\n'
+    'BACKWARD-LOOKING TRAP: an adjustment that has already been announced and taken '
+    'effect is not pressure building, it is a past event already in the price. If the '
+    'analysts are describing a change that has already happened, say so, and judge the '
+    'pressure building on top of it rather than restating it.'
 )
 _SYNTH_SYSTEM = (
     'You are a Philippine macro analyst writing the present-pressure summary a '
@@ -265,6 +333,16 @@ def _capability_agents(sector: str, per_channel: Optional[int] = None) -> list[A
                                  'same beat would already have said. '
                                + 'End your response with a CAUSAL CHAIN line and then: '
                                + _EST_LINE[sector]),
+                # Per CHANNEL, deliberately, and not the whole sector corpus.
+                #
+                # Sharing all sector sources was tried and reverted. The swarm's
+                # roles are functional (Forecaster, Critic, Synthesizer) so they
+                # all benefit from all the evidence, but a forum channel is
+                # evidence-TYPED: the social agent is instructed "do NOT analyse
+                # markets; that is other agents' job", so handing it market data
+                # tells it to read what it may not use, and its card then cites
+                # BusinessWorld for a mood reading. `tests/test_forum` pins this:
+                # a lane whose feeds return nothing must cite nothing.
                 rag_sources=srcs.get(channel, []),
                 tier=llm.FAST))               # all forum agents share the fast tier
         by_channel[channel] = built
@@ -345,6 +423,9 @@ class Forum:
             chunks = self._rag.query(query, top_k=4, sources=agent.rag_sources)
         except Exception:
             chunks = []
+        # Kept so the response can carry what was actually read (RSK-019).
+        self._last_retrieval = [{'source': c.get('source', '?'), 'text': c.get('text', '')}
+                                for c in (chunks or [])]
         used = sorted({c['source'] for c in chunks if c.get('source')})
         text = '\n'.join(f"[{c['source']}] {c['text'][:280]}" for c in chunks) \
             or 'No context retrieved for your channel.'
@@ -458,13 +539,32 @@ class Forum:
             transcript = '\n'.join(
                 f"{r.agent_name}: {r.statement[:280]} [est {r.price_estimate}]"
                 for r in finals)
+        # The judge reads the same corpus the analysts did, so it can verify a
+        # claim instead of averaging an unverified one. Deliberately the SECTOR
+        # corpus rather than a fresh query: the judge checks what the room was
+        # working from, it does not go looking for something new.
+        judge_evidence = ''
+        try:
+            chunks = self._rag.query(f'{ctx.sector} price Philippines', top_k=6,
+                                     sources=sector_corpus(ctx.sector)) or []
+            judge_evidence = '\n'.join(
+                f"[{c.get('source', '?')}] {c.get('text', '')[:240]}" for c in chunks)
+        except Exception:
+            judge_evidence = ''
+
         msgs = [
             {'role': 'system', 'content': _JUDGE_SYSTEM},
             {'role': 'user', 'content': (
                 f"Sector: {ctx.sector} (report in {ctx.unit}). "
+                f"This pressure lands at the next scheduled change on "
+                f"{_next_change_label(ctx.sector)}. That date is a published schedule, "
+                f"not something you are predicting. Read the pressure building into it; "
+                f"do not restate a change already in effect.\n"
                 f"Benchmark note: {ctx.verdict_note}\n\n"
                 f"Analyst statements:\n{transcript}\n\n"
-                "Weigh the analysts, resolve their disagreement, and give the single "
+                + (f"Retrieved evidence (for CHECKING the analysts, not for adding "
+                   f"new drivers):\n{judge_evidence}\n\n" if judge_evidence else "")
+                + "Weigh the analysts, resolve their disagreement, and give the single "
                 "present read. End with:\n" + _EST_LINE[ctx.sector])},
         ]
         try:
@@ -524,6 +624,28 @@ class Forum:
             pass
         return ''.join(parts)
 
+    @staticmethod
+    def _delphi_line(ctx: SectorContext, responses: list[AgentResponse]) -> str:
+        """Structured feedback for the rebuttal round: the group's own centre.
+
+        This is the Delphi mechanism, and it is deliberately different from the
+        shared-anchor injection that was tested and rejected. There, an external
+        number was planted before any reasoning happened and five of seven agents
+        echoed it back. Here, the centre IS the round's output, shown after every
+        agent has already committed a first answer, and the outlier's options are
+        stated symmetrically: move, or stay and cite. Convergence through that
+        choice is earned; parroting a pre-seeded number is not. The placebo test
+        for this distinction lives in the anchor experiment notes.
+        """
+        ests = [r.price_estimate for r in responses if r.price_estimate is not None]
+        if len(ests) < 2:
+            return ''
+        centre = statistics.median(ests)
+        return (f"The group's centre estimate this round is {centre:+.2f} {ctx.unit}. "
+                f"If you keep an estimate far from it, cite the specific figure or "
+                f"event that justifies the distance; otherwise revise toward the "
+                f"centre.")
+
     def _divergent(self, ctx: SectorContext, responses: list[AgentResponse],
                    agents: list[Agent], k: int) -> list[Agent]:
         """The k agents whose estimates sit furthest from the round's centre.
@@ -539,8 +661,18 @@ class Forum:
                if r.price_estimate is not None}
         if len(est) < 2:
             return []
-        centre = sum(est.values()) / len(est)
-        ranked = sorted(est, key=lambda n: -abs(est[n] - centre))[:max(0, k)]
+        # Medoid, matching the agreement metric: the centre must be a value an
+        # agent actually gave. The mean is dragged by one extreme agent, which
+        # both understates its own divergence and overstates everyone else's.
+        values = list(est.values())
+        centre = min(values, key=lambda c: (sum(abs(v - c) for v in values), c))
+        # Invite exactly those the metric counts as disagreeing. An agent already
+        # inside the band has nothing to revise, so calling it spends a turn to
+        # learn nothing; an agent outside it is the only kind whose second thought
+        # can change the reading.
+        band = _BAND.get(ctx.sector, 0.2)
+        outside = [n for n in est if abs(est[n] - centre) > band]
+        ranked = sorted(outside, key=lambda n: -abs(est[n] - centre))[:max(0, k)]
         by_name = {a.name: a for a in agents}
         return [by_name[n] for n in ranked if n in by_name]
 
@@ -561,7 +693,8 @@ class Forum:
                 accepted, rejected = _extract_guarded(ctx.sector, statement)
                 resp = AgentResponse(agent_name=agent.name, round_num=rnd,
                                      thinking=thinking, statement=statement,
-                                     price_estimate=accepted)
+                                     price_estimate=accepted,
+                                     retrieval=list(getattr(self, '_last_retrieval', [])))
                 history.append(resp)
                 self._emit('agent_message', {
                     'name': agent.name, 'occupation': agent.role, 'sector': ctx.sector,
@@ -572,6 +705,7 @@ class Forum:
             if rnd < self._rounds:                       # moderate BETWEEN rounds only
                 this_round = [r for r in history if r.round_num == rnd]
                 steer = self._moderate(ctx, this_round)
+                steer = (steer + ' ' + self._delphi_line(ctx, this_round)).strip()
                 speaking = self._divergent(ctx, this_round, agents, self._rebuttal_agents)
                 self._emit('moderator', {'sector': ctx.sector, 'text': steer,
                                          'rebutting': [a.name for a in speaking]})
@@ -595,11 +729,30 @@ class Forum:
         if ests:
             # Agreement measured on the raw agent estimates, corroboration-scaled:
             # a lone estimate can't be "100% agreed".
+            #
+            # Centre on the MEDOID: the actual estimate closest to all the others.
+            # Two artefacts led here. The mean is dragged by one extreme agent
+            # (six agents near -0.6 plus one at -2.15 scored 28% around the mean,
+            # 85% around the median). The abstract median then showed its own
+            # failure on live data: agents quote values on a rough 0.5-peso grid,
+            # and with estimates [1.0 x3, 1.5 x2, ...] the median landed at 1.25,
+            # a number NO agent said, in the gap between sub-clusters, where the
+            # +/-band reaches nobody and agreement read 0% against six near-equal
+            # reads. The centre of a consensus measure must be a value someone
+            # actually estimated. On a genuine split the medoid still scores low,
+            # so this removes quantisation artefacts without widening the band.
             band = _BAND.get(ctx.sector, 0.2)
             n = len(ests)
-            centre = sum(ests) / n
+            centre = min(ests, key=lambda c: (sum(abs(e - c) for e in ests), c))
             within = sum(1 for e in ests if abs(e - centre) <= band)
             confidence = int((within / n) * 100 * min(n, 2) / 2)
+        direction_agreement = 0
+        if ests:
+            flat = _FLAT.get(ctx.sector, 0.05)
+            signs = [0 if abs(e) < flat else (1 if e > 0 else -1) for e in ests]
+            lead = max(set(signs), key=signs.count)
+            direction_agreement = int(signs.count(lead) / len(signs) * 100
+                                      * min(len(signs), 2) / 2)
         # Point estimate: the JUDGE's synthesis (resolving disagreement), falling
         # back to the agent mean only if the judge produced no number.
         raw = judged if judged is not None else (sum(ests) / len(ests) if ests else None)
@@ -619,7 +772,9 @@ class Forum:
         return SectorReading(
             sector=ctx.sector, direction=_direction(ctx.sector, avg),
             estimate=(round(avg, 2) if avg is not None else None),
-            unit=ctx.unit, confidence=confidence, drivers=drivers, sources=sources)
+            unit=ctx.unit, confidence=confidence,
+            direction_agreement=direction_agreement,
+            drivers=drivers, sources=sources)
 
     def _synthesize(self, readings: list[SectorReading]) -> str:
         body = '\n'.join(

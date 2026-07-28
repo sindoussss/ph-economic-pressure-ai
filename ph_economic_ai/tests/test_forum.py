@@ -255,7 +255,13 @@ def _ctx(sector='gas', unit='PHP/L'):
 
 def test_round_two_only_invites_the_divergent():
     """A second full round would roughly double a multi-minute run, mostly on agents
-    restating themselves. Only the outliers answer the moderator."""
+    restating themselves. Only the outliers answer the moderator.
+
+    `k` is a CAP, not a quota: agents inside the agreement band have nothing to
+    revise, so with five agents agreeing and one outlier, exactly one is called
+    even though two slots were offered. Padding the invitation to fill k would
+    spend a turn asking an agent who already agrees to reconsider.
+    """
     from ph_economic_ai.engine.forum import Forum, _capability_agents
     from ph_economic_ai.engine.debate import AgentResponse
     ctx = _ctx()
@@ -264,8 +270,7 @@ def test_round_two_only_invites_the_divergent():
     resp = [AgentResponse(a.name, 1, '', 'x', 1.0) for a in agents[:5]]
     resp.append(AgentResponse(agents[5].name, 1, '', 'x', 9.0))      # the outlier
     picked = [a.name for a in f._divergent(ctx, resp, agents, k=2)]
-    assert picked[0] == agents[5].name
-    assert len(picked) == 2
+    assert picked == [agents[5].name]
 
 
 def test_divergent_skips_agents_with_no_estimate():

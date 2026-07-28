@@ -23,20 +23,47 @@ def find_and_grade_runs(
     current_price: float,
     min_age_days: float = 5.0,
 ) -> int:
-    """Find ungraded runs older than min_age_days, grade them against current_price, return count graded."""
-    ungraded = store.get_ungraded_runs(min_age_days=min_age_days)
+    """Grade every run whose forecast period has elapsed, each against a price
+    observed near ITS OWN target date. Returns the count graded.
+
+    RSK-018. This used to grade every ungraded run against `current_price`, so a
+    run five days old and a run sixty days old were scored against the same
+    number. A one-week forecast judged against a price two months later is not a
+    wrong grade so much as a grade of a different question, and it fed the trust
+    scores and the accuracy view.
+
+    `current_price` is still accepted: it is the observation being reported now, so
+    it is recorded into the price history and is the natural match for runs whose
+    target date is around today. Runs whose period has no observation close enough
+    stay ungraded rather than being scored against a mismatched week.
+    """
+    store.record_price_observation(current_price)
+
     graded = 0
-    for run in ungraded:
+    for run in store.get_due_runs():
         try:
             scenario = json.loads(run['scenario_json'])
         except json.JSONDecodeError:
-            logging.warning('ground_truth: malformed scenario_json for run_id=%s', run.get('run_id'))
+            logging.warning('ground_truth: malformed scenario_json for run_id=%s',
+                            run.get('run_id'))
             continue
         baseline = scenario.get('current_price')
         if baseline is None:
             continue
-        actual_change = current_price - baseline
-        store.apply_ground_truth_grade(run['run_id'], actual_change)
+
+        target = store.effective_target_date(run)
+        match = store.price_near(target)
+        if match is None:
+            # No observation for this run's period. Leaving it ungraded is the
+            # point of the fix; it stays eligible once a matching price arrives.
+            logging.debug('ground_truth: run_id=%s has no price near %s; leaving ungraded',
+                          run.get('run_id'), target)
+            continue
+
+        actual_change = match['price'] - baseline
+        store.apply_ground_truth_grade(
+            run['run_id'], actual_change,
+            graded_against=f"{match['observed_at']} (gap {match['gap_days']:.2f}d)")
         graded += 1
     return graded
 
