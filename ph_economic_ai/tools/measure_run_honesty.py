@@ -94,6 +94,51 @@ def _echo_stats(estimates: list[float], anchor: float) -> dict:
     }
 
 
+def _opening_collisions(responses: list) -> dict:
+    """Is a low diversity score herding, or is it the prompt template?
+
+    The corrected metric returned 6 distinct openings from 20 agents, and the
+    swarm happens to seat 4 regions x 5 ROLES. Six is suspiciously close to five.
+    If every Critic opens the same way regardless of region, the metric is
+    reading prompt structure and calling it herding — the same error as the
+    circular regex and the unreachable ceiling, a third time.
+
+    The discriminator is which axis the collisions follow. Openings that collide
+    ACROSS regions but never across roles are templated. Openings that collide
+    across roles too are agents converging on the same first sentence, which is
+    what the metric is supposed to catch.
+    """
+    first: dict = {}
+    for r in responses:
+        name = getattr(r, 'agent_name', None)
+        rnd = getattr(r, 'round_num', 0) or 0
+        if name is None:
+            continue
+        prior = first.get(name)
+        if prior is None or rnd < (getattr(prior, 'round_num', 0) or 0):
+            first[name] = r
+
+    groups: dict[str, list[str]] = {}
+    for name, r in first.items():
+        key = ' '.join((getattr(r, 'statement', '') or '').split())[:80]
+        if key:
+            groups.setdefault(key, []).append(name)
+
+    shared = {k: v for k, v in groups.items() if len(v) > 1}
+    roles_per_group = [len({n.split()[-1] for n in v}) for v in shared.values()]
+    return {
+        'agents': len(first),
+        'distinct_openings': len(groups),
+        'colliding_groups': len(shared),
+        # 1 means every collision is one role repeating itself across regions.
+        'max_roles_in_a_collision': max(roles_per_group, default=0),
+        'single_role_collisions': sum(1 for c in roles_per_group if c == 1),
+        'cross_role_collisions': sum(1 for c in roles_per_group if c > 1),
+        'examples': [{'opening': k[:70], 'agents': sorted(v)}
+                     for k, v in sorted(shared.items(), key=lambda kv: -len(kv[1]))[:4]],
+    }
+
+
 def _roster_stats(responses: list) -> dict:
     """Who actually turned up, which ADR-005 is supposed to have restored."""
     names = {r.agent_name for r in responses}
@@ -127,12 +172,17 @@ def _run_once(rag: RagEngine, scenario: dict) -> dict:
         'agreement_pct': verdict.confidence_pct,
         'agreement_n': getattr(verdict, 'agreement_n', 0),
         'agreement_regions': list(getattr(verdict, 'agreement_regions', (0, 0))),
+        # A percentage cannot separate agents who agreed from agents who copied.
+        # These two can, and they are the reason round 1 was blinded.
+        'agreement_distinct': getattr(verdict, 'agreement_distinct', 0),
+        'agreement_diversity': getattr(verdict, 'agreement_diversity', 0.0),
         'regional': [
             {'pair': ' & '.join(v.region_pair), 'estimate': v.estimate,
              'agreement_pct': round((v.confidence or 0) * 100)}
             for v in verdict.regional_verdicts
         ],
         'echo': _echo_stats(estimates, anchor),
+        'openings': _opening_collisions(responses),
         'roster': _roster_stats(responses),
         'seconds': round(seconds, 1),
     }
@@ -143,7 +193,8 @@ def _verdict_line(run: dict) -> str:
     reg = run['agreement_regions']
     return (f"  estimate {run['estimate']:+.2f} ({run['estimate_source']})  "
             f"agreement {run['agreement_pct']}% over n={run['agreement_n']} "
-            f"in {reg[0]}/{reg[1]} regions  "
+            f"in {reg[0]}/{reg[1]} regions, {run['agreement_distinct']} distinct  "
+            f"diversity {run['agreement_diversity']}  "
             f"roster {run['roster']['agents']} agents, "
             f"{run['roster']['parse_rate_pct']}% parsed  ({run['seconds']:.0f}s)")
 
@@ -236,6 +287,14 @@ def main() -> int:
               f"({e['echo_exact_pct']}%)  "
               f"mode {e['modal_value']:+.2f} x{e['modal_n']}"
               f"{'  <-- MODE IS THE ANCHOR' if e['modal_is_anchor'] else ''}")
+        o = run['openings']
+        print(f"  openings {o['distinct_openings']} distinct from {o['agents']} "
+              f"agents; {o['colliding_groups']} collide "
+              f"({o['single_role_collisions']} within one role, "
+              f"{o['cross_role_collisions']} across roles)")
+        for ex in o['examples']:
+            print(f"    x{len(ex['agents'])}  {ex['agents']}")
+            print(f"        {ex['opening']}")
 
     print('\n' + '=' * 70)
     for line in _interpret(runs):
