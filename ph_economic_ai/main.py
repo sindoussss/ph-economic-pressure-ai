@@ -27,13 +27,10 @@ def main():
         QMessageBox.critical(None, 'Data Error', str(e))
         sys.exit(1)
 
-    # Gas model.
     X_gas, y_gas, _, _ = build_features(df)
     gas_regressor = ml.train(X_gas, y_gas)
     cv_rmse = ml.cross_val_rmse(X_gas, y_gas)
 
-    # Food and electricity models use observed historical gas prices as the
-    # training proxy for gas predictions.
     gas_pred_train = df['gas_price'].values
     regressors: dict = {'gas': gas_regressor}
 
