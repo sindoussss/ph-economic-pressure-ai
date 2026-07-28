@@ -10,14 +10,24 @@
 #
 # The interactive multi-agent app is the EXPLORATORY half and pulls extra
 # dependencies — see requirements-app.txt.
-pandas
-numpy
-scipy
-scikit-learn
-matplotlib
-statsmodels
-requests
-openpyxl        # reading the World Bank fuel-price workbook in refresh_data
+# PINNED. These are the versions the committed artifacts were produced with and
+# the versions the suite passes on (787 passed, 0 failed, 2026-07-28).
+#
+# Pinning is not housekeeping here. Installing this file unpinned resolved to
+# Pandas 3.x and gave 612 passed, 4 failed, 5 errors, because Pandas 3 removed
+# aliases this code still uses. An unpinned "reproducible" benchmark that does not
+# reproduce is worse than one that states its bounds.
+#
+# Python 3.10 is the supported interpreter. 3.10.11 is the verified patch level.
+pandas==1.5.3
+numpy==1.26.4
+scipy==1.11.4
+scikit-learn==1.7.2
+matplotlib==3.8.4
+statsmodels==0.14.6
+requests==2.34.2
+openpyxl==3.1.5        # reading the World Bank fuel-price workbook in refresh_data
 
 # Dev / test only:
-# pytest
+# pytest==9.1.1
+# pytest-xdist==3.8.0

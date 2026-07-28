@@ -30,5 +30,6 @@
 
 -r requirements.txt
 
-PyQt6
-beautifulsoup4
+# PINNED, for the same reason as requirements.txt.
+PyQt6==6.10.0
+beautifulsoup4==4.14.2
