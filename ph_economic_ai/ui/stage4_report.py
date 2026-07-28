@@ -100,6 +100,19 @@ class Stage4ReportPanel(QWidget):
         self._df = None
         self._build()
 
+    def set_recall_note(self, detail: str) -> None:
+        """Show or clear the "this was not recomputed" banner.
+
+        An empty detail hides it, so a fresh run cannot inherit the banner from
+        the recalled run before it.
+        """
+        if not detail:
+            self._recall_lbl.setText('')
+            self._recall_lbl.hide()
+            return
+        self._recall_lbl.setText(_honesty.recall_note(detail))
+        self._recall_lbl.show()
+
     def _build(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -114,6 +127,14 @@ class Stage4ReportPanel(QWidget):
         self._status_lbl.setStyleSheet('font-size:11px;font-weight:700;color:#1C1E26;')
         self._detail_lbl = QLabel('')
         self._detail_lbl.setStyleSheet('font-size:9px;color:#9EA3AE;')
+        # Recall banner. Hidden on a fresh run, so the absence of the label is
+        # itself the claim that the numbers were just computed.
+        self._recall_lbl = QLabel('')
+        self._recall_lbl.setWordWrap(True)
+        self._recall_lbl.setStyleSheet(
+            'font-size:9px;color:#B45309;background:#FEF3C7;'
+            'border:1px solid #FDE68A;border-radius:6px;padding:4px 8px;')
+        self._recall_lbl.hide()
 
         export_btn = QPushButton('Export PDF')
         export_btn.setStyleSheet(
@@ -126,6 +147,7 @@ class Stage4ReportPanel(QWidget):
         bar_layout.addWidget(self._status_lbl)
         bar_layout.addWidget(self._detail_lbl)
         bar_layout.addStretch()
+        bar_layout.addWidget(self._recall_lbl)
         bar_layout.addWidget(export_btn)
         root.addWidget(bar)
 
@@ -456,17 +478,41 @@ class Stage4ReportPanel(QWidget):
                     item.widget().deleteLater()
 
         # Build a consensus dict for reuse in _build_right
+        #
+        # Low and high are the span of the REGIONAL VERDICTS, not an interval
+        # around the headline, and the two can come apart. A live run showed
+        # low -0.89, high +1.00 and a headline of -1.28: the master's estimate had
+        # been clamped to the mechanical pass-through and landed outside the
+        # regions' own range. Labelled "Low"/"High" beside the number, that reads
+        # as a confidence band that does not contain its own point estimate,
+        # which is simply incoherent to a reader.
+        #
+        # The span is still worth showing — it is what the regions actually said —
+        # so it is relabelled rather than widened, and the case where the headline
+        # falls outside it is stated instead of hidden. Widening the span to
+        # swallow the headline would have made the incoherence invisible while
+        # making the number mean less.
         est = master_verdict.final_estimate
         valid_estimates = [
             v.estimate for v in master_verdict.regional_verdicts if v.estimate is not None
         ]
         low = min(valid_estimates) if valid_estimates else None
         high = max(valid_estimates) if valid_estimates else None
+        outside_regional = (
+            est is not None and low is not None and high is not None
+            and not (low <= est <= high)
+        )
         consensus = {
             'weighted_avg': est,
             'low': low,
             'high': high,
+            'outside_regional': outside_regional,
             'confidence_pct': master_verdict.confidence_pct,
+            'agreement_n': getattr(master_verdict, 'agreement_n', 0),
+            'agreement_regions': getattr(master_verdict, 'agreement_regions', (0, 0)),
+            'agreement_echo_n': getattr(master_verdict, 'agreement_echo_n', 0),
+            'agreement_distinct': getattr(master_verdict, 'agreement_distinct', 0),
+            'agreement_diversity': getattr(master_verdict, 'agreement_diversity', 0.0),
             'verdicts': [],
         }
         self._consensus = consensus
@@ -502,11 +548,38 @@ class Stage4ReportPanel(QWidget):
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
-        sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
+        _n = consensus.get('agreement_n', 0)
+        _regions = consensus.get('agreement_regions', (0, 0))
+        if _n < 2:
+            sub_lbl = QLabel('Master judge estimate · agent agreement '
+                             'not measurable this run')
+        else:
+            sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
+        basis_lbl = QLabel(_honesty.agreement_basis(
+            _n, _regions, consensus.get('agreement_echo_n', 0),
+            consensus.get('agreement_distinct', 0),
+            consensus.get('agreement_diversity', 0.0)))
+        basis_lbl.setWordWrap(True)
+        basis_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        # The caveat that stops a high percentage reading as strong consensus.
+        # Amber rather than grey: a collapsed room is the case where the number
+        # most looks like good news and least is.
+        _caveat = _honesty.agreement_caveat(
+            _n, consensus.get('agreement_distinct', 0),
+            consensus.get('agreement_diversity', 0.0))
+        caveat_lbl = QLabel(_caveat)
+        caveat_lbl.setWordWrap(True)
+        caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        caveat_lbl.setVisible(bool(_caveat))
 
         range_row = QHBoxLayout()
-        for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
+        _conf_cell = f'{conf}%' if _n >= 2 else '—'
+        # "Regional low/high", not "Low/High": this is the span of what the
+        # regions said, not an interval around the headline. The calibrated
+        # conformal band below is the actual uncertainty statement.
+        for label, value in [('Regional low', low), ('Regional high', high),
+                             ('Agent agreement', _conf_cell)]:
             col = QVBoxLayout()
             col.addWidget(self._muted(label))
             if isinstance(value, float) and value is not None:
@@ -520,6 +593,15 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        cf_layout.addWidget(basis_lbl)
+        cf_layout.addWidget(caveat_lbl)
+        if consensus.get('outside_regional'):
+            _outside = QLabel(
+                'This headline sits outside the regional range above: the '
+                'physics anchor overruled what the regions reported.')
+            _outside.setWordWrap(True)
+            _outside.setStyleSheet('font-size:9px;color:#B45309;')
+            cf_layout.addWidget(_outside)
         _anchor_lbl = _physics_anchor_label(master_verdict)
         if _anchor_lbl is not None:
             cf_layout.addWidget(_anchor_lbl)

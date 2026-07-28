@@ -48,6 +48,90 @@ def _initials(name: str) -> str:
     return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else '')).upper()
 
 
+#: Characters shown before a statement is collapsed. Long enough to carry the
+#: agent's opening claim, short enough that fifty cards stay scannable.
+_PREVIEW_CHARS = 320
+
+
+class _ExpandableCard(QFrame):
+    """An agent card whose statement opens in full when clicked.
+
+    The statement used to be truncated at `_PREVIEW_CHARS` and the remainder
+    thrown away before it reached a widget, so a reader could not check a claim
+    against the rest of what the agent said. Since these statements are exactly
+    where a fabricated figure would hide, the full text has to be reachable.
+
+    The whole card is the hit target rather than a small "more" link: the cards
+    are dense, the panel is scrolled with a mouse, and a precise click target in
+    a scrolling list is a fight.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._body = None
+        self._hint = None
+        self._full = ''
+        self._expanded = False
+
+    def attach_body(self, body, hint, full_text: str) -> None:
+        self._body = body
+        self._hint = hint
+        self.set_full_message(full_text)
+
+    def set_full_message(self, full_text: str) -> None:
+        """Set the statement, keeping it whole regardless of what is displayed."""
+        self._full = full_text or ''
+        if self._body is None:
+            return
+        if not self._full:
+            # An agent that said nothing already has its placeholder in the label
+            # ('(no reading)', or blank while streaming). Rendering an empty
+            # string over it would replace an explanation with a gap.
+            if self._hint is not None:
+                self._hint.hide()
+            return
+        if len(self._full) > _PREVIEW_CHARS:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setToolTip('Click to read the full statement')
+        else:
+            self.unsetCursor()
+            self.setToolTip('')
+        self._render()
+
+    def _render(self) -> None:
+        if self._body is None:
+            return
+        long_enough = len(self._full) > _PREVIEW_CHARS
+        if not long_enough:
+            self._body.setText(self._full)
+            if self._hint is not None:
+                self._hint.hide()
+            return
+        if self._expanded:
+            self._body.setText(self._full)
+            hint = 'Show less'
+        else:
+            self._body.setText(self._full[:_PREVIEW_CHARS].rstrip() + '…')
+            remaining = len(self._full) - _PREVIEW_CHARS
+            hint = f'Show more  ({remaining:,} more characters)'
+        if self._hint is not None:
+            self._hint.setText(hint)
+            self._hint.show()
+
+    def toggle(self) -> None:
+        if len(self._full) <= _PREVIEW_CHARS:
+            return
+        self._expanded = not self._expanded
+        self._render()
+
+    def mouseReleaseEvent(self, event):     # noqa: N802 - Qt naming
+        # Release rather than press, so a click that began as a drag-scroll does
+        # not expand a card the user was only scrolling past.
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.toggle()
+        super().mouseReleaseEvent(event)
+
+
 class PressureMonitorPanel(QWidget):
     run_finished = pyqtSignal()          # emitted when a Monitor run ends (ok or error)
 
@@ -359,10 +443,17 @@ class PressureMonitorPanel(QWidget):
     def _chat_card(self, d: dict, live: bool = False) -> QFrame:
         """One agent's card. `live` returns it mid-stream: the body label is exposed as
         `card._body` so arriving tokens can be appended, and the estimate badge is
-        omitted until the agent has actually produced a number."""
+        omitted until the agent has actually produced a number.
+
+        Long statements are previewed and expand on click. The preview used to be
+        the whole story: the text was cut at `_PREVIEW_CHARS` and the remainder
+        discarded before it ever reached a widget, so an agent's reasoning was
+        unreadable past the first few lines and the reader could not check a claim
+        against the rest of the statement.
+        """
         sector = d.get('sector', '')
         color = _SECTOR_COLOR.get(sector, _T3)
-        card = QFrame()
+        card = _ExpandableCard()
         card.setStyleSheet(
             f'QFrame{{background:#FFFFFF;border:1px solid {_DIV};border-radius:10px;}}'
             f'QFrame QLabel{{background:transparent;border:none;}}')
@@ -394,12 +485,18 @@ class PressureMonitorPanel(QWidget):
         v.addLayout(head)
 
         msg = ' '.join((d.get('message') or '').split())
-        if len(msg) > 320:
-            msg = msg[:320] + '…'
         body = QLabel(msg if msg else ('' if live else '(no reading)'))
         body.setWordWrap(True)
         body.setStyleSheet(f'font-size:12px;color:{_T2};')
         v.addWidget(body)
+
+        hint = QLabel('')
+        hint.setStyleSheet(f'font-size:10px;font-weight:600;color:{color};')
+        hint.hide()
+        v.addWidget(hint)
+        # The full text lives on the card, so expanding is a re-render rather than
+        # a re-fetch and nothing is lost on the way to the widget.
+        card.attach_body(body, hint, msg)
 
         est = d.get('estimate')
         rejected = d.get('rejected_estimate')

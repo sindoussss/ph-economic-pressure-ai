@@ -15,6 +15,21 @@ from ph_economic_ai.engine.swarm import SwarmAgent
 _COLD_START_RUNS = 3
 _DIVERSITY_MIN   = 0.60
 
+#: Roles that are never benched, however low their trust falls.
+#:
+#: The Critic and the ConfidenceScorer are not contestants, they are the
+#: measuring instruments: their `SCORE:` and `CONFIDENCE:` lines are what
+#: `compute_combined_score` reads, and when neither is in the room every agent
+#: falls back to 0.5, `scores_are_degenerate` fires, and the survivor is picked by
+#: a hash tiebreak. Benching them does not remove a weak analyst, it removes the
+#: scoring. A live roster had lost NCR Critic, Central Luzon Critic, and two
+#: ConfidenceScorers, so two of four groups were eliminating agents at random.
+#:
+#: They are also the roles most likely to score badly on the internal quality
+#: metric, because that metric rewards citations and a causal chain and their job
+#: is to grade other agents rather than to write their own analysis.
+_UNBENCHABLE_ROLES = frozenset({'Critic', 'ConfidenceScorer'})
+
 _PROMOTED_SUFFIX = (
     ' Your past estimates have been consistently accurate — '
     'trust your data-driven instincts.'
@@ -71,7 +86,14 @@ def get_evolved_swarm_agents(
     store: 'AgentTrustStore',
     base_agents: list[SwarmAgent],
 ) -> list[SwarmAgent]:
-    """Return swarm agents with model adjusted by trust; enforces diversity guard."""
+    """Return swarm agents with model adjusted by trust; enforces diversity guard.
+
+    Benching is temporary. Every agent this function benches has its trust decayed
+    back toward neutral by `store.recover_benched`, so a bench lasts a couple of
+    runs rather than forever. Without that the function could only ever remove
+    agents: a benched agent produces no response, `update_trust` is never called
+    for it, and its score is frozen below the demotion threshold permanently.
+    """
     if store.total_runs() < _COLD_START_RUNS:
         return list(base_agents)
 
@@ -84,25 +106,34 @@ def get_evolved_swarm_agents(
     evolved: list[SwarmAgent] = []
     for group_id, group_agents in groups.items():
         min_active = math.ceil(len(group_agents) * _DIVERSITY_MIN)
-        # Sort by trust descending so we bench lowest-trust first
-        scored = sorted(
-            group_agents,
-            key=lambda a: trust_map.get(a.name, 0.5),
-            reverse=True,
-        )
-        active: list[SwarmAgent] = []
-        for agent in scored:
-            trust = trust_map.get(agent.name, 0.5)
-            band = trust_tier(trust)
-            if band == 'demoted' and len(active) >= min_active:
-                # bench this agent — skip it
-                continue
-            new_tier = _resolve_tier(agent.tier, band)
+
+        def _band(agent: SwarmAgent) -> str:
+            return trust_tier(trust_map.get(agent.name, 0.5))
+
+        def _activate(agent: SwarmAgent) -> SwarmAgent:
+            band = _band(agent)
             prompt = agent.system_prompt
             if band == 'promoted':
                 prompt = prompt.rstrip() + _PROMOTED_SUFFIX
             elif band == 'demoted':
                 prompt = prompt.rstrip() + _DEMOTED_SUFFIX
-            active.append(replace(agent, tier=new_tier, system_prompt=prompt))
+            return replace(agent, tier=_resolve_tier(agent.tier, band),
+                           system_prompt=prompt)
+
+        # The scoring roles are seated first and unconditionally. They still take
+        # the tier and prompt their trust has earned; they just cannot lose their
+        # seat, because the bracket cannot measure anything without them.
+        active = [_activate(a) for a in group_agents
+                  if a.role in _UNBENCHABLE_ROLES]
+        # Everyone else fills the diversity floor by trust, highest first.
+        for agent in sorted(
+            (a for a in group_agents if a.role not in _UNBENCHABLE_ROLES),
+            key=lambda a: trust_map.get(a.name, 0.5),
+            reverse=True,
+        ):
+            if _band(agent) == 'demoted' and len(active) >= min_active:
+                store.recover_benched(agent.name)
+                continue
+            active.append(_activate(agent))
         evolved.extend(active)
     return evolved

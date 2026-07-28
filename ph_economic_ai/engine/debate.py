@@ -523,7 +523,7 @@ def _extract_percent(text: str) -> Optional[float]:
 class DebateEngine:
     def __init__(self, agents: list[Agent], rag: RagEngine, scenario: dict,
                  price_extractor=None, data_brief: Optional['LiveDataBrief'] = None,
-                 anchor_note: str = ''):
+                 anchor_note: str = '', sector: str = 'gas'):
         """
         scenario keys: oil_pct, usd_pct, bsp_rate, demand_index
         price_extractor: callable(text) -> Optional[float]. Defaults to _extract_price.
@@ -533,6 +533,10 @@ class DebateEngine:
                      prompt so a weak model reasons from the right scale rather
                      than inventing one — the sector equivalent of the master
                      judge's mechanical pass-through line.
+        sector: names this engine in the sampling seed. Food and electricity run
+                two DebateEngines in one process against the same scenario, so
+                without the name they would request identical seeds and the two
+                sectors would answer in unison.
         """
         self._agents = agents
         self._rag = rag
@@ -541,6 +545,24 @@ class DebateEngine:
         self._price_extractor = price_extractor or _extract_price
         self._data_brief = data_brief
         self._anchor_note = anchor_note
+        self._sector = sector
+
+    def _seed(self, *parts: object) -> int:
+        """Sampling seed for one call in this debate.
+
+        This path had no seed at all: every `llm.stream` call in the file omitted
+        it, so Ollama drew a fresh random seed per call at temperature 0.2. The
+        food and electricity numbers were unreproducible even when the gas number
+        stored on the same run row was seeded. ADR-002 covered the swarm and the
+        Forum and missed the two sectors that share their run.
+
+        Keyed on the vintage, like the swarm and the Forum, so it holds still for
+        as long as the pricing week does. See `swarm._vintage_seed` for why the
+        scenario itself is deliberately not in the key.
+        """
+        from ph_economic_ai.engine import vintage
+        v = vintage.vintage()
+        return llm.derive_seed(v['fuel_cycle'], v['day'], self._sector, *parts)
 
     def _scenario_text(self) -> str:
         s = self._scenario
@@ -600,7 +622,8 @@ class DebateEngine:
             for agent in self._agents:
                 messages = self._build_prompt(agent, round_num)
                 full_text = ''
-                for token in llm.stream(messages, tier=agent.tier, max_tokens=750):
+                for token in llm.stream(messages, tier=agent.tier, max_tokens=750,
+                                        seed=self._seed(agent.name, round_num)):
                     full_text += token
                     if on_token:
                         on_token(agent.name, token)
@@ -638,7 +661,11 @@ class DebateEngine:
             )},
         ]
         full_text = ''
-        for token in llm.stream(messages, tier=agent.tier):
+        # The question is part of the seed: two different follow-ups to one agent
+        # are two different calls, and seeding only on the agent would make the
+        # second answer a resample of the first.
+        for token in llm.stream(messages, tier=agent.tier,
+                                seed=self._seed('ask', agent_name, question)):
             full_text += token
             if on_token:
                 on_token(token)

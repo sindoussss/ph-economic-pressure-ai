@@ -14,6 +14,10 @@ _TRUST_INIT = 0.5
 _EMA_ALPHA  = 0.3
 _TRUST_MIN  = 0.05
 _TRUST_MAX  = 0.95
+# How fast a benched agent's trust returns to neutral, per run it sits out. Same
+# rate as the EMA that lowered it, so a bench lasts about as long as the run of
+# poor scores that earned it. See `recover_benched`.
+_BENCH_RECOVERY_ALPHA = 0.3
 
 # How far ahead a run is a forecast for, when the caller does not say. The app's
 # fuel question is "what happens to the price in the next week", so a run is graded
@@ -104,6 +108,25 @@ class AgentTrustStore:
             if col not in existing:
                 cur.execute(f'ALTER TABLE runs ADD COLUMN {col} {decl}')
 
+        # Recall. `run_key` is the vintage fingerprint from engine/vintage.py: the
+        # pricing week, the day, the quantised scenario and market inputs, and the
+        # model identity. It answers "have I already answered this exact question
+        # today", which the app previously could not ask at all -- eight runs on
+        # 2026-07-27 returned eight different numbers for an unchanged market.
+        #
+        # `verdict_json` is the answer itself, stored well enough to put the report
+        # back on screen without calling a model. The run row already had the three
+        # headline numbers, but not the regional verdicts, the dissent or the
+        # agreement basis, so a stored run could be summarised and not reopened.
+        for col, decl in (('run_key', 'TEXT'),
+                          ('verdict_json', 'TEXT')):
+            if col not in existing:
+                cur.execute(f'ALTER TABLE runs ADD COLUMN {col} {decl}')
+        # Recall reads by key, newest first, on every run. Without this it is a
+        # full scan of a table that grows by one row per run forever.
+        cur.execute(
+            'CREATE INDEX IF NOT EXISTS idx_runs_run_key ON runs(run_key)')
+
         # Observed prices over time. Without a history there is nothing to grade a
         # past run against except the present, which is the defect itself.
         cur.executescript('''
@@ -120,7 +143,9 @@ class AgentTrustStore:
                  confidence_pct: int, evidence: Optional[dict] = None,
                  run_seed: Optional[int] = None,
                  temperature: Optional[float] = None,
-                 horizon_days: float = DEFAULT_HORIZON_DAYS) -> int:
+                 horizon_days: float = DEFAULT_HORIZON_DAYS,
+                 run_key: Optional[str] = None,
+                 verdict: Optional[dict] = None) -> int:
         """Persist a run.
 
         `evidence` is what the agents actually retrieved, and `run_seed` /
@@ -133,6 +158,10 @@ class AgentTrustStore:
         `horizon_days` fixes the period the run is a forecast for, stored as
         `target_date`. Grading later scores the run against a price observed near
         that date rather than against whatever the price is when the grader runs.
+
+        `run_key` is the vintage fingerprint (engine/vintage.py) and `verdict` is
+        a snapshot of the answer complete enough to reopen the report without
+        calling a model. Together they are what `find_run_by_key` recalls.
         """
         with self._lock:
             now = datetime.now(timezone.utc)
@@ -140,15 +169,81 @@ class AgentTrustStore:
             cur = self._conn.execute(
                 'INSERT INTO runs (timestamp, scenario_json, final_estimate, '
                 'confidence_pct, evidence_json, run_seed, temperature, '
-                'target_date, horizon_days) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'target_date, horizon_days, run_key, verdict_json) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (now.isoformat(),
                  json.dumps(scenario), final_estimate, confidence_pct,
                  json.dumps(evidence, default=str) if evidence is not None else None,
-                 run_seed, temperature, target.isoformat(), float(horizon_days)),
+                 run_seed, temperature, target.isoformat(), float(horizon_days),
+                 run_key,
+                 json.dumps(verdict, default=str) if verdict is not None else None),
             )
             self._conn.commit()
             return cur.lastrowid
+
+    def get_run(self, run_id: int) -> Optional[dict]:
+        """One run row by id, or None.
+
+        The store had no single-row read at all: callers wanting one run pulled
+        `get_recent_runs(200)` and filtered in Python.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT * FROM runs WHERE run_id=?', (run_id,)).fetchone()
+        return dict(row) if row else None
+
+    def find_runs_by_key(self, run_key: str, limit: int = 8) -> list[dict]:
+        """Completed runs in one vintage bucket, newest first.
+
+        Returns candidates rather than a single answer because the key is
+        deliberately coarse: it narrows to "today, this pricing week, these
+        models", and the caller then checks whether the inputs actually match
+        within tolerance (see `vintage.inputs_unchanged`). A hash cannot express
+        "close enough" and a tolerance cannot be indexed, so the work is split.
+
+        "Completed" means the run reached a verdict worth showing again. A run
+        that crashed before producing an estimate is not an answer, and recalling
+        one would turn a transient failure into a permanent one for the rest of
+        the day: every later run would match the same key and be handed the same
+        blank. `verdict_json` is required for the same reason — a row from before
+        this feature has the headline numbers but not enough to rebuild the
+        report, and half a report presented as a recall is worse than re-running.
+        """
+        if not run_key:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT * FROM runs WHERE run_key=? AND final_estimate IS NOT NULL '
+                'AND verdict_json IS NOT NULL ORDER BY run_id DESC LIMIT ?',
+                (run_key, int(limit))).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_run_verdict(self, run_id: int) -> Optional[dict]:
+        """The stored verdict snapshot for a run, or None."""
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT verdict_json FROM runs WHERE run_id=?', (run_id,)).fetchone()
+        if row is None or row['verdict_json'] is None:
+            return None
+        try:
+            return json.loads(row['verdict_json'])
+        except (ValueError, TypeError):
+            return None
+
+    def attach_verdict(self, run_id: int, verdict: dict) -> None:
+        """Attach a verdict snapshot after the fact.
+
+        The gas run creates the row, but food and electricity finish later and on
+        their own threads, so the snapshot cannot be complete at insert time.
+        Until it is attached the row has no `verdict_json` and `find_run_by_key`
+        will not recall it, which is the correct behaviour for a run still in
+        flight.
+        """
+        with self._lock:
+            self._conn.execute(
+                'UPDATE runs SET verdict_json=? WHERE run_id=?',
+                (json.dumps(verdict, default=str), run_id))
+            self._conn.commit()
 
     def get_run_evidence(self, run_id: int) -> Optional[dict]:
         """The evidence a stored run saw, or None if it predates the column."""
@@ -405,6 +500,44 @@ class AgentTrustStore:
         with self._lock:
             self._update_trust_no_commit(agent_name, internal_score, accuracy_score)
             self._conn.commit()
+
+    def recover_benched(self, agent_name: str) -> float:
+        """Move a benched agent's trust back toward the neutral prior.
+
+        Trust is an EMA that only moves when an agent produces a response, so a
+        benched agent's score never moves again: it is benched because its trust
+        is low, and its trust stays low because it is benched. That ratchet is
+        not hypothetical. Seven of twenty swarm agents were frozen by it, all
+        carrying `last_updated` of 2026-07-27T14:28 while the thirteen still
+        running carried the current run's timestamp, and the groups they belonged
+        to shrank from five agents to three.
+
+        Absence is not evidence of being wrong, so trust decays toward neutral
+        rather than toward either extreme: the agent returns on probation, not
+        vindicated. `runs_participated` is deliberately not incremented and the
+        quality averages are untouched, because the agent did not run.
+
+        Returns the new trust score.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT trust_score FROM agent_trust WHERE agent_name=?', (agent_name,)
+            ).fetchone()
+            if row is None:
+                # Never scored, so nothing to recover from. It is already neutral.
+                return _TRUST_INIT
+            old = float(row['trust_score'])
+            new = old + _BENCH_RECOVERY_ALPHA * (_TRUST_INIT - old)
+            new = max(_TRUST_MIN, min(_TRUST_MAX, new))
+            self._conn.execute(
+                '''UPDATE agent_trust
+                   SET trust_score = ?, current_model_tier = ?, last_updated = ?
+                   WHERE agent_name = ?''',
+                (new, trust_tier(new), datetime.now(timezone.utc).isoformat(),
+                 agent_name),
+            )
+            self._conn.commit()
+            return new
 
     def close(self) -> None:
         self._conn.close()

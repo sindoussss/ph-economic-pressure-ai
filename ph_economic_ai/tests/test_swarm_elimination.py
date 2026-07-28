@@ -233,7 +233,20 @@ def test_agreement_is_centred_on_the_agents_not_the_judge():
     on_agents = swarm._robust_confidence_pct(agents, -2.0)
     assert on_anchor == on_agents, (
         'the judge estimate still moves the number; it must not')
-    assert on_anchor > 85, on_anchor
+
+
+def test_that_same_room_is_a_split_and_no_longer_reads_as_consensus():
+    """The assertion above used to end `assert on_anchor > 85`, and it passed at
+    93 percent — on data that is two clusters 0.85 apart.
+
+    That was the disqualified ±1.00 band showing up inside the test suite: a room
+    split into halves 0.85 apart was being asserted as near-unanimous. With the
+    band at 0.50, matching the Forum and the control study, the same estimates
+    read as the split they are.
+    """
+    agents = [-2.0, -2.0, -2.1, -1.9, -2.87, -2.8, -2.9, -2.0]
+    score = swarm._robust_confidence_pct(agents, None)
+    assert 55 <= score <= 75, score
 
 
 def test_a_unanimous_room_reads_one_hundred():

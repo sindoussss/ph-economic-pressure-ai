@@ -20,7 +20,7 @@ from typing import Optional
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from ph_economic_ai.engine import llm
+from ph_economic_ai.engine import llm, vintage
 
 # ── HTTP headers ──────────────────────────────────────────────────────────────
 _JSON_HEADERS = {
@@ -330,11 +330,22 @@ class LiveDataBrief:
 
         Agents receive actual live market numbers and official PH government
         news so they can cite specific data instead of making vague claims.
+
+        The header names the VINTAGE, not the minute. It used to print
+        `fetched_at`, which is minute resolution, into a block that prefixes
+        every agent, judge and master prompt in the run. A seed only reproduces
+        a call when the prompt is identical, so that one field made ADR-002's
+        reproducibility claim impossible to satisfy in principle: runs 21, 22 and
+        23 had identical scenarios and therefore identical seeds, and disagreed
+        by ₱1.54. The agents need to know which pricing week and which day they
+        are reasoning about; they have never needed the minute. `fetched_at` is
+        still kept on the object, for the report to show a human when the data
+        was pulled.
         """
         lines: list[str] = []
         lines.append('╔══════════════════════════════════════════════════╗')
         lines.append('║     LIVE PHILIPPINE ECONOMIC DATA BRIEF          ║')
-        lines.append(f'║     {self.fetched_at:<44}║')
+        lines.append(f'║     {vintage.describe_vintage():<44}║')
         lines.append('╚══════════════════════════════════════════════════╝')
         lines.append('')
 
