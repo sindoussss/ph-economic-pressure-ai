@@ -18,7 +18,10 @@ class KGNode:
 class KGEdge:
     src: str
     dst: str
-    kind: str          # retrieved|from_source|in_region|aggregates|claims|references|mentions|relates
+    # `retrieved` means the agent actually read this chunk, preserved from the run.
+    # `reconstructed` means it was re-derived by querying RAG afterwards and may not
+    # be what the agent saw. The two must stay distinguishable (RSK-019).
+    kind: str          # retrieved|reconstructed|from_source|in_region|aggregates|claims|references|mentions|relates
     weight: float = 1.0
 
 

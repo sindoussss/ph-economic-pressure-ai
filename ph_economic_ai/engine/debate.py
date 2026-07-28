@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -40,6 +40,15 @@ class AgentResponse:
     thinking: str
     statement: str
     price_estimate: Optional[float]  # ₱/L change; None if not parseable
+    # What THIS agent retrieved for THIS turn, captured at generation time.
+    #
+    # RSK-019: the knowledge graph used to rebuild its evidence edges by calling
+    # rag.query again when the graph was drawn. That answers "what would this agent
+    # retrieve now", not "what did it read", and the two diverge whenever the
+    # corpus, the embeddings, or top_k change. A graph that shows evidence the
+    # agent never saw is worse than one that shows none, because it looks like
+    # provenance.
+    retrieval: list = field(default_factory=list)
 
 
 DEFAULT_AGENTS: list[Agent] = [
@@ -411,6 +420,24 @@ _MAX_REALISTIC_ELEC_PHP_KWH = 3.0
 _MAX_REALISTIC_FUEL_PHP_L = 8.0
 
 
+# Tolerance-band phrases are instructions, not answers. "stay within +/-P1.00/L"
+# echoed from the calibration rule contains a signed peso amount, and the prose
+# fallback scraped the "-P1.00" out of it as an estimate. Stripped before any
+# matching so a band can never masquerade as a change.
+_TOLERANCE_BAND_RE = re.compile(
+    r'(?:±|\+/-|\+-|within\s*[+\-±/]*)\s*(?:₱|PHP|P)?\s*\d+(?:\.\d+)?'
+    r'(?:\s*/?\s*(?:L|kWh))?',
+    re.IGNORECASE)
+
+# Direction cues, used only to veto a contradictory unsigned parse.
+_DECREASE_CUES = re.compile(
+    r'\b(?:decreas|declin|drop|fall|fell|lower|down(?:ward)?|eas(?:e|es|ing)|reduc)',
+    re.IGNORECASE)
+_INCREASE_CUES = re.compile(
+    r'\b(?:increas|ris(?:e|es|ing)|rose|climb|up(?:ward|tick)?|hik|surg)',
+    re.IGNORECASE)
+
+
 def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
     """Read the value off the agent's final `ESTIMATE:` line.
 
@@ -428,6 +455,7 @@ def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
     missing plus. Relaxing it raises the misparse risk in exchange, which is what
     the per-sector plausibility ceilings exist to absorb.
     """
+    text = _TOLERANCE_BAND_RE.sub(' ', text)
     hits = re.findall(
         rf'ESTIMATE\s*:\s*\**\s*([+\-])?\s*{unit_pattern}',
         text,
@@ -436,6 +464,14 @@ def _last_estimate_match(text: str, unit_pattern: str) -> Optional[float]:
     if not hits:
         return None
     sign, raw = hits[-1]
+    if not sign:
+        # Unsigned defaults to positive — but not when the agent's own words argue
+        # a fall. A live run produced est=+1.0 from an agent among all-negatives:
+        # an unsigned number stamped positive against the statement's direction
+        # becomes the outlier that drags the centre and the agreement metric.
+        # Refusing (None) loses one data point; guessing poisons the consensus.
+        if _DECREASE_CUES.search(text) and not _INCREASE_CUES.search(text):
+            return None
     return (-1 if sign == '-' else 1) * float(raw)
 
 
@@ -449,7 +485,7 @@ def _extract_price(text: str) -> Optional[float]:
     anchored = _last_estimate_match(text, r'(?:₱|PHP|P)?\s*(\d+\.?\d*)')
     if anchored is not None:
         return anchored
-    m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', text)
+    m = re.search(r'([+\-])\s*₱(\d+\.?\d*)', _TOLERANCE_BAND_RE.sub(' ', text))
     if m:
         sign = -1 if m.group(1) == '-' else 1
         return sign * float(m.group(2))

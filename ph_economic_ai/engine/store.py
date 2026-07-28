@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +14,16 @@ _TRUST_INIT = 0.5
 _EMA_ALPHA  = 0.3
 _TRUST_MIN  = 0.05
 _TRUST_MAX  = 0.95
+
+# How far ahead a run is a forecast for, when the caller does not say. The app's
+# fuel question is "what happens to the price in the next week", so a run is graded
+# against a price observed around seven days out, not against whatever the price is
+# on the day the grader happens to run (RSK-018).
+DEFAULT_HORIZON_DAYS = 7.0
+# How far from `target_date` an observation may sit and still be considered a fair
+# grade for that run. DOE prices move weekly, so a few days either side is the
+# matching period; beyond that the observation is measuring a different week.
+GRADE_TOLERANCE_DAYS = 3.5
 
 
 class AgentTrustStore:
@@ -81,6 +91,27 @@ class AgentTrustStore:
                           ('temperature', 'REAL')):
             if col not in existing:
                 cur.execute(f'ALTER TABLE runs ADD COLUMN {col} {decl}')
+
+        # Horizon matching (RSK-018). Grading used to score every ungraded run
+        # against whatever the price happened to be on the day the grader ran, so a
+        # five-day-old forecast and a sixty-day-old one were judged against the same
+        # number. `target_date` records the period a run is actually a forecast FOR,
+        # and `graded_against` records which observation it was finally scored on,
+        # so a grade can be audited rather than trusted.
+        for col, decl in (('target_date', 'TEXT'),
+                          ('horizon_days', 'REAL'),
+                          ('graded_against', 'TEXT')):
+            if col not in existing:
+                cur.execute(f'ALTER TABLE runs ADD COLUMN {col} {decl}')
+
+        # Observed prices over time. Without a history there is nothing to grade a
+        # past run against except the present, which is the defect itself.
+        cur.executescript('''
+            CREATE TABLE IF NOT EXISTS price_observations (
+                observed_at TEXT PRIMARY KEY,
+                price       REAL NOT NULL
+            );
+        ''')
         self._conn.commit()
 
     # ── Run persistence ───────────────────────────────────────────────────────
@@ -88,7 +119,8 @@ class AgentTrustStore:
     def save_run(self, scenario: dict, final_estimate: Optional[float],
                  confidence_pct: int, evidence: Optional[dict] = None,
                  run_seed: Optional[int] = None,
-                 temperature: Optional[float] = None) -> int:
+                 temperature: Optional[float] = None,
+                 horizon_days: float = DEFAULT_HORIZON_DAYS) -> int:
         """Persist a run.
 
         `evidence` is what the agents actually retrieved, and `run_seed` /
@@ -97,16 +129,23 @@ class AgentTrustStore:
         scenario against different retrieved text, or against an unseeded sampler,
         legitimately produces a different answer. All three are optional so older
         callers and existing rows stay valid.
+
+        `horizon_days` fixes the period the run is a forecast for, stored as
+        `target_date`. Grading later scores the run against a price observed near
+        that date rather than against whatever the price is when the grader runs.
         """
         with self._lock:
+            now = datetime.now(timezone.utc)
+            target = now + timedelta(days=float(horizon_days))
             cur = self._conn.execute(
                 'INSERT INTO runs (timestamp, scenario_json, final_estimate, '
-                'confidence_pct, evidence_json, run_seed, temperature) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (datetime.now(timezone.utc).isoformat(),
+                'confidence_pct, evidence_json, run_seed, temperature, '
+                'target_date, horizon_days) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (now.isoformat(),
                  json.dumps(scenario), final_estimate, confidence_pct,
                  json.dumps(evidence, default=str) if evidence is not None else None,
-                 run_seed, temperature),
+                 run_seed, temperature, target.isoformat(), float(horizon_days)),
             )
             self._conn.commit()
             return cur.lastrowid
@@ -182,8 +221,86 @@ class AgentTrustStore:
                 )
             return [dict(row) for row in cur.fetchall()]
 
-    def apply_ground_truth_grade(self, run_id: int, actual_change: float) -> None:
-        """Grade a run against actual DOE price change, update agent trust."""
+    # ── Observed prices, for horizon-matched grading ──────────────────────────
+
+    def record_price_observation(self, price: float, observed_at=None) -> None:
+        """Store an observed price so past runs can be graded against their own
+        period instead of against the present."""
+        when = (observed_at or datetime.now(timezone.utc))
+        stamp = when.isoformat() if hasattr(when, 'isoformat') else str(when)
+        with self._lock:
+            self._conn.execute(
+                'INSERT OR REPLACE INTO price_observations (observed_at, price) '
+                'VALUES (?, ?)', (stamp, float(price)))
+            self._conn.commit()
+
+    def price_near(self, target_date, tolerance_days: float = GRADE_TOLERANCE_DAYS):
+        """The observation closest to `target_date`, or None if none is close enough.
+
+        Returning None is the point. A run whose period has no matching observation
+        stays ungraded rather than being scored against a price from a different
+        week, which is what produced misleading trust and accuracy views.
+        """
+        stamp = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT observed_at, price, '
+                '  ABS(julianday(observed_at) - julianday(?)) AS gap '
+                'FROM price_observations ORDER BY gap ASC LIMIT 1', (stamp,)
+            ).fetchone()
+        if row is None or row['gap'] is None or row['gap'] > tolerance_days:
+            return None
+        return {'observed_at': row['observed_at'], 'price': float(row['price']),
+                'gap_days': float(row['gap'])}
+
+    def get_due_runs(self) -> list[dict]:
+        """Ungraded runs whose forecast period has actually elapsed.
+
+        Rows written before `target_date` existed fall back to
+        `timestamp + horizon`, so legacy runs are still gradable but on the same
+        horizon-matched terms.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM runs WHERE actual_price_change IS NULL AND "
+                "julianday('now') >= julianday("
+                "  COALESCE(target_date, datetime(timestamp, '+' || ? || ' days')))",
+                (DEFAULT_HORIZON_DAYS,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_graded_errors(self, limit: int = 200) -> list[float]:
+        """Absolute errors of graded runs, newest first.
+
+        These feed the conformal band in `engine/interval.py`. They are only
+        meaningful because grading is horizon-matched (RSK-018): each error
+        compares a run against a price observed near its own target date, so the
+        band is calibrated to the question the app actually answers.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT accuracy_error FROM runs '
+                'WHERE accuracy_error IS NOT NULL '
+                'ORDER BY graded_at DESC LIMIT ?', (int(limit),)
+            ).fetchall()
+        return [float(r['accuracy_error']) for r in rows]
+
+    def effective_target_date(self, run: dict) -> str:
+        """The period a run is a forecast for, inferring it for legacy rows."""
+        if run.get('target_date'):
+            return run['target_date']
+        stamp = run['timestamp']
+        base = datetime.fromisoformat(stamp)
+        horizon = run.get('horizon_days') or DEFAULT_HORIZON_DAYS
+        return (base + timedelta(days=float(horizon))).isoformat()
+
+    def apply_ground_truth_grade(self, run_id: int, actual_change: float,
+                                 graded_against: Optional[str] = None) -> None:
+        """Grade a run against actual DOE price change, update agent trust.
+
+        `graded_against` records WHICH observation was used, so a grade can be
+        audited later rather than taken on trust.
+        """
         with self._lock:
             row = self._conn.execute(
                 'SELECT * FROM runs WHERE run_id=?', (run_id,)
@@ -196,9 +313,10 @@ class AgentTrustStore:
             final_est = row['final_estimate']
             error = abs(final_est - actual_change) if final_est is not None else None
             self._conn.execute(
-                'UPDATE runs SET actual_price_change=?, accuracy_error=?, graded_at=? '
-                'WHERE run_id=?',
-                (actual_change, error, datetime.now(timezone.utc).isoformat(), run_id),
+                'UPDATE runs SET actual_price_change=?, accuracy_error=?, graded_at=?, '
+                'graded_against=? WHERE run_id=?',
+                (actual_change, error, datetime.now(timezone.utc).isoformat(),
+                 graded_against, run_id),
             )
             # Grade each agent response — use no-commit helper for atomicity
             cur = self._conn.execute(

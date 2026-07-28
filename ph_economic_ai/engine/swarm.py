@@ -6,6 +6,7 @@ import logging
 import re
 import statistics
 import threading
+import traceback
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -159,14 +160,36 @@ def parse_fuel_estimate(text: str) -> tuple[Optional[float], Optional[float]]:
     a distinction the report previously collapsed into a bare em dash.
     """
     estimate = None
+    # Tolerance-band echoes ("stay within +/-P1.00/L") contain peso amounts that
+    # are instructions, not answers — stripped before any matching.
+    from ph_economic_ai.engine.debate import _TOLERANCE_BAND_RE
+    text = _TOLERANCE_BAND_RE.sub(' ', text)
+    # The currency symbol may come BEFORE the sign. A model writing the peso
+    # naturally produces "ESTIMATE: PHP-0.50/L", which the sign-first pattern
+    # missed entirely, and a missed estimate is not a small loss: it makes
+    # compute_combined_score return 0.0, so an entire group ties at 0.00 and the
+    # elimination bracket stops measuring anything. Word forms are accepted for
+    # the same reason.
     estimate_lines = re.findall(
-        r'ESTIMATE\s*:\s*([+\-])\s*(?:₱|PHP|P|â‚±)?\s*(\d+(?:\.\d+)?)\s*/?\s*L?',
+        r'ESTIMATE\s*:\s*\**\s*(?:₱|PHP|P|â‚±)?\s*'
+        r'([+\-]|minus|plus)?\s*(?:₱|PHP|P|â‚±)?\s*'
+        r'(\d+(?:\.\d+)?)\s*/?\s*(?:PHP)?\s*L?',
         text,
         flags=re.IGNORECASE,
     )
     if estimate_lines:
         sign, raw = estimate_lines[-1]
-        estimate = (-1 if sign == '-' else 1) * float(raw)
+        if not sign.strip():
+            # Unsigned defaults to positive, EXCEPT when the agent's own words
+            # argue a fall — then the parse contradicts the statement and is
+            # refused rather than guessed. This is the +1.0-among-all-negatives
+            # artifact from a live run: one stamped-positive unsigned number
+            # became the outlier that dragged the centre and the agreement.
+            from ph_economic_ai.engine.debate import _DECREASE_CUES, _INCREASE_CUES
+            if _DECREASE_CUES.search(text) and not _INCREASE_CUES.search(text):
+                return None, None
+        negative = sign.strip().lower() in ('-', 'minus')
+        estimate = (-1 if negative else 1) * float(raw)
     else:
         estimate = _extract_price(text)
 
@@ -212,26 +235,46 @@ def _robust_confidence_pct(estimates: list[float], final_estimate: Optional[floa
     estimates cluster around the master verdict.
     """
     valid = [e for e in estimates if _is_realistic_fuel_change(e)]
-    if _is_realistic_fuel_change(final_estimate):
-        center = float(final_estimate)
-    elif valid:
-        center = statistics.median(valid)
-    else:
+    if not valid:
         return 0
+    # Centre on the AGENTS, not on the judge's verdict.
+    #
+    # This used to centre on `final_estimate`. That number is anchored: when the
+    # agents produce nothing usable, or the magnitude guard clamps them, it is
+    # pulled onto the mechanical pass-through. Agreement then measured "how close
+    # are the agents to the anchor", not "do the agents agree with each other",
+    # while the card labelled it agent agreement. Measured on a live run with the
+    # agents clustered near -2.0 and the judge on the anchor at -1.03, the same
+    # estimates scored 65 percent against the judge and 93 percent against
+    # themselves: a 28-point artefact.
+    #
+    # Medoid rather than median, matching the Forum: models quote on a coarse
+    # grid, so an abstract median can land in a gap between clusters where the
+    # band reaches nobody. The centre of a consensus measure has to be a value an
+    # agent actually gave.
+    center = min(valid, key=lambda c: (sum(abs(e - c) for e in valid), c))
 
     if len(valid) < 2:
         return 65 if valid else 0
 
     close = [e for e in valid if abs(e - center) <= 1.00]
     near = [e for e in valid if abs(e - center) <= 1.50]
-    usable = close or near or valid
-    spread = statistics.pstdev(usable) if len(usable) > 1 else 0.0
+    # Spread over the WHOLE room, not just the agreeing subset. Measuring it on
+    # `close` only asked "how tight are the agents who already agree", which is
+    # near-tautological: a room split 50/50 into two tight clusters scored 61
+    # percent because the half inside the band was compact. Over all estimates
+    # the same split reads 38 percent, which is what a split should read.
+    spread = statistics.pstdev(valid) if len(valid) > 1 else 0.0
 
     agreement_score = len(close) / len(valid)
     near_score = len(near) / len(valid)
     spread_score = max(0.0, 1.0 - min(spread / 1.50, 1.0))
     confidence = 0.50 * agreement_score + 0.25 * near_score + 0.25 * spread_score
-    return max(10, min(95, int(round(confidence * 100))))
+    # No artificial floor or ceiling. A 10 percent floor overstates a room that
+    # genuinely agrees on nothing, and a 95 percent cap understates one that is
+    # unanimous -- the Forum reports both honestly and these two halves of the app
+    # should not disagree about what 100 percent means.
+    return int(round(confidence * 100))
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
@@ -294,12 +337,29 @@ class MasterVerdict:
 
 
 # ── RAG source assignments per role ───────────────────────────────────────────
+# Every role READS every source. The role still SPEAKS to its own lane, which is
+# where the diversity of a swarm actually comes from.
+#
+# Splitting the corpus by role made agents disagree because they were shown
+# different facts, which is information asymmetry rather than analysis. The
+# ConfidenceScorer saw 2 of 6 sources while scoring everyone else's confidence,
+# and the Forecaster never saw BusinessWorld or ManilaBulletin at all. Agents
+# cannot converge on evidence they were never given, and a disagreement caused by
+# a missing document is not a signal about the economy.
+#
+# Diversity is preserved by RESPONSIBILITY (the role prompt), not by IGNORANCE
+# (a withheld document). If this ever collapses the roster into one voice, the
+# fix is a stronger role prompt, not a narrower corpus -- statement diversity is
+# measured alongside agreement whenever this is changed.
+_ALL_FUEL_SOURCES = ['DOEBulletin', 'PHRetailFuel', 'YahooFinanceCrude',
+                     'YahooFinanceForex', 'ManilaBulletin', 'BusinessWorld',
+                     'neda_2024_2026']
 _ROLE_RAG: dict[str, list[str]] = {
-    'Forecaster':       ['DOEBulletin', 'PHRetailFuel', 'YahooFinanceCrude', 'YahooFinanceForex'],
-    'DataExtractor':    ['DOEBulletin', 'PHRetailFuel', 'YahooFinanceCrude', 'ManilaBulletin'],
-    'Synthesizer':      ['PHRetailFuel', 'neda_2024_2026', 'YahooFinanceForex'],
-    'Critic':           ['DOEBulletin', 'BusinessWorld', 'ManilaBulletin'],
-    'ConfidenceScorer': ['neda_2024_2026', 'BusinessWorld'],
+    'Forecaster':       list(_ALL_FUEL_SOURCES),
+    'DataExtractor':    list(_ALL_FUEL_SOURCES),
+    'Synthesizer':      list(_ALL_FUEL_SOURCES),
+    'Critic':           list(_ALL_FUEL_SOURCES),
+    'ConfidenceScorer': list(_ALL_FUEL_SOURCES),
 }
 
 
@@ -443,24 +503,51 @@ def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> lis
 
 # ── Scoring utilities ─────────────────────────────────────────────────────────
 
+# Separator a model actually writes between the name and the number. The prompt
+# asks for a colon; models routinely use a dash, an en dash, or an equals sign,
+# and often wrap the label in markdown bold.
+_SEP = r'[:\-–—=]'
+_MD = r'[\*_`\s]*'
+
+
 def _parse_scores(text: str, agent_names: list[str]) -> dict[str, float]:
-    """Parse 'SCORE: <name>: X' lines. Missing agents default to 0.5."""
+    """Parse 'SCORE: <name>: X' lines. Missing agents default to 0.5.
+
+    Deliberately tolerant. When this parser misses, EVERY agent falls back to 0.5,
+    every combined score becomes exactly 0.50, and the elimination bracket stops
+    measuring anything -- which is what a live run showed. Strictness here does
+    not make the tournament more rigorous, it makes it silently random, so an
+    "8/10" or a dash separator is accepted rather than discarded.
+    """
     result = {}
     for name in agent_names:
-        m = re.search(rf'SCORE:\s*{re.escape(name)}:\s*(\d+(?:\.\d+)?)', text, re.IGNORECASE)
+        m = re.search(
+            rf'SCORE{_MD}{_SEP}?{_MD}{re.escape(name)}{_MD}{_SEP}{_MD}'
+            rf'(\d+(?:\.\d+)?)\s*(?:/\s*10)?',
+            text, re.IGNORECASE)
         result[name] = min(float(m.group(1)), 10.0) / 10.0 if m else 0.5
     return result
 
 
 def _parse_confidence(text: str, agent_names: list[str]) -> dict[str, float]:
-    """Parse 'CONFIDENCE: <name>: 0.XX' lines. Missing agents default to 0.5."""
+    """Parse 'CONFIDENCE: <name>: 0.XX' lines. Missing agents default to 0.5.
+
+    Same tolerance as `_parse_scores`, plus percentages: a model asked for 0.85
+    frequently answers 85%.
+    """
     result = {}
     for name in agent_names:
         m = re.search(
-            rf'CONFIDENCE:\s*{re.escape(name)}:\s*(0?\.\d+|1\.0+)',
-            text, re.IGNORECASE,
-        )
-        result[name] = float(m.group(1)) if m else 0.5
+            rf'CONFIDENCE{_MD}{_SEP}?{_MD}{re.escape(name)}{_MD}{_SEP}{_MD}'
+            rf'(\d+(?:\.\d+)?)\s*(%?)',
+            text, re.IGNORECASE)
+        if not m:
+            result[name] = 0.5
+            continue
+        value = float(m.group(1))
+        if m.group(2) == '%' or value > 1.0:      # 85% or a bare 85
+            value /= 100.0
+        result[name] = max(0.0, min(1.0, value))
     return result
 
 
@@ -486,11 +573,56 @@ def compute_combined_score(
     return 0.4 * critic_score + 0.6 * (confidence * (1.0 - deviation_norm))
 
 
+def scores_are_degenerate(agents: list[SwarmAgent], tol: float = 1e-9) -> bool:
+    """True when the tournament failed to tell the agents apart.
+
+    Worth surfacing rather than hiding: if every combined score is equal, the
+    bracket is not selecting on quality, it is just removing whoever the tie-break
+    happens to reach.
+    """
+    if len(agents) < 2:
+        return False
+    scores = [a.combined_score for a in agents]
+    return (max(scores) - min(scores)) <= tol
+
+
+def _tie_key(agent: SwarmAgent) -> int:
+    """Role-neutral, reproducible tie-break.
+
+    NOT the agent's position in the list. `alive` is ordered by `_ROLE_ORDER`, and
+    Python's sort is stable, so a plain sort on a tie eliminated agents in role
+    order: Forecaster first, every single run, leaving ConfidenceScorer as the
+    winner by construction. That is a structural bias against exactly the role the
+    product exists to run, and it fires whenever the Critic and ConfidenceScorer
+    produce no parseable scores, which makes every combined score 0.50.
+
+    Hashing the name keeps runs reproducible (ADR-002) without letting a hardcoded
+    role list decide who survives.
+    """
+    return llm.derive_seed('tiebreak', agent.name)
+
+
 def eliminate_bottom_n(
     agents: list[SwarmAgent], n: int
 ) -> tuple[list[SwarmAgent], list[SwarmAgent]]:
-    """Sort by combined_score ascending; remove bottom n. Returns (survivors, eliminated)."""
-    sorted_agents = sorted(agents, key=lambda a: a.combined_score)
+    """Sort by combined_score ascending; remove bottom n. Returns (survivors, eliminated).
+
+    Ties are broken by a hash of the agent name rather than by list position, so
+    elimination cannot be decided by where a role sits in `_ROLE_ORDER`.
+
+    At least one agent always survives. `_BRACKET` removes 2 then 2, which assumes
+    a group of exactly `len(_ROLE_ORDER)`. That assumption is not guaranteed:
+    `evolved_agents` replaces the whole roster, so a group can arrive with fewer.
+    Four eliminations from a group of four left the list empty and the arena then
+    raised `IndexError: list index out of range` from `alive[0]`, with the
+    traceback discarded by the per-group handler. Clamping here makes the bracket
+    correct for any roster size instead of only the default one.
+    """
+    if not agents:
+        return [], []
+    keep_at_least = 1
+    n = max(0, min(n, len(agents) - keep_at_least))
+    sorted_agents = sorted(agents, key=lambda a: (a.combined_score, _tie_key(a)))
     eliminated = sorted_agents[:n]
     survivors = sorted_agents[n:]
     for e in eliminated:
@@ -545,15 +677,27 @@ class GroupArena:
             return ''
 
     def _calibration_rule(self) -> str:
-        anchor_text = self._ml_baseline or 'the ML anchor if supplied by the prompt'
-        return (
-            "\nCALIBRATION RULE:\n"
-            f"- Treat {anchor_text} as the center of gravity for the forecast.\n"
-            "- Your estimate should normally stay within +/-P1.00/L of the ML anchor.\n"
-            "- You may leave that band only if you cite a specific DATA BRIEF figure "
-            "or peer argument explaining why.\n"
+        """Output constraints, plus anchor guidance only when an anchor exists.
+
+        This used to emit the anchor bullets unconditionally, falling back to the
+        literal phrase "the ML anchor if supplied by the prompt". Agents were told
+        to treat that sentence as their centre of gravity and to stay within
+        +/-P1.00/L of it, which is not a rule so much as a dangling pointer. The
+        format constraints below are always meaningful; the anchor ones are not.
+        """
+        always = (
             "- Do not output absolute pump prices. Output only the next price CHANGE.\n"
             f"- Any estimate outside +/-P{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L is invalid.\n"
+        )
+        if not self._ml_baseline:
+            return "\nOUTPUT RULE:\n" + always
+        return (
+            "\nCALIBRATION RULE:\n"
+            f"- Treat {self._ml_baseline} as the center of gravity for the forecast.\n"
+            "- Your estimate should normally stay within +/-P1.00/L of that anchor.\n"
+            "- You may leave that band only if you cite a specific DATA BRIEF figure "
+            "or peer argument explaining why.\n"
+            + always
         )
 
     def _reconciliation_rule(self) -> str:
@@ -583,6 +727,12 @@ class GroupArena:
     ) -> list[dict]:
         scenario_text = self._scenario_text()
         chunks = self._rag.query(scenario_text, top_k=3, sources=agent.rag_sources)
+        # Preserved verbatim on the response so the graph can show what was read
+        # rather than re-deriving it later (RSK-019).
+        self._last_retrieval = [
+            {'source': c.get('source', '?'), 'text': c.get('text', '')}
+            for c in (chunks or [])
+        ]
         rag_text = '\n'.join(
             f"[{c['source']}] {c['text'][:200]}" for c in chunks
         ) or 'No context.'
@@ -638,6 +788,7 @@ class GroupArena:
             thinking=thinking,
             statement=statement,
             price_estimate=_extract_fuel_change(statement),
+            retrieval=list(getattr(self, '_last_retrieval', [])),
         )
 
     def run(self) -> GroupSurvivor:
@@ -652,8 +803,11 @@ class GroupArena:
                 for agent in alive:
                     messages = self._build_prompt(agent, round_num, round_responses)
                     resp = self._call_agent(agent, messages)
+                    # Carry `retrieval` across: rebuilding positionally dropped it
+                    # and sent the graph back to reconstructing evidence (RSK-019).
                     resp = AgentResponse(agent.name, round_num, resp.thinking,
-                                         resp.statement, resp.price_estimate)
+                                         resp.statement, resp.price_estimate,
+                                         retrieval=list(resp.retrieval or []))
                     round_responses.append(resp)
                 self._history.extend(round_responses)
             else:
@@ -663,7 +817,8 @@ class GroupArena:
                     msgs = self._build_prompt(agent, rn, [])
                     resp = self._call_agent(agent, msgs)
                     return AgentResponse(agent.name, rn, resp.thinking,
-                                         resp.statement, resp.price_estimate)
+                                         resp.statement, resp.price_estimate,
+                                         retrieval=list(resp.retrieval or []))
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=len(alive)) as pool:
                     futs = {pool.submit(_call_one, a): a for a in alive}
@@ -703,6 +858,21 @@ class GroupArena:
                     group_estimates=group_estimates,
                 )
 
+            degenerate = scores_are_degenerate(alive)
+            if degenerate:
+                # Every agent scored identically, so this round removes agents
+                # without measuring anything. Say so rather than let the bracket
+                # look like a quality tournament.
+                logging.warning(
+                    'swarm group %s round %s: all combined scores equal (%.2f); '
+                    'the Critic and ConfidenceScorer produced no parseable scores, '
+                    'so this elimination is arbitrary',
+                    self._group_id, round_num,
+                    alive[0].combined_score if alive else float('nan'))
+                if self._on_event:
+                    self._on_event('scoring_degenerate', self._group_id, round_num,
+                                   len(alive))
+
             alive, eliminated = eliminate_bottom_n(alive, n=n_eliminate)
 
             for e in eliminated:
@@ -714,10 +884,21 @@ class GroupArena:
                 self._on_event('group_round_done', self._group_id, round_num,
                                list(round_responses))
 
+        if not alive:
+            # Unreachable now that eliminate_bottom_n keeps one, but stated so a
+            # future bracket change fails with a diagnosable message rather than a
+            # bare IndexError from a worker thread.
+            raise RuntimeError(
+                f'swarm group {self._group_id}: the bracket eliminated every agent; '
+                f'started with {len(self._agents)} and _BRACKET removes '
+                f'{sum(n for _, n in _BRACKET)}')
         winner = alive[0]
         winner_resp = next(
-            r for r in reversed(self._history) if r.agent_name == winner.name
-        )
+            (r for r in reversed(self._history) if r.agent_name == winner.name), None)
+        if winner_resp is None:
+            raise RuntimeError(
+                f'swarm group {self._group_id}: winner {winner.name!r} has no response '
+                f'in a history of {len(self._history)} turns')
         survivor = GroupSurvivor(
             group_id=self._group_id,
             region_name=winner.region_name,
@@ -954,17 +1135,40 @@ class MasterJudge:
         reconciled = anchoring.reconcile_estimate(model_estimate, self._anchor)
         final_estimate = reconciled.value
 
-        # Collect all estimates: group survivors + regional judges + master final
-        all_estimates: list[float] = [
-            s.response.price_estimate
-            for s in self._survivors
-            if _is_realistic_fuel_change(s.response.price_estimate)
-        ]
-        all_estimates += [v.estimate for v in self._verdicts if _is_realistic_fuel_change(v.estimate)]
-        if _is_realistic_fuel_change(final_estimate):
-            all_estimates.append(final_estimate)
+        # Agreement is measured WITHIN a region, then averaged across regions.
+        #
+        # Pooling every estimate counted a designed difference as a disagreement.
+        # Regions carry a freight multiplier (NCR 1.00, Ilocos 1.05, and so on), so
+        # a Davao estimate is SUPPOSED to differ from an NCR one; folding both into
+        # one spread reports geography as analytical conflict. A live run showed
+        # NCR at 96 percent and Davao at 58 percent internally, pooling to 43 --
+        # a number lower than either region, which is not a thing "agent agreement"
+        # can honestly mean.
+        #
+        # Cross-region disagreement is not lost: it is already reported separately
+        # as `dissenting`, so pooling was also double-counting it.
+        per_region: list[int] = []
+        for verdict in self._verdicts:
+            # judge_id indexes REGION_PAIRS, which holds the group ids this judge
+            # covers. RegionalVerdict carries no group list of its own.
+            pair = (REGION_PAIRS[verdict.judge_id]
+                    if 0 <= verdict.judge_id < len(REGION_PAIRS) else ())
+            members = [s.response.price_estimate for s in self._survivors
+                       if s.group_id in pair
+                       and _is_realistic_fuel_change(s.response.price_estimate)]
+            if len(members) >= 2:
+                per_region.append(_robust_confidence_pct(members, None))
 
-        confidence_pct = _robust_confidence_pct(all_estimates, final_estimate)
+        if per_region:
+            confidence_pct = int(round(statistics.mean(per_region)))
+        else:
+            # Too few survivors per region to measure within-region agreement.
+            # Fall back to the pooled figure rather than reporting nothing.
+            all_estimates = [s.response.price_estimate for s in self._survivors
+                             if _is_realistic_fuel_change(s.response.price_estimate)]
+            all_estimates += [v.estimate for v in self._verdicts
+                              if _is_realistic_fuel_change(v.estimate)]
+            confidence_pct = _robust_confidence_pct(all_estimates, None)
 
         dissenting = [
             ' & '.join(v.region_pair)
@@ -1053,8 +1257,14 @@ class SwarmOrchestrator:
                         group_histories[group_id] = list(arena._history)
                         all_arena_responses.extend(arena._history)
                 except Exception as e:
+                    # Keep the traceback. "Group 0: list index out of range" with
+                    # no location is not a diagnosable error report, and this runs
+                    # on a worker thread where the traceback is otherwise lost.
+                    logging.exception('swarm group %s failed', group_id)
+                    tb = traceback.extract_tb(e.__traceback__)
+                    where = f' at {tb[-1].filename.split("/")[-1]}:{tb[-1].lineno}' if tb else ''
                     with lock:
-                        errors.append(f"Group {group_id}: {e}")
+                        errors.append(f"Group {group_id}: {type(e).__name__}: {e}{where}")
 
         threads = [threading.Thread(target=run_group, args=(i,))
                    for i in range(n_groups)]
