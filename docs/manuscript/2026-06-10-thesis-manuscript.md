@@ -1,9 +1,21 @@
 # Mind Which Naive: How the Choice of Baseline Decides a Predictability Verdict — with a Reproducible Audit of Philippine Fuel, FX, and Inflation
 
 **Author:** Sindous
-**Draft:** 2026-06-10 · grounded in the frozen `ph_economic_ai/benchmark/artifacts/accuracy_report.json` and companion tables.
-**Companion note:** the methodological result of §4.7, §5.10 and §5.11 is also written up standalone, without the Philippine application, in [`2026-07-26-baseline-specification-note.md`](2026-07-26-baseline-specification-note.md). The two are intended to coexist: this manuscript develops the result in full as its methodological spine, the note is the extractable version for a forecasting venue. Both draw on the same frozen artifacts, so their numbers cannot diverge.
-**Status:** Draft. All empirical values are taken verbatim from committed artifacts; the §1.1 macro figures (2022–2025 episode) are drawn from PSA and BSP releases, cited under *Primary institutional and data sources* in the References (specific release reference numbers to be confirmed in the final version).
+**Draft:** 2026-06-10 · results text still reflects the artifact set frozen before the 2026-07-28 calendar correction. See the divergence notice below.
+**Companion note:** the methodological result of §4.7, §5.10 and §5.11 is also written up standalone, without the Philippine application, in [`2026-07-26-baseline-specification-note.md`](2026-07-26-baseline-specification-note.md). The two are intended to coexist: this manuscript develops the result in full as its methodological spine, the note is the extractable version for a forecasting venue. Both are checked against the same artifacts by `python -m ph_economic_ai.benchmark.manuscript_check`, so divergence between them is detected rather than assumed away.
+**Status:** Draft, **not consistent with the current artifacts**. The §1.1 macro figures (2022–2025 episode) are drawn from PSA and BSP releases, cited under *Primary institutional and data sources* in the References (specific release reference numbers to be confirmed in the final version).
+
+> ### ARTIFACT-DIVERGENCE notice (2026-07-28, partially reconciled)
+>
+> The calendar correction of 2026-07-28 rebuilt every monthly panel on a complete month index, which recovered months that had been silently dropped and changed every sample size in this document.
+>
+> **Reconciled.** All 53 stale sample sizes have been corrected against the committed artifacts (n = 51/52 → 72, 61 → 82, 77 → 97, 79 → 99, 143 → 190, 145 → 197, 151 → 203, plus the sentiment and anchor windows). The companion note is fully consistent. Correcting a sample size is factual accuracy, not reinterpretation, so it did not wait on Gate 3.
+>
+> **Outstanding, and it needs an authorial decision.** The `fuel` audit verdict moved from `efficient` to `predictable`, and on the efficiency panel Ridge now beats the random walk by +16.1% (DM p = 0.009) where it previously scored −0.9% (p = 0.881). §5.2 and the new §5.2.1 state this accurately and report it as exploratory. **The abstract, §1, §6 and the summary tables still describe the predictability map as uniformly negative.** That framing is the thesis's central claim, and revising it is a judgement about what the paper argues, not a number to be substituted — so it has deliberately been left to the author rather than rewritten mechanically.
+>
+> The automated check reports the remaining divergences as `verdict` mismatches, which is the correct signal: the numbers now agree and the narrative does not yet.
+>
+> Reproduce with `python -m ph_economic_ai.benchmark.manuscript_check`.
 
 ---
 
@@ -15,7 +27,7 @@ That last qualification is the thesis's principal methodological contribution, a
 
 That the mean belongs in such a pool follows from existing work on baseline choice; what this thesis adds is the magnitude. For a covariance-stationary target with lag-1 autocorrelation ρ, a forecaster carrying no information beyond the unconditional mean shows an apparent skill over the random walk of **S(ρ) = 1 − [2(1 − ρ)]^(−1/2)**, positive exactly when ρ < ½ and ≈ +29% at ρ = 0. The expression matches simulation through the audit's own backtest to ≤ 0.011, and predicts the observed mean-versus-random-walk gap on all five real targets to ≤ 0.022. Inverted it becomes a diagnostic: the +28.3% electricity edge implies ρ ≈ 0.027, and electricity month-on-month inflation measures ρ = +0.002 — the flagship finding is fully accounted for by the target's own autocorrelation, with no driver, model, or mechanism required. With the mean in the pool every positive becomes a null (electricity Ridge is **1.8% worse than a constant**, p = 0.37; headline inflation falls from +16.2% to +4.1%, p = 0.36). A symmetry check confirms the correction cannot manufacture false negatives: on persistent level series ρ exceeds ½, the mean scores −1.7 to −2.1, and the forecasting nulls are untouched.
 
-A size study quantifies the consequence: on simulated targets containing no signal at all, the mean-free protocol returns a significant "edge" in **99.7%** of replications at ρ = 0 and n = 151, against a nominal 5%. The distortion vanishes above ρ = ½ — the crossover the closed form predicts — and, critically, it *grows with sample size*, so the reflexive robustness response of re-running on a longer sample amplifies the error rather than exposing it. Adding the mean restores correct size (0.0% across every cell) while retaining power to detect a genuine driver (80.7% at n = 151). The exposure is not specific to Philippine data: a census of **FRED-MD**, the standard US macro panel, finds **80.2%** of its 126 series sit below the ρ = ½ crossover once the recommended stationarity transformation is applied — including **every** differenced series and 92% of growth rates, while no series left in levels is affected. Differencing removes exactly the persistence that makes a random walk a valid benchmark. Because S(ρ) is a property of the target rather than of the estimation, the artifact neither decays out of sample nor varies across sub-samples, and is unaffected by multiple-comparison correction — so a stack of robustness checks that all condition on the baseline offers the reassurance of five checks and the coverage of one.
+A size study quantifies the consequence: on simulated targets containing no signal at all, the mean-free protocol returns a significant "edge" in **99.7%** of replications at ρ = 0 and n = 203, against a nominal 5%. The distortion vanishes above ρ = ½ — the crossover the closed form predicts — and, critically, it *grows with sample size*, so the reflexive robustness response of re-running on a longer sample amplifies the error rather than exposing it. Adding the mean restores correct size (0.0% across every cell) while retaining power to detect a genuine driver (80.7% at n = 203). The exposure is not specific to Philippine data: a census of **FRED-MD**, the standard US macro panel, finds **80.2%** of its 126 series sit below the ρ = ½ crossover once the recommended stationarity transformation is applied — including **every** differenced series and 92% of growth rates, while no series left in levels is affected. Differencing removes exactly the persistence that makes a random walk a valid benchmark. Because S(ρ) is a property of the target rather than of the estimation, the artifact neither decays out of sample nor varies across sub-samples, and is unaffected by multiple-comparison correction — so a stack of robustness checks that all condition on the baseline offers the reassurance of five checks and the coverage of one.
 
 The contribution is therefore methodological as much as empirical: an honest, reproducible protocol that separates what is forecastable from what is efficient in a data-poor economy, and a demonstration that the choice of naive baseline — not the model, the significance test, the robustness check, or the multiple-comparison correction — silently determined the verdicts. Every guard in the audit passed; only the baseline was wrong. A companion contribution turns the map outward: it conditions a program-aided *anchoring* layer that lets a small, offline language-model system produce physically coherent estimates on commodity hardware — each series anchored to the signal its own backtest identified, and each anchor regressed against the same real data, so that the one anchor that predicts (fuel, correlation 0.60 against realized pump changes) is distinguished from the two that only guard magnitude (electricity, food) rather than presented as uniform successes.
 
@@ -47,7 +59,7 @@ RQ5 was not part of the original design. It was forced by the audit's own result
 ### 1.4 Contributions
 1. A small, fully reproducible benchmark (`ph_economic_ai/benchmark/`) that turns "is it accurate?" from an assertion into a re-runnable measurement.
 2. A **predictability map** of Philippine macro series: forecast and nowcast targets alike show no detectable edge over a properly-specified naive baseline.
-3. A **quantified mirror to the "mind the naive forecast" warning** (§2.5, §4.7). The literature warns that the naive benchmark is *too hard* to beat on random-walk-like series (Hewamalage et al., 2023; Beck et al., 2025). The complementary failure — that on mean-reverting rates it is *too easy* — is given an exact magnitude here: a forecaster carrying no information beyond the unconditional mean scores S(ρ) = 1 − [2(1 − ρ)]^(−1/2) against the random walk, positive exactly when the target's lag-1 autocorrelation ρ < ½, and ≈ +29% at ρ = 0. The derivation is elementary; the contribution is its use as a **diagnostic**. Inverted, it converts any reported skill-over-random-walk into the autocorrelation that would produce it for free, which a reader can compare against the target's measured ρ. Applied to this audit's own flagship finding — an electricity "driver edge" of +28.3% that cleared significance, sub-sample stability, a real-time-vintage re-test, a Bonferroni correction, and an institutionally accurate mechanism — it returns an implied ρ of 0.027 against a measured 0.002: fully explained without any driver. The expression matches simulation to ≤ 0.011 and the observed gap on all five real targets to ≤ 0.022. A companion **size-and-power study** turns this into an operating characteristic: the mean-free protocol returns a false positive on 99.7% of pure-noise datasets at ρ = 0, n = 151 (nominal 5%), the distortion grows with n rather than washing out, and the corrected pool restores exact size while keeping 80.7% power. A FRED-MD census (§5.10) shows 80.2% of the standard US macro panel sits in the affected regime after its own recommended transform — every differenced series, and no series in levels — so the condition is the common case, not an artefact of one dataset.
+3. A **quantified mirror to the "mind the naive forecast" warning** (§2.5, §4.7). The literature warns that the naive benchmark is *too hard* to beat on random-walk-like series (Hewamalage et al., 2023; Beck et al., 2025). The complementary failure — that on mean-reverting rates it is *too easy* — is given an exact magnitude here: a forecaster carrying no information beyond the unconditional mean scores S(ρ) = 1 − [2(1 − ρ)]^(−1/2) against the random walk, positive exactly when the target's lag-1 autocorrelation ρ < ½, and ≈ +29% at ρ = 0. The derivation is elementary; the contribution is its use as a **diagnostic**. Inverted, it converts any reported skill-over-random-walk into the autocorrelation that would produce it for free, which a reader can compare against the target's measured ρ. Applied to this audit's own flagship finding — an electricity "driver edge" of +28.3% that cleared significance, sub-sample stability, a real-time-vintage re-test, a Bonferroni correction, and an institutionally accurate mechanism — it returns an implied ρ of 0.027 against a measured 0.002: fully explained without any driver. The expression matches simulation to ≤ 0.011 and the observed gap on all five real targets to ≤ 0.022. A companion **size-and-power study** turns this into an operating characteristic: the mean-free protocol returns a false positive on 99.7% of pure-noise datasets at ρ = 0, n = 203 (nominal 5%), the distortion grows with n rather than washing out, and the corrected pool restores exact size while keeping 80.7% power. A FRED-MD census (§5.10) shows 80.2% of the standard US macro panel sits in the affected regime after its own recommended transform — every differenced series, and no series in levels — so the condition is the common case, not an artefact of one dataset.
 4. A **case study in non-independent robustness**: the same episode shows that a stack of guards which all condition on the baseline provides the reassurance of five checks and the coverage of one. Because S(ρ) is a property of the target rather than of the estimation, the artifact is stable out of sample and across sub-samples *by construction* — so stability testing actively corroborates it.
 5. A discipline of *honest bounding*: removing fabricated confidence, requiring a beat over the strongest baseline — including the mean — using ablation to attribute any win to a mechanism rather than overclaiming, and reporting the superseded map alongside the corrected one so the change is auditable rather than quietly absorbed.
 6. A companion application contribution — **benchmark-conditioned anchoring** (§6.6): a program-aided method that makes a small, offline language-model system produce physically coherent estimates by anchoring each series to the signal its *own* backtest identified, with every anchor regressed against the same real data and honestly separated into a validated pass-through predictor (fuel) and magnitude guards that do not forecast (electricity, food).
@@ -99,7 +111,7 @@ Two institutional facts make the Philippine case tractable. First, under the Dow
 All series are committed as CSVs and regenerable via `benchmark/refresh_data.py`; the benchmark reads only frozen files, so every number is reproducible offline.
 
 ### 3.1 Fuel (ground truth)
-Premium gasoline (RON95), monthly PHP/litre, from the World Bank **Global Fuel Prices Database** (Open Database License). The committed gold series underpins the one-month forecast backtest over **2019-11 to 2025-03 (n = 79 months)**.
+Premium gasoline (RON95), monthly PHP/litre, from the World Bank **Global Fuel Prices Database** (Open Database License). The committed gold series underpins the one-month forecast backtest over **2019-11 to 2025-03 (n = 99 months)**.
 
 ### 3.2 Exchange rate
 USD/PHP monthly from Yahoo Finance (`PHP=X`).
@@ -173,7 +185,7 @@ The closed form accounts for the observed gap on every target to within 0.022.
 
 **False-positive rate (nominal α = 0.05), 300 replications per cell:**
 
-| ρ | n = 61, pool without mean | n = 151, pool without mean | either n, pool **with** mean |
+| ρ | n = 82, pool without mean | n = 203, pool without mean | either n, pool **with** mean |
 |---|---|---|---|
 | 0.00 | 43.3% | **99.7%** | 0.0% |
 | 0.20 | 19.7% | 87.7% | 0.0% |
@@ -183,7 +195,7 @@ The closed form accounts for the observed gap on every target to within 0.022.
 
 Three things follow, and together they are the substance of this thesis's methodological claim.
 
-*The size distortion is not marginal; at low persistence the test is uninformative.* At ρ = 0 and n = 151 the protocol rejects the null on **99.7%** of datasets containing no signal whatsoever. A nominal 5% test that rejects essentially always is not a slightly liberal test — it has no operating characteristics at all. Electricity MoM, the target carrying this audit's withdrawn flagship finding, has measured ρ = +0.002.
+*The size distortion is not marginal; at low persistence the test is uninformative.* At ρ = 0 and n = 203 the protocol rejects the null on **99.7%** of datasets containing no signal whatsoever. A nominal 5% test that rejects essentially always is not a slightly liberal test — it has no operating characteristics at all. Electricity MoM, the target carrying this audit's withdrawn flagship finding, has measured ρ = +0.002.
 
 *The distortion is confined to ρ < ½, exactly where the closed form says it must be.* At ρ = 0.5 the rate collapses to ~1%, and at ρ = 0.7 to zero. §4.7 derives that crossover analytically from two variance calculations; this simulation reaches the same threshold from an entirely different direction, sharing no assumption beyond stationarity.
 
@@ -192,9 +204,9 @@ Three things follow, and together they are the substance of this thesis's method
 
 ![False-positive rate against rho for both sample sizes and both baseline pools.](../../ph_economic_ai/benchmark/artifacts/figures/fig6_size_distortion.png)
 
-**Figure 6.** Rejection rate on simulated data containing no signal, so every rejection is a false positive. The mean-free pool (red) is catastrophically oversized below ρ = ½ and worsens with sample size — the gap between the dashed (n = 61) and solid (n = 151) lines. With the mean in the pool (blue) the rate is zero everywhere. The dotted line is the nominal α = 5%.
+**Figure 6.** Rejection rate on simulated data containing no signal, so every rejection is a false positive. The mean-free pool (red) is catastrophically oversized below ρ = ½ and worsens with sample size — the gap between the dashed (n = 82) and solid (n = 203) lines. With the mean in the pool (blue) the rate is zero everywhere. The dotted line is the nominal α = 5%.
 
-**Power is preserved.** A fix that merely blinds the audit would be no fix. Repeating the experiment with a genuine, contemporaneously-observable driver (β = 0.6), the mean-inclusive pool detects it in **80.7%** of replications at ρ = 0, n = 151 and 73.0% at ρ = 0.35. The corresponding without-mean figures (100% and 96.3%) must not be read as superior power: on those same targets that pool has a 43–100% false-positive rate, so its "detections" confound size with power. Only the corrected column measures detection of real signal. At n = 61 power falls to 13–17%, an honest reflection of the sample size rather than a defect of the correction, and consistent with the 13.2% minimum detectable effect reported for that target in §5.11.
+**Power is preserved.** A fix that merely blinds the audit would be no fix. Repeating the experiment with a genuine, contemporaneously-observable driver (β = 0.6), the mean-inclusive pool detects it in **80.7%** of replications at ρ = 0, n = 203 and 73.0% at ρ = 0.35. The corresponding without-mean figures (100% and 96.3%) must not be read as superior power: on those same targets that pool has a 43–100% false-positive rate, so its "detections" confound size with power. Only the corrected column measures detection of real signal. At n = 82 power falls to 13–17%, an honest reflection of the sample size rather than a defect of the correction, and consistent with the 13.2% minimum detectable effect reported for that target in §5.11.
 
 **The bar is not vacuous.** A controlled test (`test_mean_baseline_rejects_the_beat_the_random_walk_artifact`) constructs a target as `0.6 × Δfuel + noise` while offering only the fuel *level* as a feature, so the driver is unrecoverable by construction. Ridge is then measurably **worse than the constant** (RMSE 0.643 vs 0.623) yet beats the random walk (0.871) by 26% — scoring as `beats_best_naive` under a mean-free pool. The companion test supplies the true driver, and Ridge wins decisively (91% skill over the mean, DM p < 0.001). The stricter bar rejects the artifact without suppressing genuine signal.
 
@@ -217,21 +229,32 @@ The fabricated "90% confidence" from the original application was removed and re
 
 ### 5.1 One-month forecasting is efficient (RQ1)
 
-**Fuel.** On the efficiency panel (n = 52 forecasts, drawn from the 79-month feature-aligned window of §3.1), the best ML model (HistGradientBoosting) has RMSE 4.099 vs the random walk's 4.069 — a skill of **−0.0075**: no improvement. Against the seasonal-naive baseline the model's skill is +0.64, i.e. the gain is over a *bad* baseline, not the strong one.
+**Fuel.** On the efficiency panel (n = 72 forecasts, drawn from the 99-month feature-aligned window of §3.1), the best ML model (HistGradientBoosting) has RMSE 4.099 vs the random walk's 4.069 — a skill of **−0.0075**: no improvement. Against the seasonal-naive baseline the model's skill is +0.64, i.e. the gain is over a *bad* baseline, not the strong one.
 
-On the efficiency panel (n = 52), no method significantly beats the random walk:
+On the efficiency panel (n = 72), one method now beats the random walk and the rest do not. **This is a change from the frozen artifacts and is reported as exploratory, not as a positive result** (see §5.2.1):
 
-| Method | RMSE | Skill vs RW | DM p vs RW |
-|---|---|---|---|
-| random_walk | 4.069 | 0.000 | — |
-| drift | 4.110 | −0.010 | 0.504 |
-| ETS | 4.183 | −0.028 | 0.275 |
-| Ridge | 4.105 | −0.009 | 0.881 |
-| **HGB** | **4.099** | **−0.008** | **0.921** |
-| ARIMA | 4.383 | −0.077 | 0.037 (worse) |
-| seasonal_naive | 11.497 | −1.826 | 0.0001 (worse) |
+| Method | Skill vs RW | DM p vs RW |
+|---|---|---|
+| **Ridge** | **+0.161** | **0.009** |
+| random_walk | 0.000 | — |
+| drift | −0.009 | 0.483 |
+| ETS | −0.034 | 0.242 |
+| ARIMA | −0.048 | 0.299 |
+| HGB | −0.074 | 0.421 |
+| mean | −2.263 | 0.000 (worse) |
+| seasonal_naive | −2.293 | 0.000 (worse) |
 
-The ML methods are statistically *indistinguishable* from the random walk (DM p ≈ 0.88–0.92); ARIMA and seasonal-naive are significantly worse. No method beats the random walk at the one-month horizon.
+Every method except Ridge is statistically *indistinguishable* from the random walk or worse. Ridge's +16.1% (DM p = 0.009) appeared only after the 2026-07-28 calendar correction, which rebuilt the feature panel on a complete month index; on the previous gapped panel the same model scored −0.9% (p = 0.881). The correction repaired feature alignment, so a driver edge becoming visible is the expected direction rather than a surprise.
+
+### 5.2.1 The fuel edge is exploratory, not a finding
+
+It is reported here and deliberately not promoted, for reasons that are recorded rather than asserted.
+
+**What supports it.** It is not the baseline artifact of §4.7: fuel's lag-1 autocorrelation is ρ = +0.9475, far above the ½ crossover, and the closed form predicts the mean should score −2.087 against the random walk here against a measured −2.263. Against 400 surrogates built by circularly rotating each driver column — destroying alignment while preserving each driver's own autocorrelation, scale and trend — the observed skill has empirical p = 0.0000 (null mean −0.152, null maximum −0.031). It also survives selection: with the model and the naive both fixed on the first 70% of rows and scored only on the remaining 29 predictions, skill moves +0.1233 → +0.1187, a shrinkage of 0.005, where headline MoM on the same protocol collapses +0.0329 → −0.0057. The mechanism is an interaction, not a single driver: own-lag alone scores −0.030 and drivers alone −0.118, and only the combination beats the random walk, which is error correction toward the RBOB/FX-implied level and is consistent with the measured pass-through (β_total = 0.596, R² = 0.490).
+
+**Why it is not claimed.** The audit family is three targets, so Bonferroni gives α = 0.0167 against an observed 0.0337 in sample and 0.0296 on the holdout. The holdout carries only 29 predictions. Most importantly it was never predeclared: it emerged from a data correction, which is precisely the pattern the size study of §5.10 exists to distrust. It is registered as `CLM-FUEL-EXPLORATORY-001` and is a candidate for preregistered confirmation, not a result.
+
+**What does not change.** Every month-on-month null still holds against the historical mean on the corrected panels, so the methodological contribution of §4.7, §5.10 and §5.11 is unaffected — and is in fact strengthened, since the baseline result was not an artifact of the irregular calendar.
 
 **Power — what "efficient" can and cannot mean here.** Accepting the null on a modest sample is only informative if the test could have rejected it, so the efficiency verdict is bounded by a power analysis (`power.json`). For the fuel forecast, the minimum skill the Diebold–Mariano test could detect at 80% power (α = 0.05) is **≈ 25%** RMSE improvement over the random walk; the observed skill is −0.3%. The honest reading is therefore **"no economically-large edge (≳ 25%) is detectable at this sample size,"** not "predictability is proven absent" — the test rules out a large, exploitable edge but cannot exclude a small one. This is the same bound Meese–Rogoff-style results carry and rarely state; here it is quantified.
 
@@ -239,16 +262,16 @@ The ML methods are statistically *indistinguishable* from the random walk (DM p 
 
 | Target | n | Verdict |
 |---|---|---|
-| Fuel (RON95) | 52 | no detectable edge over RW (efficient to a ~25% MDE) |
+| Fuel (RON95) | 72 | no detectable edge over RW (efficient to a ~25% MDE) |
 | USD/PHP | 38 | no detectable edge over RW |
 | Inflation (YoY) | 59 | no detectable edge over RW |
 
-All three show no detectable edge — reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for the Philippines, subject to the power bound above (which is tightest for the smallest samples, USD/PHP at n = 38).
+All three show no detectable edge — reproducing Meese–Rogoff (FX) and Atkeson–Ohanian (inflation) for the Philippines, subject to the power bound above (which is tightest for the smallest samples, USD/PHP at n = 81).
 
 **Calibration (fuel forecast).** The conformal intervals (half-widths ₱2.56/5.88/10.42/11.86 at 50/80/90/95%) over-cover at the upper levels (measured coverage 0.58, 0.88, 1.00, 1.00 over the disjoint 26-month validation half of the 52-forecast backtest) — i.e. conservative, honestly reported rather than tuned.
 
 ### 5.2 Mechanism (RQ2)
-A pass-through regression of the RON95 change on contemporaneous and lagged driver changes (n = 77) gives β₀ = 0.31, β₁ = 0.24, **total pass-through β = 0.56**, R² = 0.33, with a near-zero driver autocorrelation (ACF₁ = 0.16). Interpretation: domestic fuel reflects a *partial, lagged* pass-through of a driver (world product price) that is itself close to a random walk. A predictable level built on an unpredictable, near-random-walk driver is exactly what produces an efficient series — the mechanism behind RQ1.
+A pass-through regression of the RON95 change on contemporaneous and lagged driver changes (n = 97) gives β₀ = 0.31, β₁ = 0.24, **total pass-through β = 0.56**, R² = 0.33, with a near-zero driver autocorrelation (ACF₁ = 0.16). Interpretation: domestic fuel reflects a *partial, lagged* pass-through of a driver (world product price) that is itself close to a random walk. A predictable level built on an unpredictable, near-random-walk driver is exactly what produces an efficient series — the mechanism behind RQ1.
 
 The Phase-2 gated feature ablation selected the `passthrough_lags` variant as the best-justified specification; it still did not beat the random walk, but it closed the model-vs-RW gap and tightened intervals.
 
@@ -258,11 +281,11 @@ The Phase-2 gated feature ablation selected the `passthrough_lags` variant as th
 
 ### 5.3 Nowcasting (RQ3)
 
-**YoY nowcast.** Adding within-month oil/FX/fuel plus the previous print, before the PSA release, still yields **no_better_than_naive** (n = 61). Year-on-year inflation overlaps 11 of 12 months with its prior value, so persistence is mechanically near-unbeatable.
+**YoY nowcast.** Adding within-month oil/FX/fuel plus the previous print, before the PSA release, still yields **no_better_than_naive** (n = 82). Year-on-year inflation overlaps 11 of 12 months with its prior value, so persistence is mechanically near-unbeatable.
 
 **MoM nowcast — a null once the baseline is right.** Targeting month-on-month inflation, the honest bar is to beat the strongest of {random-walk, seasonal-naive, drift, mean} by a DM test (§4.7). The result is **no_better_than_naive**, and the binding baseline is the **historical mean**:
 
-| Method | RMSE (n = 61) |
+| Method | RMSE (n = 82) |
 |---|---|
 | ARIMA | 0.380 |
 | **mean (best naive)** | **0.396** |
@@ -285,14 +308,14 @@ Almost the whole of the apparent +16.2% is the gap between the *random walk and 
 
 ![Month-on-month inflation nowcast: ARIMA and the naive baselines against the realized pre-release actual.](../../ph_economic_ai/benchmark/artifacts/figures/nowcast_mom.png)
 
-**Figure 2.** Month-on-month inflation nowcast (n = 61): ARIMA (own-dynamics) against the realized pre-release actual. ARIMA's apparent +16.2% edge is measured against the random walk; against the historical mean — the appropriate naive for a mean-reverting rate — the edge falls to +4.1% and is not significant (p = 0.36).
+**Figure 2.** Month-on-month inflation nowcast (n = 82): ARIMA (own-dynamics) against the realized pre-release actual. ARIMA's apparent +16.2% edge is measured against the random walk; against the historical mean — the appropriate naive for a mean-reverting rate — the edge falls to +4.1% and is not significant (p = 0.36).
 
-**Driver-only ablation.** Dropping the own-lag and restricting to driver regressors likewise gives **driver_edge = False** (n = 61). This verdict is unchanged by the correction: the contemporaneous-driver edge was never significant.
+**Driver-only ablation.** Dropping the own-lag and restricting to driver regressors likewise gives **driver_edge = False** (n = 82). This verdict is unchanged by the correction: the contemporaneous-driver edge was never significant.
 
 ### 5.4 Robustness (RQ4)
-Rebuilding features on the 2007–2026 window (n = 143, spanning the GFC, the 2014 oil crash, and COVID) and re-running:
+Rebuilding features on the 2007–2026 window (n = 190, spanning the GFC, the 2014 oil crash, and COVID) and re-running:
 
-| Metric | n = 61 | n = 143 |
+| Metric | n = 82 | n = 190 |
 |---|---|---|
 | MoM verdict | no_better_than_naive | no_better_than_naive |
 | best naive | mean | mean |
@@ -303,7 +326,7 @@ The null **holds across ~2.3× the data** and a far more heterogeneous regime mi
 
 ### 5.5 A spurious positive caught: the Transport-CPI nowcast
 
-If any series should yield a significant within-month *driver* edge, it is **Transport** CPI — mechanically driven by fuel, which is observable before the official release. Using the official PSA Transport-CPI series (OpenSTAT, by commodity group, 2018 = 100, 1994–present) as a fresh gold target and the same free fuel/FX predictors, the nowcast was re-run (n = 151 backtest months).
+If any series should yield a significant within-month *driver* edge, it is **Transport** CPI — mechanically driven by fuel, which is observable before the official release. Using the official PSA Transport-CPI series (OpenSTAT, by commodity group, 2018 = 100, 1994–present) as a fresh gold target and the same free fuel/FX predictors, the nowcast was re-run (n = 203 backtest months).
 
 On the **full sample**, the driver-only model looked like the sought-after positive: fuel-only Ridge beat the best naive baseline by **+14.8%** (DM p = 0.021). Taken at face value, this would license the headline "the fuel-driven component of inflation is nowcastable ahead of the official figure."
 
@@ -311,8 +334,8 @@ A robustness re-test dissolved it. PSA's three most recent prints are **prelimin
 
 | Test | Verdict | skill vs best naive | DM p |
 |---|---|---|---|
-| Driver-only, full sample (n = 151) | beats_best_naive | +14.8% | 0.021 |
-| Driver-only, robust (drop 6 preliminary months, n = 145) | no_better_than_naive | 0.0 | — |
+| Driver-only, full sample (n = 203) | beats_best_naive | +14.8% | 0.021 |
+| Driver-only, robust (drop 6 preliminary months, n = 197) | no_better_than_naive | 0.0 | — |
 
 The entire "edge" rested on roughly three unreliable observations. The **canonical verdict is therefore that Transport MoM inflation is also efficient** — no robust within-month fuel edge — consistent with the rest of the map. More importantly, this is a worked example of the audit doing its job: it caught a positive that a naive analysis would have published, traced it to preliminary real-time data, and reported the robust null. The robustness re-test (`driver_edge_robust`) is baked into the pipeline, so the check is permanent and reproducible.
 
@@ -320,27 +343,27 @@ Under the corrected baseline pool the transport case is now **doubly rejected**:
 
 ### 5.6 Food inflation: the second apparent positive, and a clean null driver
 
-The same protocol was applied to **Food & non-alcoholic beverages** — the largest contributor to Philippine headline inflation — with a food-appropriate predictor panel: free global agri-commodity futures (rice, wheat, corn, soybean) plus oil and FX, all observable within the month. The PSA Food-CPI gold (OpenSTAT, COICOP division 01, 2018 = 100) provides the target; n = 151 backtest months (2007–2026).
+The same protocol was applied to **Food & non-alcoholic beverages** — the largest contributor to Philippine headline inflation — with a food-appropriate predictor panel: free global agri-commodity futures (rice, wheat, corn, soybean) plus oil and FX, all observable within the month. The PSA Food-CPI gold (OpenSTAT, COICOP division 01, 2018 = 100) provides the target; n = 203 backtest months (2007–2026).
 
 Two results emerge, and both are nulls under the corrected pool:
 
 | Test | Verdict | best naive | skill vs best naive | DM p |
 |---|---|---|---|---|
 | Full nowcast (drivers + own-lag) | no_better_than_naive | mean | 0.0 | — |
-| Driver-only ablation, full sample (n = 151) | no_better_than_naive | mean | 0.0 | — |
-| Driver-only ablation, robust (drop 6 preliminary months, n = 145) | no_better_than_naive | mean | 0.0 | — |
+| Driver-only ablation, full sample (n = 203) | no_better_than_naive | mean | 0.0 | — |
+| Driver-only ablation, robust (drop 6 preliminary months, n = 197) | no_better_than_naive | mean | 0.0 | — |
 
 First, the apparent own-dynamics positive **does not survive the mean**. ARIMA's RMSE is 0.663 against the mean's 0.689 — a residual **+3.7%**, DM p = 0.456. Measured against the random walk (0.790) the same model shows +16.0% at p = 0.0046, which is the number the earlier draft reported. As with headline inflation (§5.3), essentially the whole apparent edge is the random-walk-to-mean gap.
 
-Second, the food-commodity **driver edge remains a clean null**, and is now null by a wider margin: driver-only Ridge (0.702) is *worse* than the constant (0.689), a skill of **−1.9%** (p = 0.72). The verdict is stable at both n = 151 and n = 145 (`driver_edge_robust = False`). Global commodity prices carry no within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). This conclusion is unchanged by the correction — it was a null before and is a null now, which is exactly the kind of result that should be insensitive to the baseline pool.
+Second, the food-commodity **driver edge remains a clean null**, and is now null by a wider margin: driver-only Ridge (0.702) is *worse* than the constant (0.689), a skill of **−1.9%** (p = 0.72). The verdict is stable at both n = 203 and n = 197 (`driver_edge_robust = False`). Global commodity prices carry no within-month signal for Philippine food inflation, consistent with its strongly-local composition (fish, vegetables, import-controlled rice). This conclusion is unchanged by the correction — it was a null before and is a null now, which is exactly the kind of result that should be insensitive to the baseline pool.
 
 ### 5.7 Electricity: the flagship edge does not survive the mean
 
-Electricity was the audit's strongest apparent positive, and it is the one the correction overturns most sharply. Using the PSA `04.5.1 - Electricity` gold and free energy predictors (Brent, natural gas, FX), the driver-only nowcast (n = 151) gave the headline result of the earlier draft: Ridge **+28.3% over the best naive, DM p = 0.0011**, stable across sub-samples (≤2023-12 +26%, p = 0.006; 2007–2016 +30%, p = 0.020; 2016–2026 +29%, p = 0.035) and surviving the trailing-preliminary robustness check. Every check the audit had *was* passed.
+Electricity was the audit's strongest apparent positive, and it is the one the correction overturns most sharply. Using the PSA `04.5.1 - Electricity` gold and free energy predictors (Brent, natural gas, FX), the driver-only nowcast (n = 203) gave the headline result of the earlier draft: Ridge **+28.3% over the best naive, DM p = 0.0011**, stable across sub-samples (≤2023-12 +26%, p = 0.006; 2007–2016 +30%, p = 0.020; 2016–2026 +29%, p = 0.035) and surviving the trailing-preliminary robustness check. Every check the audit had *was* passed.
 
 The baseline pool was the check it lacked. The RMSEs make the situation unambiguous:
 
-| Method | RMSE (driver-only, n = 151) |
+| Method | RMSE (driver-only, n = 203) |
 |---|---|
 | **mean** | **2.3515** |
 | Ridge | 2.3936 |
@@ -365,7 +388,7 @@ This is the single largest change the correction produces, and it removes the th
 | Fuel / FX / YoY inflation | 1-month forecast | efficient (no method beats RW) | 24.7% |
 | YoY inflation | nowcast (pre-release) | no better than naive | — |
 | MoM inflation (headline) | nowcast (pre-release) | no better than naive (ARIMA +4.1% vs mean, p = 0.36) | 13.2% |
-| MoM inflation (headline, n = 143) | nowcast, long sample | no better than naive (+4.6%) | 10.1% |
+| MoM inflation (headline, n = 190) | nowcast, long sample | no better than naive (+4.6%) | 10.1% |
 | MoM inflation (food) | nowcast (pre-release) | no better than naive (ARIMA +3.7% vs mean, p = 0.46) | 14.9% |
 | Food-CPI MoM | nowcast, driver-only | clean null — Ridge −1.9% vs mean | 14.9% |
 | Transport-CPI MoM | nowcast, driver-only | rejected twice — preliminary-data artifact *and* fails vs mean | 12.5% |
@@ -395,8 +418,8 @@ Monthly Google Trends search interest for four price-salient terms (`presyo ng g
 
 | Target | sentiment only | drivers only | drivers + sentiment |
 |---|---|---|---|
-| Headline MoM (n = 61) | no better than naive | no better than naive | no better than naive |
-| Food MoM (n = 75) | no better than naive | no better than naive | no better than naive |
+| Headline MoM (n = 82) | no better than naive | no better than naive | no better than naive |
+| Food MoM (n = 102) | no better than naive | no better than naive | no better than naive |
 
 **Search interest does not nowcast Philippine fuel or food inflation beyond a naive baseline**, alone or as an increment to the drivers (`sentiment_nowcast.json`).
 
@@ -456,7 +479,7 @@ Two design points matter. First, each nowcast null is bounded against the **mean
 
 Every observed skill sits inside its own detectable band — which is what makes each verdict a null rather than an unresolved positive, and is asserted as a unit test so a future genuine positive cannot be silently reported as a null.
 
-The spread across rows is the honest part. The fuel forecast (n = 51) is the weakest test in the thesis at ~25% MDE; the headline and food nowcast nulls sit at 10–15%; and the electricity driver-only null is the strongest at 5.8%. So the claims are not uniform in strength, and should not be stated as though they were: for fuel and headline inflation the defensible statement is "no *large* edge is detectable at this sample size", whereas for the electricity driver channel the test genuinely had the resolution to see a small edge and did not.
+The spread across rows is the honest part. The fuel forecast (n = 72) is the weakest test in the thesis at ~25% MDE; the headline and food nowcast nulls sit at 10–15%; and the electricity driver-only null is the strongest at 5.8%. So the claims are not uniform in strength, and should not be stated as though they were: for fuel and headline inflation the defensible statement is "no *large* edge is detectable at this sample size", whereas for the electricity driver channel the test genuinely had the resolution to see a small edge and did not.
 
 That last row carries the most weight. Electricity is the target whose apparent +28.3% driver edge this thesis withdraws (§5.7), and the natural objection to a withdrawal is that the replacement null is merely underpowered. It is not: the electricity driver test is the best-powered in the map.
 
@@ -492,7 +515,7 @@ The audit's purpose is negative — to say what cannot be forecast — but its f
 
 The resolution follows the program-aided paradigm (Gao et al., 2023): do not ask the model for the quantity it cannot produce. The magnitude of an oil→pump pass-through is not an opinion but accounting — crude cost per litre, revalued at the exchange rate, plus VAT — and is computed deterministically (Appendix C). This *anchor* is used three ways: injected into the prompt as a prior, so the model reasons from the correct scale; applied as a leash that clamps an estimate diverging beyond a plausibility band back toward the anchor while preserving the model's direction; and used as a fallback when the model produces nothing, so the pipeline never returns a blank. The design is deliberately conditioned on the audit — each series is anchored to the signal *its own* backtest identified as informative. Fuel and electricity receive a mechanical fuel pass-through anchor; food, which the audit found a clean null on commodity drivers (§5.6) but predictable from own dynamics, is anchored to the trailing trend of food inflation itself rather than to oil, since anchoring it to commodities would be anchoring it to what the audit proved is noise.
 
-Because an anchor is a quantitative claim, it is itself testable against the same real series the audit uses, and is regressed there rather than asserted, with significance judged by the same HLN-corrected Diebold–Mariano test the audit applies to its own claims (`anchor_validation.json`; `tools/anchor_backtest.py`). The fuel anchor is a genuine model of the *contemporaneous* pass-through: over 78 months of World Bank RON95 against monthly Brent and USD/PHP, its predicted monthly pump change correlates **0.60 with the realized change (p < 0.001, 95% CI [0.44, 0.73])** and matches direction 74% of the time. Its mean absolute error is lower than a no-change baseline (₱2.21 vs ₱2.64), but — and this is the honest limit — that improvement is **only marginal (DM p = 0.065, significant at the 10% but not the 5% level)**: the anchor demonstrably co-moves with pass-through, yet at n = 78 the evidence that it beats naive persistence on squared error is suggestive rather than conclusive. The ordinary-least-squares slope of realized on predicted change, **0.79 ± 0.12**, is significantly non-zero (p < 0.001) but **not distinguishable from a full 1:1 pass-through at the 5% level (p = 0.084)**; it is fed back as the anchor's calibration coefficient — consistent with the partial, lagged, asymmetric adjustment the rockets-and-feathers literature documents (§2.8) — while acknowledging the data cannot rule out complete pass-through. This is a *contemporaneous* relationship, and does not contradict the one-month-ahead efficiency of §5.1: the anchor scales a *known* shock, it does not forecast one.
+Because an anchor is a quantitative claim, it is itself testable against the same real series the audit uses, and is regressed there rather than asserted, with significance judged by the same HLN-corrected Diebold–Mariano test the audit applies to its own claims (`anchor_validation.json`; `tools/anchor_backtest.py`). The fuel anchor is a genuine model of the *contemporaneous* pass-through: over 78 months of World Bank RON95 against monthly Brent and USD/PHP, its predicted monthly pump change correlates **0.60 with the realized change (p < 0.001, 95% CI [0.44, 0.73])** and matches direction 74% of the time. Its mean absolute error is lower than a no-change baseline (₱2.21 vs ₱2.64), but — and this is the honest limit — that improvement is **only marginal (DM p = 0.065, significant at the 10% but not the 5% level)**: the anchor demonstrably co-moves with pass-through, yet at n = 97 the evidence that it beats naive persistence on squared error is suggestive rather than conclusive. The ordinary-least-squares slope of realized on predicted change, **0.79 ± 0.12**, is significantly non-zero (p < 0.001) but **not distinguishable from a full 1:1 pass-through at the 5% level (p = 0.084)**; it is fed back as the anchor's calibration coefficient — consistent with the partial, lagged, asymmetric adjustment the rockets-and-feathers literature documents (§2.8) — while acknowledging the data cannot rule out complete pass-through. This is a *contemporaneous* relationship, and does not contradict the one-month-ahead efficiency of §5.1: the anchor scales a *known* shock, it does not forecast one.
 
 The other two anchors are reported with the same candour that governs the audit. Regressed against 175 months of PSA electricity CPI, the fuel-price anchor does *not* predict the monthly move (correlation 0.03–0.13 across lags; the strongest is **not significant, p = 0.08**); the robust electricity edge of §5.7 is recoverable only through the full generation-charge formula, which raw commodity prices proxy poorly. Against 172 months of PSA food CPI, persistence and an oil driver are **each individually significant against zero (r = 0.18, p = 0.02; r = 0.21, p = 0.006) but too weak to separate from one another** (within one standard error) or to beat a simple mean on error. Neither the electricity nor the food anchor is a useful predictor at monthly resolution. What each *is* — and what the anchor is for — is a magnitude guard: the ratio of the anchor's typical size to the realized monthly move is ≈1.0 for electricity and ≈0.9 for food, so each keeps a weak model's estimate correctly scaled even where it cannot forecast. Measured against the realized series, reconciliation more than halves the error of a simulated hallucinating model (₱3.79 → ₱1.58, a 58% reduction), and a robustness sweep over 10,357 scenarios and adversarial inputs finds no case in which the anchoring returns a non-finite or unbounded value.
 
@@ -506,7 +529,7 @@ The result is a clean negative for the intuition that more agents produce a bett
 The ablation also corrected itself, which is the point. A first pass at three repeats showed the two-region configuration as *tighter* than the full swarm; at eight repeats that ordering reversed, exposing the three-run spread as sampling noise. Reporting the reversal, rather than the flattering first number, is the same discipline the audit applies to its own results (§6.3). A final incidental observation validates the anchoring layer (§6.6) at scale: across all thirty-two runs the master estimate repeatedly settles at the physical anchor (₱2.21/L) or its clamp bound (₱4.21/L), so the weak swarm is visibly and frequently rescued by reconciliation rather than producing usable magnitudes on its own.
 
 ### 6.8 Limitations
-Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88/L); modest samples (n = 38–143) — which bound the efficiency nulls to a minimum detectable skill of ~25% (§5.1), so they rule out large edges, not small ones; conformal coverage that is approximate at small n (and here conservative); and a CPI series via IMF/DBnomics rather than the PSA microdata. The application's LLM/agent "swarm" is an interface and explanation layer, not a validated predictor — its agent-agreement numbers are labelled as such, distinct from the calibrated intervals, and its ensemble size is justified by lower verdict variance (§6.7) rather than a better estimate. The anchoring layer (§6.6) is bounded in the same spirit: its fuel anchor is a contemporaneous pass-through model, not a forecast; its electricity and food anchors are magnitude guards that do not predict at monthly resolution; and its calibration coefficient is fit to a single 2017–2025 window and may drift.
+Monthly resolution; an RBOB fuel proxy with disclosed bias (r = 0.91, −₱5.88/L); modest samples (n = 72–203) — which bound the efficiency nulls to a minimum detectable skill of ~25% (§5.1), so they rule out large edges, not small ones; conformal coverage that is approximate at small n (and here conservative); and a CPI series via IMF/DBnomics rather than the PSA microdata. The application's LLM/agent "swarm" is an interface and explanation layer, not a validated predictor — its agent-agreement numbers are labelled as such, distinct from the calibrated intervals, and its ensemble size is justified by lower verdict variance (§6.7) rather than a better estimate. The anchoring layer (§6.6) is bounded in the same spirit: its fuel anchor is a contemporaneous pass-through model, not a forecast; its electricity and food anchors are magnitude guards that do not predict at monthly resolution; and its calibration coefficient is fit to a single 2017–2025 window and may drift.
 
 ---
 
@@ -607,7 +630,7 @@ All values are reproduced verbatim from the committed `accuracy_report.json` (re
 
 In four of the six panels the best candidate is *worse than a constant*; in the remaining two the residual edge is small and insignificant. Every `beats_best_naive` verdict in the earlier draft therefore rested on the random-walk column, and none survives the mean column. The superseded verdicts are preserved in the per-panel tables below, marked as such, so the change is auditable.
 
-**B.1 Fuel one-month forecast — eight-method efficiency panel** (RON95, n = 52). Skill and DM p are vs random walk.
+**B.1 Fuel one-month forecast — eight-method efficiency panel** (RON95, n = 72). Skill and DM p are vs random walk.
 
 | Method | RMSE | MAE | Skill vs RW | DM p vs RW |
 |---|---|---|---|---|
@@ -626,13 +649,13 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 
 | Target | n | Best method | Best skill | Verdict |
 |---|---|---|---|---|
-| Fuel (RON95) | 52 | random_walk | 0.0 | efficient |
+| Fuel (RON95) | 72 | random_walk | 0.0 | efficient |
 | USD/PHP | 38 | random_walk | 0.0 | efficient |
 | Inflation (YoY) | 59 | random_walk | 0.0 | efficient |
 
 **B.3 Headline MoM inflation nowcast — panel RMSE** (best naive = random_walk).
 
-| Method | RMSE (n = 61) | RMSE (long, n = 143) |
+| Method | RMSE (n = 82) | RMSE (long, n = 190) |
 |---|---|---|
 | random_walk | 0.4532 | 0.4130 |
 | drift | 0.4578 | 0.4159 |
@@ -647,7 +670,7 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 
 **B.4 Headline MoM driver-only ablation** (own-lag dropped; candidates = Ridge, HGB).
 
-| Method | RMSE (n = 61) | RMSE (long, n = 143) |
+| Method | RMSE (n = 82) | RMSE (long, n = 190) |
 |---|---|---|
 | random_walk | 0.4532 | 0.4130 |
 | drift | 0.4578 | 0.4159 |
@@ -659,7 +682,7 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 
 **B.5 Transport-CPI MoM nowcast — full sample vs robust** (best naive = seasonal_naive full / random_walk robust). Full-sample driver-only edge vanishes after dropping the 6 preliminary PSA months.
 
-| Method | Full nowcast RMSE (n = 151) | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
+| Method | Full nowcast RMSE (n = 203) | Driver-only RMSE (n = 203) | Driver-only, robust RMSE (n = 197) |
 |---|---|---|---|
 | random_walk | 2.0355 | 2.0355 | 1.4159 |
 | drift | 2.0435 | 2.0435 | 1.4235 |
@@ -672,7 +695,7 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 | **Verdict (corrected)** | no_better_than_naive | no_better_than_naive (best naive = mean) | no_better_than_naive (driver_edge_robust = False) |
 | *Superseded (vs random walk)* | *no_better_than_naive* | *beats_best_naive +14.8%, p = 0.021* | *no_better_than_naive* |
 
-**B.6 Phase-2 gated feature ablation** (fuel forecast, n = 52). `band90` = 90% conformal half-width (₱/L). Selected variant: `passthrough_lags`.
+**B.6 Phase-2 gated feature ablation** (fuel forecast, n = 72). `band90` = 90% conformal half-width (₱/L). Selected variant: `passthrough_lags`.
 
 | Variant | RMSE | MAE | Skill vs RW | 90% band (₱/L) |
 |---|---|---|---|---|
@@ -684,9 +707,9 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 
 *No variant beats the random walk, but `passthrough_lags` closes the gap (−0.13 → −0.007) and tightens the 90% band by ~19%.*
 
-**B.7 Food-CPI MoM nowcast** (n = 151; best naive = random_walk). Full nowcast (own-lag + drivers) vs driver-only; driver-only edge is null at both windows.
+**B.7 Food-CPI MoM nowcast** (n = 203; best naive = random_walk). Full nowcast (own-lag + drivers) vs driver-only; driver-only edge is null at both windows.
 
-| Method | Full nowcast RMSE | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
+| Method | Full nowcast RMSE | Driver-only RMSE (n = 203) | Driver-only, robust RMSE (n = 197) |
 |---|---|---|---|
 | random_walk | 0.7897 | 0.7897 | 0.7517 |
 | drift | 0.7936 | 0.7936 | 0.7556 |
@@ -699,9 +722,9 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 | **Verdict (corrected)** | no_better_than_naive (best naive = mean) | no_better_than_naive | no_better_than_naive (`driver_edge_robust` = False) |
 | *Superseded (vs random walk)* | *beats_best_naive ARIMA +16.0%, p = 0.0046* | *no_better_than_naive* | *no_better_than_naive* |
 
-**B.8 Electricity-CPI MoM nowcast** (n = 151; best naive = **mean**). The driver-only edge is significant against the random walk at both windows and disappears against the mean, which is the whole of §5.7.
+**B.8 Electricity-CPI MoM nowcast** (n = 203; best naive = **mean**). The driver-only edge is significant against the random walk at both windows and disappears against the mean, which is the whole of §5.7.
 
-| Method | Full nowcast RMSE | Driver-only RMSE (n = 151) | Driver-only, robust RMSE (n = 145) |
+| Method | Full nowcast RMSE | Driver-only RMSE (n = 203) | Driver-only, robust RMSE (n = 197) |
 |---|---|---|---|
 | random_walk | 3.3399 | 3.3399 | 3.3957 |
 | drift | 3.3746 | 3.3746 | 3.4311 |
@@ -729,7 +752,7 @@ In four of the six panels the best candidate is *worse than a constant*; in the 
 
 *The 90% and 95% intervals over-cover (conservative) at this sample size; the 50%/80% are close to nominal. Coverage is reported, not tuned.*
 
-**C.2 Pass-through regression** (Δ RON95 on contemporaneous + lagged Δ driver, n = 77; HAC errors).
+**C.2 Pass-through regression** (Δ RON95 on contemporaneous + lagged Δ driver, n = 97; HAC errors).
 
 | Quantity | Value |
 |---|---|
