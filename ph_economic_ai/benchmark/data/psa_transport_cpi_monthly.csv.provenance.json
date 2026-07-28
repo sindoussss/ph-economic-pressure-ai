@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "file": "psa_transport_cpi_monthly.csv",
+  "source": "PSA OpenStat PX-Web CPI by commodity group, COICOP 07 Transport",
+  "request_params": {
+    "coicop_prefix": "07",
+    "base_year": "2018=100",
+    "endpoints": "backcast + current PX-Web tables"
+  },
+  "transformations": [
+    "fetch both PX-Web tables",
+    "filter to the COICOP prefix",
+    "splice backcast and current on the overlap",
+    "label months YYYY-MM, sort"
+  ],
+  "units": "CPI index (2018=100)",
+  "notes": "PSA gold target for the transport nowcast.",
+  "retrieved_at": "2026-07-27T19:40:11+00:00",
+  "sha256": "f0f88fc55f603b6a6e31eb5cc56ec35145e737facfcb0e7fb069cbdb81611d72",
+  "rows": 390,
+  "first_month": "1994-01",
+  "last_month": "2026-06",
+  "missing_months": []
+}

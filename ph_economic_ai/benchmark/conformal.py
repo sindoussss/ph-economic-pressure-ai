@@ -28,7 +28,18 @@ def coverage(y_true: np.ndarray, y_pred: np.ndarray, qhat: float) -> float:
 
 
 def build_calibration_table(cal_residuals, y_true, y_pred, levels=(0.5, 0.8, 0.9, 0.95)):
-    """Per-level rows: {'nominal', 'qhat', 'measured'} for the report + UI."""
+    """Per-level rows: {'nominal', 'qhat', 'measured', 'n_calib', 'n_eval'}.
+
+    `n_calib` and `n_eval` are reported because measured coverage means nothing
+    without them, and their absence was a live ambiguity: the fuel section quotes
+    99 source rows, 79 overlap rows, and 52 evaluated predictions, so a reader had
+    no way to tell which denominator a coverage figure used. Split conformal
+    divides the residuals in half, so the number behind `measured` is smaller
+    again than any of those, and at these sizes a 95 percent level is estimated
+    from very few points.
+    """
+    n_calib = len(np.asarray(cal_residuals, dtype=float))
+    n_eval = len(np.asarray(y_true, dtype=float))
     table = []
     for level in levels:
         qhat = conformal_quantile(cal_residuals, level)
@@ -36,6 +47,8 @@ def build_calibration_table(cal_residuals, y_true, y_pred, levels=(0.5, 0.8, 0.9
             'nominal': level,
             'qhat': round(qhat, 4),
             'measured': round(coverage(y_true, y_pred, qhat), 4),
+            'n_calib': n_calib,
+            'n_eval': n_eval,
         })
     return table
 

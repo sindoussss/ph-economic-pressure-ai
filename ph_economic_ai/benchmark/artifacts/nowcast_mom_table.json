@@ -4,37 +4,45 @@
   "best_naive": "mean",
   "best_skill_vs_naive": 0.0,
   "dm_p": null,
-  "n": 61,
+  "n": 82,
   "calibration": [
     {
       "nominal": 0.5,
-      "qhat": 0.253,
-      "measured": 0.4194
+      "qhat": 0.2758,
+      "measured": 0.439,
+      "n_calib": 41,
+      "n_eval": 41
     },
     {
       "nominal": 0.8,
-      "qhat": 0.4105,
-      "measured": 0.6129
+      "qhat": 0.569,
+      "measured": 0.7805,
+      "n_calib": 41,
+      "n_eval": 41
     },
     {
       "nominal": 0.9,
-      "qhat": 0.6591,
-      "measured": 0.9032
+      "qhat": 0.6759,
+      "measured": 0.878,
+      "n_calib": 41,
+      "n_eval": 41
     },
     {
       "nominal": 0.95,
-      "qhat": 0.8623,
-      "measured": 1.0
+      "qhat": 0.8387,
+      "measured": 0.9756,
+      "n_calib": 41,
+      "n_eval": 41
     }
   ],
   "rmse_by_method": {
-    "random_walk": 0.4532,
-    "drift": 0.4578,
-    "seasonal_naive": 0.5343,
-    "arima": 0.3799,
-    "ets": 0.4135,
-    "ridge": 0.398,
-    "hgb": 0.4574,
-    "mean": 0.3961
+    "random_walk": 0.4872,
+    "drift": 0.4916,
+    "seasonal_naive": 0.5594,
+    "arima": 0.4292,
+    "ets": 0.4683,
+    "ridge": 0.4274,
+    "hgb": 0.4733,
+    "mean": 0.4353
   }
 }

@@ -34,11 +34,21 @@ def test_more_data_lowers_the_detectable_effect():
 
 
 def test_interpretation_states_the_honest_bound():
+    """The fuel one-month forecast is a null, and the bound must say so honestly.
+
+    The invariant is NOT that observed skill sits in some band around zero -- that
+    was a proxy for 'efficient' pinned to a particular vintage of the data, and it
+    broke when the calendar fix changed the sample (observed skill -0.0075 ->
+    -0.0727) without changing the verdict. What actually has to hold is that the
+    model does not beat the baseline and that the shortfall is smaller than the
+    effect this design could have detected -- otherwise 'no detectable edge' would
+    be hiding a real one.
+    """
     r = power.run()['fuel_one_month_forecast']
     assert 'no detectable edge at this power' in r['interpretation']
     assert r['min_detectable_skill_pct'] > 0
-    # observed skill on the flagship fuel null is ~0 (efficient)
-    assert abs(r['observed_skill']) < 0.05
+    assert r['observed_skill'] <= 0, 'a positive skill would not be a null'
+    assert abs(r['observed_skill']) < r['min_detectable_skill']
 
 
 # ── Per-target power for the nowcast nulls ────────────────────────────────────

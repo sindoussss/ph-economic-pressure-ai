@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "file": "features_monthly_long.csv",
+  "source": "https://query1.finance.yahoo.com/v8/finance/chart/<ticker>",
+  "request_params": {
+    "tickers": {
+      "BZ=F": "oil_price",
+      "PHP=X": "usd_php",
+      "RB=F": "rbob"
+    },
+    "interval": "1d",
+    "window": "five-year epoch chunks"
+  },
+  "transformations": [
+    "request interval=1d in explicit five-year period1/period2 windows; range=max is insufficient because Yahoo thins old daily history",
+    "skip windows preceding the ticker (HTTP 400 or empty payload)",
+    "concatenate, sort, drop duplicate days keeping last",
+    "resample to month start, value = last observed close of the month",
+    "round to 2dp; drop duplicated months keeping last",
+    "inner join across tickers; dropna",
+    "assert_complete_months before writing",
+    "gas_price = (rbob / 3.785 * usd_php) * 1.35 + 12",
+    "demand_index from fetcher._compute_demand"
+  ],
+  "units": "USD/bbl, PHP per USD, PHP per litre",
+  "notes": "Long-window panel.",
+  "retrieved_at": "2026-07-27T19:29:28+00:00",
+  "sha256": "f88fabaf1d9a4f17cd1f28b3e225c51b8c428933d863209d9b015a2fd9264138",
+  "rows": 229,
+  "first_month": "2007-07",
+  "last_month": "2026-07",
+  "missing_months": []
+}

@@ -1,0 +1,50 @@
+{
+  "headline_mom": {
+    "verdict": "not_confirmed_on_holdout",
+    "n": 106,
+    "cut": 74,
+    "holdout_frac": 0.302,
+    "n_candidates": 4,
+    "candidates": [
+      "arima",
+      "ets",
+      "ridge",
+      "hgb"
+    ],
+    "selected_method": "arima",
+    "best_naive": "mean",
+    "selection_beat_naive": true,
+    "selection_skill": 0.0329,
+    "n_holdout_predictions": 32,
+    "holdout_skill": -0.0057,
+    "holdout_dm_p": 0.948,
+    "holdout_model_rmse": 0.4855,
+    "holdout_naive_rmse": 0.4828,
+    "shrinkage": 0.0387,
+    "interpretation": "arima was chosen on the first 74 rows and evaluated on the 32 predictions after them, against mean fixed at selection time. Skill +3.3% in selection, -0.6% on the holdout (DM p=0.9480). The edge does not survive selection and should not be reported as a positive."
+  },
+  "fuel_audit": {
+    "verdict": "confirmed_on_holdout",
+    "n": 96,
+    "cut": 67,
+    "holdout_frac": 0.302,
+    "n_candidates": 4,
+    "candidates": [
+      "arima",
+      "ets",
+      "ridge",
+      "hgb"
+    ],
+    "selected_method": "ridge",
+    "best_naive": "random_walk",
+    "selection_beat_naive": true,
+    "selection_skill": 0.1233,
+    "n_holdout_predictions": 29,
+    "holdout_skill": 0.1187,
+    "holdout_dm_p": 0.0296,
+    "holdout_model_rmse": 3.0921,
+    "holdout_naive_rmse": 3.5085,
+    "shrinkage": 0.0046,
+    "interpretation": "ridge was chosen on the first 67 rows and evaluated on the 29 predictions after them, against random_walk fixed at selection time. Skill +12.3% in selection, +11.9% on the holdout (DM p=0.0296). The edge survives selection."
+  }
+}

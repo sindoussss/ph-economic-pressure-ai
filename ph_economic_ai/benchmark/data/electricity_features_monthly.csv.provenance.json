@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "file": "electricity_features_monthly.csv",
+  "source": "https://query1.finance.yahoo.com/v8/finance/chart/<ticker>",
+  "request_params": {
+    "tickers": {
+      "BZ=F": "oil_price",
+      "NG=F": "natgas",
+      "PHP=X": "usd_php"
+    },
+    "interval": "1d",
+    "window": "five-year epoch chunks"
+  },
+  "transformations": [
+    "request interval=1d in explicit five-year period1/period2 windows; range=max is insufficient because Yahoo thins old daily history",
+    "skip windows preceding the ticker (HTTP 400 or empty payload)",
+    "concatenate, sort, drop duplicate days keeping last",
+    "resample to month start, value = last observed close of the month",
+    "round to 2dp; drop duplicated months keeping last",
+    "inner join across tickers; dropna",
+    "assert_complete_months before writing"
+  ],
+  "units": "USD/bbl, USD/MMBtu, PHP per USD",
+  "notes": "Electricity-CPI predictor panel.",
+  "retrieved_at": "2026-07-27T19:29:43+00:00",
+  "sha256": "73b224064e9836c90bd170233c08c36a140ab92a0dc6426b3fa08076cc0eca68",
+  "rows": 229,
+  "first_month": "2007-07",
+  "last_month": "2026-07",
+  "missing_months": []
+}

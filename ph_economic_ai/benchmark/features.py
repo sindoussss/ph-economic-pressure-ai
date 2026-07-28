@@ -11,6 +11,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from ph_economic_ai.benchmark.calendar_index import require_complete_calendar
+
 
 @dataclass
 class Variant:
@@ -26,7 +28,14 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     """df indexed 'YYYY-MM' with oil_price, usd_php, gas_price, demand_index, ron95.
 
     Returns a frame of lagged candidate features + 'ron95' target + 'proxy_lag1',
-    dropna'd to common support (longest lag = 3 months)."""
+    dropna'd to common support (longest lag = 3 months).
+
+    The lags below are ROW shifts, including a 3-row rolling mean, so they are
+    month lags only while `df` has no calendar gaps. That is asserted rather than
+    assumed: this builder feeds the fuel variant panel, and a silent gap here is
+    the same defect that made `prev_mom` reach two and three months back before
+    the 2026-07-28 correction."""
+    require_complete_calendar(df, 'fuel variant input panel')
     f = pd.DataFrame(index=df.index)
     f['prev_ron95']  = df['ron95'].shift(1)
     f['oil_lag1']    = df['oil_price'].shift(1)
@@ -79,10 +88,14 @@ def build_target_frame(target_series, driver_df, target_name: str, drivers: list
     dropna'd to common support."""
     base = pd.DataFrame({'__t__': target_series})
     joined = base.join(driver_df[list(drivers)], how='inner').sort_index()
+    # The shifts below are row shifts. An inner join of two differently-covered
+    # series is exactly where a gap appears, so require the joined index to be
+    # calendar-complete before lagging on it.
+    require_complete_calendar(joined, f'{target_name} target frame')
     f = pd.DataFrame(index=joined.index)
     f[f'prev_{target_name}'] = joined['__t__'].shift(1)
     for d in drivers:
         f[f'{d}_lag1'] = joined[d].shift(1)
         f[f'{d}_ma3'] = joined[d].shift(1).rolling(3).mean()
     f['target'] = joined['__t__']
-    return f.dropna()
+    return require_complete_calendar(f.dropna(), f'{target_name} target frame (final)')

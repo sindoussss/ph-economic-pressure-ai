@@ -24,6 +24,7 @@ import json
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
+from ph_economic_ai.benchmark.provenance import write_record
 
 _ROOT = Path(__file__).resolve().parents[1]
 _TRENDS_CSV = _ROOT / 'benchmark' / 'data' / 'google_trends_monthly.csv'
@@ -64,6 +65,16 @@ def refresh_trends(terms=_TRENDS_TERMS, geo: str = 'PH', out: Path = _TRENDS_CSV
     monthly.index.name = 'date'
     out.parent.mkdir(parents=True, exist_ok=True)
     monthly.to_csv(out)
+    write_record(out, source='Google Trends via pytrends',
+                 params={'geo': 'PH', 'granularity': 'monthly',
+                         'payload': 'one term per request'},
+                 transformations=['request each term separately, because a shared '
+                                  'payload rescales all terms to the most popular one '
+                                  'and flattened low-volume terms to zero',
+                                  'monthly interest index per term'],
+                 units='Google Trends interest index (0-100 per term)',
+                 notes='Sentiment nowcast input. Never pass retries= to TrendReq: '
+                       'urllib3 v2 removed Retry(method_whitelist=).')
     print(f'trends: wrote {len(monthly)} months x {len(terms)} terms -> {out}')
     return len(monthly)
 

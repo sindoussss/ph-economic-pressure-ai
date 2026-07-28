@@ -315,6 +315,26 @@ def main():
     print(f"Baseline theory: mean-predictor beats RW iff rho<{_bl['crossover_rho']}; "
           f"closed form matches all targets to {_bl['max_abs_error_targets']:.3f}")
 
+    # Selection-honest re-test (RSK-004). The panel verdicts above choose the best
+    # of K methods and then report that winner's p-value, which is optimistic
+    # because the winner was chosen for looking good. Here the model is fixed on an
+    # early segment and scored on a holdout the choice never saw, with the naive
+    # baseline also frozen at selection time.
+    from ph_economic_ai.benchmark import selection as _selection
+    _sel = _selection.run()
+    artifact('selection_holdout.json').write_text(
+        json.dumps(_sel, indent=2), encoding='utf-8')
+    for _name, _r in _sel.items():
+        if _r.get('verdict') == 'insufficient_data':
+            print(f'Selection holdout ({_name}): insufficient data')
+            continue
+        print(f"Selection holdout ({_name}): {_r['selected_method']} of "
+              f"{_r['n_candidates']} vs {_r['best_naive']} | "
+              f"selection {_r['selection_skill']:+.3f} -> holdout "
+              f"{_r['holdout_skill']:+.3f} (shrinkage {_r['shrinkage']:+.3f}, "
+              f"DM p={_r['holdout_dm_p']:.4f}, n={_r['n_holdout_predictions']}) | "
+              f"{_r['verdict']}")
+
     # Size-and-power study: what false-positive rate does a mean-free pool
     # actually produce on data with nothing in it, and does the fix keep power?
     from ph_economic_ai.benchmark import baseline_size

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "file": "usd_php_monthly.csv",
+  "source": "https://query1.finance.yahoo.com/v8/finance/chart/<ticker>",
+  "request_params": {
+    "ticker": "PHP=X",
+    "interval": "1d",
+    "range": "10y"
+  },
+  "transformations": [
+    "request interval=1d; never interval=1mo, which omits months non-randomly",
+    "resample to month start, value = last observed close of the month",
+    "round to 2dp; drop duplicated months keeping last",
+    "inner join across tickers; dropna",
+    "assert_complete_months before writing"
+  ],
+  "units": "PHP per USD",
+  "notes": "Before 2026-07-28 this file was built from interval=1mo and was missing all ten Octobers.",
+  "retrieved_at": "2026-07-27T19:29:23+00:00",
+  "sha256": "4545ad4831ead9883092f005279f8200349753bd17eda2496e9df411bf9c63b6",
+  "rows": 121,
+  "first_month": "2016-07",
+  "last_month": "2026-07",
+  "missing_months": []
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "file": "world_bank_ron95.csv",
+  "source": "World Bank Global Fuel Prices Database workbook",
+  "request_params": {
+    "workbook_url": "not configured; built from a local copy",
+    "workbook_path": "C:\\Users\\user\\PycharmProjects\\PythonProject\\ph_economic_ai\\benchmark\\global_fuel_prices.xlsx",
+    "sheet": "Premium Gasoline RON95 or above"
+  },
+  "transformations": [
+    "parse the LCU premium-gasoline (RON95+) sheet",
+    "select the Philippines row with the most observed months",
+    "label months YYYY-MM, round to 2dp",
+    "drop duplicate months keeping last"
+  ],
+  "units": "PHP per litre",
+  "notes": "RON95 gold target. RSK-007: the workbook itself is not committed, so this record identifies it but does not make it retrievable.",
+  "retrieved_at": "2026-07-27T19:29:44+00:00",
+  "sha256": "83ac471435019ab55ae4573d5aefcb870bb8e08c45b2d6fa7e536841ab278d55",
+  "rows": 99,
+  "first_month": "2017-01",
+  "last_month": "2025-03",
+  "missing_months": []
+}
