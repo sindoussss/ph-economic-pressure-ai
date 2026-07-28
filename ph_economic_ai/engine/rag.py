@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -256,7 +257,22 @@ def _eia_api_key() -> Optional[str]:
 
 
 def _embed_model_name() -> str:
-    """The model the cache is keyed against — must match what llm.embed uses."""
+    """The model the cache is keyed against — must match what llm.embed uses.
+
+    Provider-aware, because `llm.embed` is: it routes to Ollama when inference is
+    local and to Gemini otherwise. This function used to return the Gemini name
+    unconditionally, which silently defeated the very check it exists for.
+
+    The failure it caused: a cache built on Ollama held 145 vectors of 768
+    dimensions (`nomic-embed-text`) stamped `gemini-embedding-001`. On switching
+    to a hosted provider the stamp matched, so the 768-dimension vectors loaded,
+    new chunks embedded at Gemini's 3072, and `np.stack` on the mixed set raised
+    "all input arrays must have the same shape". `_refit` caught it, disabled
+    embeddings and fell back to TF-IDF — for every run, permanently, with a valid
+    key and no indication that anything but keyword matching was happening.
+    """
+    if llm.is_local():
+        return os.getenv('STRATA_LLM_OLLAMA_EMBED_MODEL', 'nomic-embed-text')
     return os.getenv('STRATA_LLM_EMBED_MODEL', 'gemini-embedding-001')
 
 
@@ -359,9 +375,52 @@ class RagEngine:
         if self._use_embeddings and self._embed_vecs is not None:
             try:
                 return self._query_embeddings(text, top_k, sources)
+            except ValueError as e:
+                # A width mismatch between the query vector and the chunk matrix
+                # means the cache was built by a different embedding model. It is
+                # recoverable and must be recovered from, because the alternative
+                # is silent lexical retrieval for the rest of the session and
+                # every session after it: the bad vectors are on disk, so every
+                # restart reloads them and fails again in the same place.
+                #
+                # Seen live after switching provider: 145 cached vectors at 768
+                # dimensions from Ollama's nomic-embed-text against a Gemini query
+                # at 3072, reported as "matmul: ... size 3072 is different from
+                # 768" once per agent turn.
+                if 'size' in str(e) or 'dimension' in str(e):
+                    logging.warning(
+                        'RagEngine: embedding width mismatch (%s). Dropping the '
+                        'stale cache and re-embedding.', e)
+                    self._reset_embeddings()
+                    try:
+                        return self._query_embeddings(text, top_k, sources)
+                    except Exception as retry_error:
+                        logging.warning('RagEngine: re-embedding failed (%s), '
+                                        'using TF-IDF', retry_error)
+                else:
+                    logging.warning('RagEngine: embedding query failed (%s), '
+                                    'using TF-IDF', e)
             except Exception as e:
                 logging.warning("RagEngine: embedding query failed (%s), using TF-IDF", e)
         return self._query_tfidf(text, top_k, sources)
+
+    def _reset_embeddings(self) -> None:
+        """Discard every cached vector, on disk too, and rebuild from scratch.
+
+        Deleting the file matters as much as clearing the dict. Leaving it in
+        place means the next process loads the same unusable vectors and lands in
+        the same failure, which is how a one-off provider switch turned into
+        permanent keyword-only retrieval with a valid API key.
+        """
+        self._embed_cache = {}
+        self._embed_vecs = None
+        self._embed_active = []
+        try:
+            _EMBED_CACHE_PATH.unlink(missing_ok=True)
+        except OSError as e:
+            logging.warning('RagEngine: could not remove the stale cache file (%s)', e)
+        self._dirty = True
+        self._refit()
 
     def _query_embeddings(self, text: str, top_k: int, sources: Optional[list[str]]) -> list[dict]:
         # Queries go through the same content-keyed cache as chunks: agents ask
@@ -561,8 +620,36 @@ class RagEngine:
                 vecs = data['vecs']
             self._embed_cache = {str(k): vecs[i] for i, k in enumerate(keys)}
             logging.info('RagEngine: loaded %d cached embeddings', len(self._embed_cache))
+            self._drop_mismatched_dims()
         except Exception as e:                      # corrupt/partial file is not fatal
             logging.warning('RagEngine: could not read embedding cache (%s)', e)
+
+    def _drop_mismatched_dims(self) -> None:
+        """Keep only the majority vector width, discarding any others.
+
+        Belt to the model stamp's braces. The stamp is the real defence and it
+        now reflects the model actually used, but a stamp can only catch the
+        cases it knows about: an env override changed mid-session, a cache
+        written by a future model, a partially-written file. Any of those puts
+        two vector widths in one dict, and `np.stack` then raises and takes ALL
+        semantic retrieval down with it rather than the entries at fault.
+
+        Majority rather than "first wins" because the common case is a large
+        valid cache plus a few strays, and the majority is the set worth keeping.
+        """
+        if not self._embed_cache:
+            return
+        widths = Counter(len(v) for v in self._embed_cache.values())
+        if len(widths) < 2:
+            return
+        keep, _ = widths.most_common(1)[0]
+        dropped = {k for k, v in self._embed_cache.items() if len(v) != keep}
+        for k in dropped:
+            del self._embed_cache[k]
+        logging.warning(
+            'RagEngine: embedding cache held %d vector widths %s; kept %d at '
+            'width %d and dropped %d. They will be re-embedded.',
+            len(widths), sorted(widths), len(self._embed_cache), keep, len(dropped))
 
     def _save_embed_cache(self) -> None:
         if not self._embed_cache:

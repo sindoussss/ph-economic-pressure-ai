@@ -105,9 +105,7 @@ def test_only_uncached_chunks_are_embedded(monkeypatch):
     assert seen[-1] == ['gamma'], 'already-cached chunk was re-embedded'
 
 
-def test_cache_from_a_different_model_is_discarded(monkeypatch):
-    """Vector dimensions are model-specific — reusing them across models would
-    corrupt retrieval silently instead of failing loudly."""
+def _seed_cache(monkeypatch):
     monkeypatch.setattr(rag.llm, 'embed', lambda texts: [[1.0, 0.0] for _ in texts])
     engine = rag.RagEngine()
     engine._chunks = [_chunk('alpha')]
@@ -115,9 +113,43 @@ def test_cache_from_a_different_model_is_discarded(monkeypatch):
     engine._refit()
     assert rag._EMBED_CACHE_PATH.exists()
 
-    monkeypatch.setenv('STRATA_LLM_EMBED_MODEL', 'some-other-embedding-model')
-    reloaded = rag.RagEngine()
-    assert reloaded._embed_cache == {}
+
+def test_cache_from_a_different_local_model_is_discarded(monkeypatch):
+    """Vector dimensions are model-specific — reusing them across models would
+    corrupt retrieval silently instead of failing loudly.
+
+    The variable has to be the one the ACTIVE provider actually reads. Locally
+    that is `STRATA_LLM_OLLAMA_EMBED_MODEL`, which is what `_ollama_embed` uses;
+    `STRATA_LLM_EMBED_MODEL` governs the hosted path and is inert here.
+    """
+    monkeypatch.setattr(rag.llm, 'is_local', lambda p=None: True)
+    _seed_cache(monkeypatch)
+
+    monkeypatch.setenv('STRATA_LLM_OLLAMA_EMBED_MODEL', 'mxbai-embed-large')
+    assert rag.RagEngine()._embed_cache == {}
+
+
+def test_cache_from_a_different_hosted_model_is_discarded(monkeypatch):
+    monkeypatch.setattr(rag.llm, 'is_local', lambda p=None: False)
+    _seed_cache(monkeypatch)
+
+    monkeypatch.setenv('STRATA_LLM_EMBED_MODEL', 'text-embedding-004')
+    assert rag.RagEngine()._embed_cache == {}
+
+
+def test_a_cache_does_not_cross_the_local_hosted_boundary(monkeypatch):
+    """The failure this whole guard exists for, and the one it used to miss.
+
+    `_embed_model_name` returned the Gemini name whatever the provider was, so a
+    cache built on Ollama held 768-dimension `nomic-embed-text` vectors stamped
+    `gemini-embedding-001`. Switching to a hosted provider loaded them against
+    3072-dimension queries and disabled semantic retrieval for good.
+    """
+    monkeypatch.setattr(rag.llm, 'is_local', lambda p=None: True)
+    _seed_cache(monkeypatch)
+
+    monkeypatch.setattr(rag.llm, 'is_local', lambda p=None: False)
+    assert rag.RagEngine()._embed_cache == {}, 'local vectors survived into a hosted session'
 
 
 def test_corrupt_cache_file_is_not_fatal(monkeypatch):
