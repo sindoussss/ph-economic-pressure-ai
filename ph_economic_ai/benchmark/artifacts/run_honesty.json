@@ -1,9 +1,9 @@
 {
-  "measured_at": "2026-07-28 (fuel pricing week of 2026-07-28)",
-  "provider": "groq",
+  "measured_at": "2026-07-29 (fuel pricing week of 2026-07-28)",
+  "provider": "ollama",
   "models": {
-    "fast": "llama-3.1-8b-instant",
-    "deep": "llama-3.3-70b-versatile"
+    "fast": "qwen2.5:3b",
+    "deep": "qwen2.5:7b"
   },
   "scenario": {
     "oil_pct": 5.0,
@@ -11,8 +11,104 @@
     "bsp_rate": 6.5,
     "demand_index": 72.0
   },
-  "runs": [],
+  "runs": [
+    {
+      "estimate": 2.21,
+      "estimate_source": "agent",
+      "agreement_pct": 79,
+      "agreement_n": 32,
+      "agreement_regions": [
+        4,
+        4
+      ],
+      "agreement_distinct": 5,
+      "agreement_diversity": 0.4,
+      "regional": [
+        {
+          "pair": "NCR & Central Luzon",
+          "estimate": 2.0,
+          "agreement_pct": 78
+        },
+        {
+          "pair": "Western Visayas & Davao Region",
+          "estimate": 2.21,
+          "agreement_pct": 77
+        }
+      ],
+      "echo": {
+        "n": 32,
+        "anchor": 2.214,
+        "echo_exact_n": 22,
+        "echo_exact_pct": 68.8,
+        "within_0.25_n": 26,
+        "within_0.25_pct": 81.2,
+        "modal_value": 2.21,
+        "modal_n": 22,
+        "modal_is_anchor": true,
+        "mean_distance_from_anchor": 0.271,
+        "spread": 1.91
+      },
+      "openings": {
+        "agents": 20,
+        "distinct_openings": 8,
+        "colliding_groups": 3,
+        "max_roles_in_a_collision": 5,
+        "single_role_collisions": 0,
+        "cross_role_collisions": 3,
+        "examples": [
+          {
+            "opening": "CAUSAL CHAIN: [scenario shock] -> [market effect] -> [retail mechanism",
+            "agents": [
+              "Central Luzon DataExtractor",
+              "Davao Region ConfidenceScorer",
+              "Davao Region Critic",
+              "Davao Region DataExtractor",
+              "Davao Region Synthesizer",
+              "NCR DataExtractor",
+              "NCR Forecaster",
+              "NCR Synthesizer",
+              "Western Visayas Critic",
+              "Western Visayas DataExtractor",
+              "Western Visayas Forecaster"
+            ]
+          },
+          {
+            "opening": "CAUSAL CHAIN: [scenario shock (oil price increase)] -> [market effect ",
+            "agents": [
+              "Central Luzon Critic",
+              "Central Luzon Synthesizer"
+            ]
+          },
+          {
+            "opening": "NCR Forecaster: CAUSAL CHAIN: [scenario shock] -> [market effect] -> [",
+            "agents": [
+              "NCR ConfidenceScorer",
+              "NCR Critic"
+            ]
+          }
+        ]
+      },
+      "roster": {
+        "agents": 20,
+        "responses": 32,
+        "responses_per_round": {
+          "1": 20,
+          "2": 12
+        },
+        "parse_rate_pct": 100.0,
+        "roles_present": [
+          "ConfidenceScorer",
+          "Critic",
+          "DataExtractor",
+          "Forecaster",
+          "Synthesizer"
+        ]
+      },
+      "seconds": 232.2
+    }
+  ],
   "interpretation": [
-    "No completed runs, so nothing is measured."
+    "ECHO: the modal agent estimate IS the anchor in 1 of 1 runs. The agreement gain from the shared anchor is suggestion, not consensus, and must be reported that way.",
+    "ROSTER: [20] agents. Compare agreement against a stored 13-agent run before crediting the fix with the change; a larger room raises n as well as agreement."
   ]
 }

@@ -540,20 +540,35 @@ def agent_responses_of(history: list) -> list:
 
 
 def opening_diversity(responses: list) -> float:
-    """Share of DISTINCT statement openings, 0 to 1.
+    """Share of agents whose OPENING READ is distinct, 0 to 1.
 
     The signal the percentage cannot carry. Two agents independently reaching
     -2.10 and sixteen agents copying -2.10 produce an identical estimate vector,
     so no function of the numbers alone separates consensus from repetition. The
     prose does: a copied answer arrives in copied words.
 
-    Measured on the shipped swarm: 32 statements, 8 distinct openings, while the
-    agreement percentage read 100. That is the same evidence shape that got the
-    Forum's round 1 blinded, recorded in the vault as "8 distinct openings out of
-    20, with a news agent reciting the social agent's line".
+    One statement per agent, its earliest. The first version divided distinct
+    openings by RESPONSES, and an agent speaks in both rounds: 32 responses came
+    from 20 agents, so the ceiling was 20/32 = 0.625 rather than 1.0 and a
+    threshold of 0.5 sat at four fifths of an unreachable maximum. It would have
+    fired on almost every healthy run.
+
+    The earliest round is also the right one to read. That is the blind round,
+    where an agent forms its own view, and it is exactly where peer contamination
+    would show. A round-2 statement is SUPPOSED to respond to the room.
     """
+    first_by_agent: dict = {}
+    for r in responses:
+        name = getattr(r, 'agent_name', None)
+        rnd = getattr(r, 'round_num', 0) or 0
+        if name is None:
+            continue
+        prior = first_by_agent.get(name)
+        if prior is None or rnd < (getattr(prior, 'round_num', 0) or 0):
+            first_by_agent[name] = r
+
     openings = [' '.join((getattr(r, 'statement', '') or '').split())[:80]
-                for r in responses]
+                for r in first_by_agent.values()]
     openings = [o for o in openings if o]
     if not openings:
         return 0.0
@@ -1764,8 +1779,11 @@ class MasterJudge:
             scored_responses = [r for h in histories.values()
                                 for r in agent_responses_of(h)]
 
-        # Both computed over exactly the population the percentage was measured
-        # on, so a reader comparing them is comparing like with like.
+        # `agreement_distinct` counts over exactly the population the percentage
+        # was measured on, so a reader comparing the two is comparing like with
+        # like. `agreement_diversity` deliberately narrows to one statement per
+        # agent: it asks whether the room's opening READ was independent, and an
+        # agent cannot answer that twice.
         scored_estimates = [r.price_estimate for r in scored_responses]
         agreement_distinct = len({round(e, 2) for e in scored_estimates})
         agreement_diversity = opening_diversity(scored_responses)

@@ -75,20 +75,6 @@ ARMS = [
 ]
 
 
-def _opening_diversity(responses) -> float:
-    """Share of DISTINCT openings among the agents' statements.
-
-    The vault's herding evidence was exactly this shape: a live 17-agent Forum
-    run returned 8 distinct openings out of 20, with one agent reciting
-    another's line. If blinding is doing anything, this should rise.
-    """
-    openings = [' '.join((r.statement or '').split())[:80] for r in responses]
-    openings = [o for o in openings if o]
-    if not openings:
-        return 0.0
-    return round(len(set(openings)) / len(openings), 3)
-
-
 def _measure(verdict, seconds: float) -> dict:
     responses = list(getattr(verdict, 'all_responses', []) or [])
     estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -108,7 +94,16 @@ def _measure(verdict, seconds: float) -> dict:
                           / max(len(estimates), 1), 1),
         'direction_pct': round(100 * signs.count(lead) / len(signs)) if signs else 0,
         'parse_rate_pct': round(100 * len(estimates) / max(len(responses), 1), 1),
-        'opening_diversity': _opening_diversity(responses),
+        # Shared with the engine so the report and the experiment cannot drift.
+        # This tool carried its own copy until 2026-07-29, and that copy had the
+        # engine's original bug: distinct openings over RESPONSES, when an agent
+        # speaks in both rounds. The figures in the 2026-07-29 blind-arm artifact
+        # (0.25 / 0.25 / 0.125) were computed over 32 responses from 20 agents, so
+        # their ceiling was 0.625 and they are not comparable to anything measured
+        # after this date. The comparison BETWEEN those arms survives — all three
+        # shared one roster and one denominator — so "diversity did not rise under
+        # blinding" still stands. Only the scale was wrong.
+        'opening_diversity': swarm.opening_diversity(responses),
         'distinct_estimates': len(counts),
         'spread': round(max(estimates) - min(estimates), 2) if len(estimates) > 1 else 0.0,
         'stdev': round(statistics.pstdev(estimates), 3) if len(estimates) > 1 else 0.0,

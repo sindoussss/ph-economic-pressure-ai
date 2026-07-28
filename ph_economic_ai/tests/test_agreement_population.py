@@ -406,3 +406,53 @@ def test_peer_visibility_can_still_be_turned_back_on():
     agent = next(a for a in agents if a.role == 'Forecaster')
     prompt = ' '.join(m['content'] for m in arena._build_prompt(agent, 1, peers))
     assert 'This round so far' in prompt
+
+
+# ── The diversity metric must be able to reach its own maximum ───────────────
+
+def _resp(name, rnd, text):
+    return AgentResponse(name, rnd, '', text, -1.0)
+
+
+def test_diversity_can_reach_one():
+    """The first version divided distinct openings by RESPONSES, and an agent
+    speaks in both rounds. 32 responses from 20 agents capped it at 0.625, so the
+    0.5 caveat threshold sat at four fifths of an unreachable maximum and would
+    have fired on almost every healthy run. One statement per agent."""
+    from ph_economic_ai.engine.swarm import opening_diversity
+
+    rs = [_resp(f'a{i}', 1, f'Opening view {i}.') for i in range(20)]
+    rs += [_resp(f'a{i}', 2, f'Opening view {i}.') for i in range(12)]
+    assert opening_diversity(rs) == 1.0
+
+
+def test_diversity_still_catches_herding():
+    from ph_economic_ai.engine.swarm import opening_diversity
+
+    rs = [_resp(f'a{i}', 1, 'Prices will ease this week.') for i in range(15)]
+    rs += [_resp(f'a{15 + i}', 1, f'Distinct take {i}.') for i in range(5)]
+    assert opening_diversity(rs) == pytest.approx(0.3)
+
+
+def test_a_reworded_second_round_does_not_inflate_diversity():
+    """Round 2 is SUPPOSED to respond to the room, so it says nothing about
+    whether the opening read was independent."""
+    from ph_economic_ai.engine.swarm import opening_diversity
+
+    rs = [_resp('a', 1, 'Same opening.'), _resp('a', 2, 'A different follow up.'),
+          _resp('b', 1, 'Same opening.'), _resp('b', 2, 'Another follow up.')]
+    assert opening_diversity(rs) == pytest.approx(0.5)
+
+
+def test_diversity_reads_the_earliest_round_per_agent():
+    """The blind round is where contamination would show."""
+    from ph_economic_ai.engine.swarm import opening_diversity
+
+    rs = [_resp('a', 2, 'Late and distinct.'), _resp('a', 1, 'Shared opening.'),
+          _resp('b', 1, 'Shared opening.')]
+    assert opening_diversity(rs) == pytest.approx(0.5)
+
+
+def test_diversity_of_an_empty_room_is_zero():
+    from ph_economic_ai.engine.swarm import opening_diversity
+    assert opening_diversity([]) == 0.0
