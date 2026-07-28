@@ -14,6 +14,8 @@ Public interface (consumed by main_window.py):
 """
 from __future__ import annotations
 
+import uuid
+
 import math
 import random
 from typing import Optional
@@ -32,7 +34,12 @@ from PyQt6.QtGui import (
     QPainter, QPen, QColor, QBrush, QPainterPath, QFont, QFontMetrics,
 )
 
-from ph_economic_ai.engine.swarm import REGIONS, build_swarm_agents, _ROLE_RAG
+from ph_economic_ai.engine.swarm import (
+    REGIONS, _ROLE_ORDER, build_swarm_agents, _ROLE_RAG)
+
+# Derived, never a literal. The counters hardcoded 20 in three places, which is
+# only right while the roster happens to be 4 regions x 5 roles.
+TOTAL_AGENTS = len(REGIONS) * len(_ROLE_ORDER)
 from ph_economic_ai.ui.kg_canvas import KnowledgeGraphCanvas
 from ph_economic_ai.ui import kg_live as _kg_live
 from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
@@ -855,6 +862,13 @@ class _SwarmCanvas(QGraphicsView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Live session state for the SWARM SESSION panel. Previously the panel's
+        # four rows and its session id were string literals, so it reported
+        # "20/20 alive" through a run that had already eliminated thirteen agents.
+        self._session = {
+            'alive': TOTAL_AGENTS, 'total': TOTAL_AGENTS, 'phase': 'idle',
+            'parallel': 0, 'session_id': 'session_pending',
+        }
         self._scene = QGraphicsScene(self)
         self._scene.setSceneRect(-HW, -HH, SCENE_W, SCENE_H)
         self.setScene(self._scene)
@@ -1327,6 +1341,18 @@ class _SwarmCanvas(QGraphicsView):
                 if rn:
                     rn.set_highlight(False)
 
+    def set_session(self, **fields) -> None:
+        """Update the session panel from real run state and repaint.
+
+        Only the keys given are changed, so a caller can report a phase change
+        without needing to know the current counts.
+        """
+        unknown = set(fields) - set(self._session)
+        if unknown:
+            raise KeyError(f'unknown session fields: {sorted(unknown)}')
+        self._session.update(fields)
+        self.viewport().update()
+
     def mark_eliminated(self, agent_name: str):
         node = self._agents.get(agent_name)
         if node:
@@ -1518,13 +1544,18 @@ class _SwarmCanvas(QGraphicsView):
         painter.setPen(QColor(TEXT_3))
         painter.setFont(f_small)
         painter.drawText(QRectF(TR_X + 14, TR_Y + 26, TR_W - 28, 14),
-                         Qt.AlignmentFlag.AlignRight, 'session_8618a2043ae9')
+                         Qt.AlignmentFlag.AlignRight, self._session['session_id'])
 
+        # Read from live state, not literals. These four rows were hardcoded, so
+        # the panel showed "20/20 alive" and "group_arena" no matter what had
+        # actually happened -- which is why it contradicted the ALIVE/ELIM counters
+        # in the header during a real run.
+        s = self._session
         session_rows = [
             ('ENGINE',   'swarm.v2'),
-            ('AGENTS',   '20/20 alive'),
-            ('PHASE',    'group_arena'),
-            ('PARALLEL', '4'),
+            ('AGENTS',   f"{s['alive']}/{s['total']} alive"),
+            ('PHASE',    s['phase']),
+            ('PARALLEL', str(s['parallel'])),
         ]
         for i, (k, v) in enumerate(session_rows):
             row_y = TR_Y + 56 + i * 17
@@ -1830,7 +1861,7 @@ class Stage3SwarmPanel(QWidget):
         self._elec_est: Optional[float] = None
         self._active_agents = 0
         self._elim_count = 0
-        self._alive_count = 20
+        self._alive_count = TOTAL_AGENTS
         self._elapsed_s = 0
         self._clock_running = False
         self._console_count = 0
@@ -2002,7 +2033,7 @@ class Stage3SwarmPanel(QWidget):
         alive_box,  self._alive_val  = _stat('ALIVE', N_DONE)
         elim_box,   self._elim_val   = _stat('ELIM', TEXT_2)
         time_box,   self._time_val   = _stat('ELAPSED', TEXT_1)
-        self._alive_val.setText('20')
+        self._alive_val.setText(str(TOTAL_AGENTS))
         self._time_val.setText('00:00')
 
         h.addWidget(active_box)
@@ -2328,9 +2359,27 @@ class Stage3SwarmPanel(QWidget):
             self._clock_running = True
             self._clock_tmr.start()
 
+    def _sync_session(self, **fields) -> None:
+        """Push real run state into the canvas session panel.
+
+        Single funnel so the header counters and the panel cannot disagree again:
+        every field the panel shows is written from the same numbers the header
+        uses.
+        """
+        canvas = getattr(self, '_canvas', None)
+        if canvas is None or not hasattr(canvas, 'set_session'):
+            return
+        canvas.set_session(**fields)
+
     # ── Phase row updates ─────────────────────────────────────────────────────
+    _PHASE_KEYS = ['initialize', 'group_arena', 'regional_judges', 'master_verdict']
+
     def _set_phase(self, step: int, label: str):
         self._phase_lbl.setText(f'Step {step}/4  ·  {label}')
+        # Keep the SWARM SESSION panel in step. It used to render a literal
+        # 'group_arena' forever, so it disagreed with this very row.
+        key = self._PHASE_KEYS[step] if 0 <= step < len(self._PHASE_KEYS) else label
+        self._sync_session(phase=key)
         for i, (dot, txt) in enumerate(self._phase_rows):
             if i < step:
                 dot.setText('●')
@@ -2389,6 +2438,7 @@ class Stage3SwarmPanel(QWidget):
         self._alive_count = max(0, self._alive_count - 1)
         self._elim_val.setText(str(self._elim_count))
         self._alive_val.setText(str(self._alive_count))
+        self._sync_session(alive=self._alive_count)
         self._log(f'ELIM  {region[:8]}  R{round_num}  {agent_name.split()[-1]}  '
                   f'score={score:.2f}', color='#F87171')
 
@@ -2576,6 +2626,15 @@ class Stage3SwarmPanel(QWidget):
             meta = {a.name: a for a in build_swarm_agents(price)}
         except Exception:
             pass
+        # Seed the session panel from the run that is actually starting. The id
+        # was a literal, so every session displayed the same one.
+        total = len(meta) or TOTAL_AGENTS
+        self._alive_count = total
+        self._alive_val.setText(str(total))
+        self._sync_session(
+            alive=total, total=total, phase='initialize',
+            parallel=int(getattr(thread, '_parallel_n', 0) or len(REGIONS)),
+            session_id=f'session_{uuid.uuid4().hex[:12]}')
         self._begin_live_graph(getattr(thread, '_rag', None),
                                getattr(thread, '_scenario', {}), meta)
         thread.agent_typing.connect(self._on_agent_typing)
@@ -2593,6 +2652,8 @@ class Stage3SwarmPanel(QWidget):
 
     # ── Reset ─────────────────────────────────────────────────────────────────
     def reset(self):
+        self._sync_session(alive=TOTAL_AGENTS, total=TOTAL_AGENTS,
+                           parallel=0, session_id='session_pending')
         self._groups_done = 0
         self._regional_done_count = 0
         self._master_estimate = '—'
@@ -2601,13 +2662,13 @@ class Stage3SwarmPanel(QWidget):
         self._elec_est = None
         self._active_agents = 0
         self._elim_count = 0
-        self._alive_count = 20
+        self._alive_count = TOTAL_AGENTS
         self._elapsed_s = 0
         self._clock_running = False
         self._clock_tmr.stop()
 
         self._active_val.setText('0')
-        self._alive_val.setText('20')
+        self._alive_val.setText(str(TOTAL_AGENTS))
         self._elim_val.setText('0')
         self._time_val.setText('00:00')
 

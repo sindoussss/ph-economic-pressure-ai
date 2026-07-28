@@ -23,7 +23,10 @@ _AGENT = '#3B82F6'
 _SOURCE = '#8B5CF6'
 _CLAIM = '#8B93A1'
 _EDGE = QColor('#9AA4B2')          # darker so edges read on real displays
-_EDGE_LABEL = {'retrieved': 'READS', 'claims': 'ESTIMATES'}   # in_region: unlabelled
+# 'READS' is what the agent actually read; 'READS?' is re-derived after the fact and
+# may differ from what it saw. Labelling them the same would hide that (RSK-019).
+_EDGE_LABEL = {'retrieved': 'READS', 'reconstructed': 'READS?',
+               'claims': 'ESTIMATES'}   # in_region: unlabelled
 
 # kind -> (color, radius, font_pt, bold, text_color)
 _STYLE = {

@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
+from ph_economic_ai.engine import anchoring
 from ph_economic_ai.engine.debate import AgentResponse
 from ph_economic_ai.engine.swarm import _MAX_REALISTIC_FUEL_CHANGE
 from ph_economic_ai.utils.preprocessing import build_features
@@ -38,6 +39,18 @@ def _physics_anchor_label(master_verdict):
     if anchor is None:
         return None
     source = getattr(master_verdict, 'estimate_source', 'agent')
+    # "Consistent" has to be TESTED, not assumed. `source == 'agent'` only means
+    # the estimate was not clamped; it says nothing about distance from the anchor.
+    # A live run showed a master estimate of -0.10 carrying a green tick claiming
+    # consistency with a -1.03 anchor, which is PHP0.93 away.
+    estimate = getattr(master_verdict, 'final_estimate', None)
+    gap = None if estimate is None else abs(float(estimate) - float(anchor))
+    if source == 'agent' and gap is not None and gap > anchoring.FUEL_TOLERANCE_PHP_L:
+        lbl = QLabel(f'⚠ Differs from the {anchor:+.2f} ₱/L mechanical pass-through '
+                     f'by ₱{gap:.2f}/L (agent estimate kept, not clamped)')
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        return lbl
     text = {
         'agent':   f'✓ Consistent with the {anchor:+.2f} ₱/L mechanical pass-through',
         'clamped': f'⟐ Clamped toward the {anchor:+.2f} ₱/L mechanical pass-through',
@@ -71,6 +84,11 @@ from ph_economic_ai.ui.regional_map import RegionalMapWidget
 from ph_economic_ai.ui.policy_reco import PolicyRecoWidget
 from ph_economic_ai.ui import honesty as _honesty
 from ph_economic_ai.ui import theme as _theme
+
+
+# The forecast rows key electricity as 'elec'; the engine names the sector
+# 'electricity'. Mapped in one place so the two cannot drift.
+_ROW_KEY_TO_SECTOR = {'gas': 'gas', 'food': 'food', 'elec': 'electricity'}
 
 
 class Stage4ReportPanel(QWidget):
@@ -222,6 +240,61 @@ class Stage4ReportPanel(QWidget):
                    else 'background:transparent;color:#9EA3AE;') + '}'
             )
 
+    def set_sector_explanations(self, readings, complete=None) -> None:
+        """Attach why / when / sources to each sector row.
+
+        A number alone tells a household what, not why, not when, and not on whose
+        authority. `engine.explain` supplies all three under a hard constraint:
+        the sentence may use only the drivers the forum produced, and any source
+        it names that the forum did not read is reported as ungrounded rather than
+        shown as provenance.
+        """
+        from ph_economic_ai.engine import explain
+        self._explanations = {}
+        try:
+            for e in explain.build_all(readings, complete=complete):
+                self._explanations[e['sector']] = e
+        except Exception:
+            self._explanations = {}
+
+    def _explanation_block(self, sector: str):
+        """The why / when / where lines for one sector, or None if unavailable."""
+        e = getattr(self, '_explanations', {}).get(sector)
+        if not e:
+            return None
+        box = QWidget()
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(20, 2, 0, 6)
+        lay.setSpacing(2)
+
+        why = QLabel(e['why'])
+        why.setWordWrap(True)
+        why.setStyleSheet('font-size:11px;color:#374151;')
+        lay.addWidget(why)
+
+        when = QLabel(f"next change · {e['when']} · {e['when_label']} (scheduled)")
+        when.setStyleSheet('font-size:10px;color:#111827;font-weight:600;')
+        lay.addWidget(when)
+
+        if e['sources']:
+            src = QLabel('source: ' + ', '.join(e['sources']))
+            src.setWordWrap(True)
+            src.setStyleSheet('font-size:10px;color:#6B7280;')
+            lay.addWidget(src)
+
+        if not e['grounded']:
+            # Never present an unverifiable mention as provenance.
+            warn = QLabel('unverified mentions removed from provenance: '
+                          + ', '.join(e['ungrounded_mentions']))
+            warn.setWordWrap(True)
+            warn.setStyleSheet('font-size:9px;color:#B45309;font-style:italic;')
+            lay.addWidget(warn)
+        elif not e['why_generated']:
+            note = QLabel('summary built from analyst points (no model reachable)')
+            note.setStyleSheet('font-size:9px;color:#9EA3AE;font-style:italic;')
+            lay.addWidget(note)
+        return box
+
     def set_sector_forecasts(self, gas=None, food=None, elec=None):
         """Render the gas/food/electricity next-month forecasts as a card."""
         from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
@@ -263,6 +336,10 @@ class Stage4ReportPanel(QWidget):
                 rl.addWidget(val)
                 rl.addStretch()
                 self._sector_holder_layout.addWidget(row)
+                # The row key is 'elec'; the engine's sector name is 'electricity'.
+                block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
+                if block is not None:
+                    self._sector_holder_layout.addWidget(block)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
         except Exception:

@@ -16,7 +16,11 @@ def test_live_build_sequence():
     scenario = {'current_price': 60.0, 'oil_price': 82.0}
     kg_live.seed(b, ['DOE', 'CRUDE'], scenario)
     meta = {'FCST-NCR': NS(role='Forecaster', region_name='NCR', rag_sources=['DOE'])}
-    resp = [NS(agent_name='FCST-NCR', statement='easing', price_estimate=-1.9)]
+    # A real response carries the retrieval captured during the run, so the graph
+    # draws preserved evidence rather than re-querying (RSK-019). Responses without
+    # it fall back to a reconstruction, covered in test_retrieval_provenance.py.
+    resp = [NS(agent_name='FCST-NCR', statement='easing', price_estimate=-1.9,
+               retrieval=[{'source': 'DOE', 'text': 'diesel down'}])]
     kg_live.add_round(b, resp, meta, _Rag(), scenario)
     kg_live.add_round(b, resp, meta, _Rag(), scenario)            # idempotent re-emit
     kg_live.add_regional(b, ('NCR', 'CENTRAL LUZON'), -1.7, meta)

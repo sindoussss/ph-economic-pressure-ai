@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from datetime import datetime
 
@@ -19,6 +20,7 @@ from ph_economic_ai.engine.live_data import (
     LiveDataBrief, LiveBriefThread, CausalChainThread, PolicyRecoThread,
     derive_scenario_from_brief,
 )
+from ph_economic_ai.engine import price_calendar as _calendar
 from ph_economic_ai.engine.store import AgentTrustStore
 from ph_economic_ai.engine.quality_scorer import QualityScorer
 from ph_economic_ai.engine.evolution import get_evolved_debate_agents, get_evolved_swarm_agents
@@ -227,6 +229,10 @@ class SimMainWindow(QMainWindow):
         self._gas_estimate = None
         self._food_estimate = None
         self._elec_estimate = None
+        self._sector_responses: dict = {}
+        self._gas_agreement = 0
+        self._food_agreement = 0
+        self._elec_agreement = 0
         self._live_brief: LiveDataBrief | None = None
         self._last_scenario_obj = None   # Scenario dataclass saved for _on_brief_ready
         self._debates_started: bool = False
@@ -272,7 +278,7 @@ class SimMainWindow(QMainWindow):
         self._agent_perf = AgentPerformancePanel(self._store)
         self._accuracy_view = AccuracyView()
         self._learning = LearningView(self._store)
-        self._monitor = PressureMonitorPanel(self._rag)
+        self._monitor = PressureMonitorPanel(self._rag, store=self._store)
 
         # ── Wrap the landing in a vertical scroll area (website-style) ──────
         landing_scroll = QScrollArea()
@@ -386,6 +392,10 @@ class SimMainWindow(QMainWindow):
         self._gas_estimate = None
         self._food_estimate = None
         self._elec_estimate = None
+        self._sector_responses: dict = {}
+        self._gas_agreement = 0
+        self._food_agreement = 0
+        self._elec_agreement = 0
         self._live_brief = None
 
         # Fetch live PH retail gas price (fast, sync OK)
@@ -579,8 +589,76 @@ class SimMainWindow(QMainWindow):
             self._stage3_swarm.connect_food_thread(self._food_thread)
             self._stage3_swarm.connect_elec_thread(self._elec_thread)
 
+    _SECTOR_UNITS = {'gas': '₱/L', 'food': '%', 'electricity': '₱/kWh'}
+
+    def _sector_readings(self) -> list:
+        """SectorReadings for the explanation layer, built from what actually ran.
+
+        Drivers are quoted from the agents' own statements and sources are the RAG
+        sources those agents were allowed to read, so the explanation is grounded
+        in this run rather than in the model's general knowledge.
+        """
+        from ph_economic_ai.engine.pressure_brief import SectorReading
+
+        estimates = {'gas': self._gas_estimate, 'food': self._food_estimate,
+                     'electricity': self._elec_estimate}
+        agreements = {'gas': getattr(self, '_gas_agreement', 0),
+                      'food': getattr(self, '_food_agreement', 0),
+                      'electricity': getattr(self, '_elec_agreement', 0)}
+        engines = {'food': getattr(self, '_food_engine', None),
+                   'electricity': getattr(self, '_elec_engine', None)}
+
+        readings = []
+        for sector, estimate in estimates.items():
+            responses = (getattr(self, '_sector_responses', {}) or {}).get(sector, [])
+            drivers = []
+            for r in responses:
+                stmt = (getattr(r, 'statement', '') or '').strip()
+                if not stmt:
+                    continue
+                first = stmt.split('. ')[0].strip().rstrip('.')
+                if 20 < len(first) < 200:
+                    drivers.append(first)
+                if len(drivers) >= 3:
+                    break
+
+            sources: list[str] = []
+            engine = engines.get(sector)
+            agents = getattr(engine, '_agents', None) or getattr(engine, 'agents', None)
+            if agents:
+                for a in agents:
+                    for s in (getattr(a, 'rag_sources', None) or []):
+                        if s not in sources:
+                            sources.append(s)
+            elif sector == 'gas':
+                from ph_economic_ai.engine.swarm import _ROLE_RAG
+                for lst in _ROLE_RAG.values():
+                    for s in lst:
+                        if s not in sources:
+                            sources.append(s)
+
+            direction = ('unknown' if estimate is None
+                         else 'rising' if estimate > 0
+                         else 'easing' if estimate < 0 else 'flat')
+            readings.append(SectorReading(
+                sector=sector, direction=direction, estimate=estimate,
+                unit=self._SECTOR_UNITS[sector], confidence=agreements.get(sector, 0),
+                drivers=drivers, sources=sources))
+        return readings
+
     def _push_sector_forecasts(self):
         try:
+            # Explanations first, so the rows render with their why/when/source
+            # lines already attached rather than appearing a frame later.
+            try:
+                from ph_economic_ai.engine import llm as _llm
+                self._stage4.set_sector_explanations(
+                    self._sector_readings(), complete=_llm.complete)
+            except Exception:
+                # Logged, never silent: a bare `pass` here hid an AttributeError
+                # that dropped every explanation from the report while the
+                # numbers rendered normally, so nothing looked wrong.
+                logging.exception('sector explanations could not be built')
             self._stage4.set_sector_forecasts(
                 self._gas_estimate, self._food_estimate, self._elec_estimate)
         except Exception:
@@ -600,6 +678,8 @@ class SimMainWindow(QMainWindow):
         rec = anchoring.reconcile_estimate(
             raw_avg, anchor, tolerance=anchoring.FOOD_TOLERANCE_PCT)
         self._food_estimate = rec.value
+        self._sector_responses['food'] = list(responses or [])
+        self._food_agreement = conf
         note = anchoring.explain(rec, unit='%', anchor_label='own-trend persistence')
         self._food_verdict = (
             f'Food price index monthly change: {rec.value:+.2f}% '
@@ -640,6 +720,8 @@ class SimMainWindow(QMainWindow):
         rec = anchoring.reconcile_estimate(
             raw_avg, anchor, tolerance=anchoring.ELECTRICITY_TOLERANCE_PHP_KWH)
         self._elec_estimate = rec.value
+        self._sector_responses['electricity'] = list(responses or [])
+        self._elec_agreement = conf
         note = anchoring.explain(rec, unit='₱/kWh', anchor_label='fuel pass-through')
         self._elec_verdict = (
             f'Electricity rate monthly change: {rec.value:+.4f} ₱/kWh '
@@ -680,6 +762,7 @@ class SimMainWindow(QMainWindow):
                 scenario=self._last_scenario,
                 final_estimate=consensus.get('weighted_avg') if isinstance(consensus, dict) else None,
                 confidence_pct=int(consensus.get('confidence_pct', 0)) if isinstance(consensus, dict) else 0,
+                horizon_days=self._fuel_horizon_days(),
             )
             self._store.update_run_quality(self._current_run_id, run_quality)
             response_dicts = []
@@ -724,6 +807,17 @@ class SimMainWindow(QMainWindow):
         })
         self._run_synthesizer_if_ready()
 
+    @staticmethod
+    def _fuel_horizon_days() -> float:
+        """Distance to the adjustment this run is actually forecasting.
+
+        Without this a run defaults to a flat seven days, so a forecast made on a
+        Monday for tomorrow's adjustment would be graded against a price a week
+        later. The card already tells the user which Tuesday it means; this makes
+        the grader agree with the card.
+        """
+        return _calendar.describe_next_fuel_adjustment()['horizon_days']
+
     def _on_swarm_complete(self, master_verdict):
         all_responses = getattr(master_verdict, 'all_responses', [])
         if all_responses:
@@ -734,6 +828,7 @@ class SimMainWindow(QMainWindow):
                 scenario=self._last_scenario,
                 final_estimate=master_verdict.final_estimate,
                 confidence_pct=master_verdict.confidence_pct,
+                horizon_days=self._fuel_horizon_days(),
             )
             self._store.update_run_quality(self._current_run_id, run_quality)
             response_dicts = []
@@ -755,6 +850,9 @@ class SimMainWindow(QMainWindow):
         except Exception:
             pass
         self._gas_estimate = getattr(master_verdict, 'final_estimate', None)
+        self._sector_responses['gas'] = list(
+            getattr(master_verdict, 'all_responses', []) or [])
+        self._gas_agreement = int(getattr(master_verdict, 'confidence_pct', 0) or 0)
         regional = [
             (rv.region_pair, rv.estimate)
             for rv in getattr(master_verdict, 'regional_verdicts', []) or []
