@@ -190,6 +190,38 @@ def test_the_prompt_no_longer_ships_a_copyable_template():
     assert 'X.XX' not in prompt.split('ESTIMATE:')[1].split('worked example')[0]
 
 
+def test_no_output_line_is_something_an_agent_can_copy():
+    """Three lines, three separate discoveries of the same failure.
+
+    The chain line and the estimate line were fixed first. The DIRECTION line
+    was left as a menu — "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT" —
+    and the very next live run had five of twenty agents open by copying the
+    whole menu back. A menu is a template. So was the instruction sentence
+    around them: agents echoed the phrase "ALL THREE LINES" as though it were
+    part of the answer.
+
+    This checks the class, not the three instances, because the pattern has now
+    recurred every time a line was written as something to reproduce rather than
+    something to do.
+    """
+    arena = _arena()
+    prompt = arena._build_prompt(arena._agents[0], 1, [])[-1]['content']
+
+    direction = next(ln for ln in prompt.splitlines()
+                     if ln.startswith('DIRECTION:'))
+    assert 'or DIRECTION:' not in direction, (
+        'the direction line offers a menu an agent can copy verbatim')
+    assert direction.count('UP') == 1
+
+    assert 'ALL THREE' not in prompt.upper(), (
+        'agents echoed this phrase back as if it were part of the answer')
+    # Every slot the agent must fill names what belongs there and is followed by
+    # a worked example containing a real value.
+    for line in prompt.splitlines():
+        if line.startswith(('CAUSAL CHAIN:', 'ESTIMATE:')):
+            assert 'worked example' in line, f'no worked example on: {line[:40]}'
+
+
 def test_the_detector_still_catches_the_wording_that_caused_this():
     """The prompts were reworded, but models still emit the old shape — it is
     what they were trained on, and it is what the live run produced."""

@@ -1333,15 +1333,19 @@ class GroupArena:
         # worked example with real content, and say outright not to echo it.
         user_parts.append(
             "\nYou MUST cite specific data from the DATA BRIEF when available. "
-            "Give your analysis and end with ALL THREE lines. The DIRECTION and "
-            "the sign of the ESTIMATE must agree with each other and with your "
-            "causal chain:\n"
+            "Give your analysis, then finish with three lines in this order. The "
+            "DIRECTION and the sign of the ESTIMATE must agree with each other "
+            "and with your causal chain:\n"
             "CAUSAL CHAIN: <name the shock> -> <the market it moves> -> "
             "<how that reaches the pump> -> <what a household pays> "
             "(worked example — \"CAUSAL CHAIN: Brent +5% -> import cost up -> "
             "DOE weekly pass-through -> jeepney fares rise\". Write your own "
             "chain; never copy the words in the angle brackets.)\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
+            # A menu is a template too. With "DIRECTION: UP or DIRECTION: DOWN or
+            # DIRECTION: FLAT", five of twenty agents opened by copying the whole
+            # menu back — the same failure as the chain line, in the one line
+            # that had not been rewritten yet.
+            "DIRECTION: <write UP, DOWN or FLAT — the one you mean, not the list>\n"
             "ESTIMATE: <the peso-per-litre CHANGE you expect, signed> "
             "(worked example — \"ESTIMATE: +0.85/L\" for a rise of 85 centavos, "
             "or \"ESTIMATE: -0.40/L\" for a fall. Write your own number; "

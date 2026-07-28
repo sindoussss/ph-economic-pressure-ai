@@ -13,77 +13,81 @@
   },
   "runs": [
     {
-      "estimate": 2.21,
+      "estimate": 1.2,
       "estimate_source": "agent",
-      "agreement_pct": 79,
+      "agreement_pct": 100,
       "agreement_n": 32,
       "agreement_regions": [
         4,
         4
       ],
-      "agreement_distinct": 5,
-      "agreement_diversity": 0.4,
+      "agreement_distinct": 1,
+      "agreement_diversity": 0.45,
       "regional": [
         {
           "pair": "NCR & Central Luzon",
-          "estimate": 2.0,
-          "agreement_pct": 78
+          "estimate": 2.36,
+          "agreement_pct": 100
         },
         {
           "pair": "Western Visayas & Davao Region",
-          "estimate": 2.21,
-          "agreement_pct": 77
+          "estimate": 1.2,
+          "agreement_pct": 100
         }
       ],
       "echo": {
         "n": 32,
         "anchor": 2.214,
-        "echo_exact_n": 22,
-        "echo_exact_pct": 68.8,
-        "within_0.25_n": 26,
-        "within_0.25_pct": 81.2,
-        "modal_value": 2.21,
-        "modal_n": 22,
-        "modal_is_anchor": true,
-        "mean_distance_from_anchor": 0.271,
-        "spread": 1.91
+        "echo_exact_n": 0,
+        "echo_exact_pct": 0.0,
+        "within_0.25_n": 0,
+        "within_0.25_pct": 0.0,
+        "modal_value": 1.2,
+        "modal_n": 32,
+        "modal_is_anchor": false,
+        "mean_distance_from_anchor": 1.014,
+        "spread": 0.0
       },
       "openings": {
         "agents": 20,
-        "distinct_openings": 8,
-        "colliding_groups": 3,
-        "max_roles_in_a_collision": 5,
-        "single_role_collisions": 0,
-        "cross_role_collisions": 3,
+        "distinct_openings": 9,
+        "colliding_groups": 5,
+        "max_roles_in_a_collision": 3,
+        "single_role_collisions": 1,
+        "cross_role_collisions": 4,
         "examples": [
           {
-            "opening": "CAUSAL CHAIN: [scenario shock] -> [market effect] -> [retail mechanism",
+            "opening": "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT ESTIMATE: +\u20b11.20/L",
             "agents": [
               "Central Luzon DataExtractor",
-              "Davao Region ConfidenceScorer",
-              "Davao Region Critic",
+              "Central Luzon Synthesizer",
               "Davao Region DataExtractor",
               "Davao Region Synthesizer",
-              "NCR DataExtractor",
+              "Western Visayas Synthesizer"
+            ]
+          },
+          {
+            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price +5.0% -> crud",
+            "agents": [
+              "Central Luzon Forecaster",
               "NCR Forecaster",
-              "NCR Synthesizer",
-              "Western Visayas Critic",
-              "Western Visayas DataExtractor",
               "Western Visayas Forecaster"
             ]
           },
           {
-            "opening": "CAUSAL CHAIN: [scenario shock (oil price increase)] -> [market effect ",
+            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price increase (+5.",
             "agents": [
-              "Central Luzon Critic",
-              "Central Luzon Synthesizer"
+              "NCR Critic",
+              "NCR DataExtractor",
+              "NCR Synthesizer"
             ]
           },
           {
-            "opening": "NCR Forecaster: CAUSAL CHAIN: [scenario shock] -> [market effect] -> [",
+            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price increase (+5%",
             "agents": [
-              "NCR ConfidenceScorer",
-              "NCR Critic"
+              "Davao Region Critic",
+              "Western Visayas ConfidenceScorer",
+              "Western Visayas DataExtractor"
             ]
           }
         ]
@@ -104,11 +108,11 @@
           "Synthesizer"
         ]
       },
-      "seconds": 232.2
+      "seconds": 217.1
     }
   ],
   "interpretation": [
-    "ECHO: the modal agent estimate IS the anchor in 1 of 1 runs. The agreement gain from the shared anchor is suggestion, not consensus, and must be reported that way.",
+    "ECHO: at most 0.0% of agents quoted the anchor exactly and the mode is elsewhere. The room is reasoning around the anchor rather than repeating it.",
     "ROSTER: [20] agents. Compare agreement against a stored 13-agent run before crediting the fix with the change; a larger room raises n as well as agreement."
   ]
 }
