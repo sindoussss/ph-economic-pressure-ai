@@ -23,6 +23,62 @@ _MERALCO_RATE_PHP_KWH: float = 14.3345   # Meralco residential May 2026
 _GAS_PRICE_PHP_L: float = 98.82           # NCR Unleaded 91 avg May 20 2026
 
 
+#: The slot names this codebase puts inside brackets when it shows an agent the
+#: shape of a causal chain. Matched only INSIDE brackets and only against these
+#: exact words, so an agent that writes its own bracketed aside — "[Brent +5%]"
+#: — is not punished for using a bracket.
+_SCAFFOLD_SLOTS = frozenset({
+    'scenario shock', 'market effect', 'retail mechanism', 'consumer impact',
+    'trigger', 'price mechanism', 'household impact', 'effect',
+})
+_BRACKETED = re.compile(r'[\[<]\s*([^\]>\n]{1,40}?)\s*[\]>]')
+
+_SCAFFOLD_RETRY_PROMPT = (
+    'You returned the FORMAT of the causal chain instead of filling it in. The '
+    'square brackets were placeholders describing what belongs in each link, not '
+    'text to copy.\n'
+    'Do not repeat your analysis. Reply with one CAUSAL CHAIN line and nothing '
+    'else, replacing every link with the specific thing you mean — name the '
+    'shock, the market it moves, the mechanism that reaches the pump, and the '
+    'effect on a household. No brackets.\n'
+    'CAUSAL CHAIN: ... -> ... -> ... -> ...'
+)
+
+
+def unfilled_scaffold(statement: str) -> bool:
+    """True when an agent echoed the requested format instead of answering in it.
+
+    Measured on 2026-07-29: eleven of twenty agents opened with
+
+        CAUSAL CHAIN: [scenario shock] -> [market effect] -> [retail mechanism
+
+    placeholders intact. `qwen2.5:3b` is small enough to treat the template as
+    the answer. Nothing downstream noticed. The estimate still parsed, so the
+    agent stayed in the agreement population contributing a number it had not
+    reasoned to — and those are exactly the agents with nothing to offer but the
+    anchor they were handed, which is the shape of the echo problem.
+
+    It also corrupts `opening_diversity`, which reads these identical openings as
+    a room herding when it is really a room not answering. Two different
+    failures wearing the same number.
+
+    Only the causal-chain line is inspected. A placeholder anywhere else is
+    sloppy; a placeholder here means that link was never reasoned.
+    """
+    for raw in (statement or '').splitlines():
+        marker = raw.upper().find('CAUSAL CHAIN')
+        if marker < 0:
+            continue
+        # From the marker onward only. Prose can precede the line, and an agent
+        # discussing "the [market effect]" before stating its chain has still
+        # stated its chain.
+        for slot in _BRACKETED.findall(raw[marker:]):
+            if slot.strip().lower() in _SCAFFOLD_SLOTS:
+                return True
+    return False
+
+
+
 @dataclass
 class Agent:
     name: str
@@ -600,10 +656,20 @@ class DebateEngine:
             f"{anchor_block}"
             f"Relevant context:\n{rag_text}\n\n"
             + (f"Previous agent responses:\n{prior}\n\n" if prior else '')
+            # Instructions, not templates — see `unfilled_scaffold` and the note
+            # at `forum._EST_LINE`. A small model copies a bracketed template
+            # verbatim, which parses to nothing and puts placeholder words on the
+            # card as if they were findings.
             + "Give your analysis. You MUST cite specific data from the DATA BRIEF "
             "when available. End your response with BOTH of these lines:\n"
-            "CAUSAL CHAIN: [trigger] → [market effect] → [price mechanism] → [consumer impact]\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            "CAUSAL CHAIN: <name the trigger> → <the market it moves> → "
+            "<how that reaches the price> → <what a household pays> "
+            "(worked example — \"CAUSAL CHAIN: Brent +5% → import cost up → "
+            "weekly pass-through → jeepney fares rise\". Write your own chain; "
+            "never copy the words in the angle brackets.)\n"
+            "ESTIMATE: <the peso-per-litre CHANGE you expect, signed> "
+            "(worked example — \"ESTIMATE: +0.85/L\" or \"ESTIMATE: -0.40/L\". "
+            "Write your own number; never write X.XX.)"
         )
         return [
             {'role': 'system', 'content': agent.system_prompt},

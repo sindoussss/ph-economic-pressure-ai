@@ -303,7 +303,21 @@ def test_the_caveat_fires_on_a_narrowed_room():
     from ph_economic_ai.ui import honesty
     text = honesty.agreement_caveat(16, distinct=2, diversity=0.06)
     assert 'only 2 distinct values' in text
-    assert 'one view held widely' in text
+    assert 'weaker than it looks' in text
+
+
+def test_the_caveat_reports_the_narrowing_without_naming_a_cause():
+    """It used to end "one view held widely, not many views converging", which
+    asserts a CAUSE the number cannot support. A live run on 2026-07-29 traced
+    eleven identical openings not to agents copying each other but to a small
+    model returning the prompt's causal-chain template verbatim: the same
+    measurement, the opposite diagnosis. The caveat reports what it measured and
+    sends the reader to the statements."""
+    from ph_economic_ai.ui import honesty
+    text = honesty.agreement_caveat(16, distinct=2, diversity=0.06)
+    assert 'one view held widely' not in text
+    assert 'herd' not in text.lower()
+    assert 'agents’ own words' in text
 
 
 def test_the_caveat_stays_silent_on_a_healthy_room():
