@@ -30,11 +30,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import random
 import re
 import threading
 import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Iterable, Iterator, Optional
 
 import requests
@@ -98,8 +101,18 @@ _DEFAULT_MODELS: dict[str, dict[str, str]] = {
         DEEP: 'llama-3.3-70b-versatile',
     },
     'gemini': {
-        FAST: 'gemini-2.5-flash-lite',
-        DEEP: 'gemini-2.5-flash',
+        # The `-latest` aliases, not pinned version IDs. Google retires specific
+        # versions for NEW keys while leaving them listed by the models endpoint,
+        # so a pinned ID that works on an old key returns 404 on a fresh one and
+        # the failure looks like a broken app rather than a retired model.
+        # Measured on a new key, 2026-07-28: `gemini-2.5-flash-lite` and
+        # `gemini-2.5-flash` both 404 with "no longer available to new users",
+        # while the aliases below answer normally.
+        #
+        # An alias moving under us is the lesser risk: it can change quality,
+        # whereas a pinned retirement takes the provider out entirely.
+        FAST: 'gemini-flash-lite-latest',
+        DEEP: 'gemini-flash-latest',
     },
 }
 
@@ -155,6 +168,194 @@ _CHARS_PER_TOKEN = 4
 
 _TIMEOUT = 120        # seconds; free tiers can queue under load
 _MAX_RETRIES = 4
+# Longest a single call will sit waiting for a rate-limit window. A per-minute
+# window is worth waiting out; a daily one resets in hours, and blocking on that
+# is indistinguishable from a hang. Past this the call fails so the caller can
+# fall back to a provider that has capacity.
+_MAX_RATE_WAIT = 90.0
+
+# ── Quota reporting ───────────────────────────────────────────────────────────
+# A 429 used to surface as "Free-tier quota may be exhausted — check your daily
+# request limit", which was wrong in the case that actually happens. A live run
+# died with the headers reading 14,399 of 14,400 daily requests REMAINING and
+# 1,290 of 6,000 tokens-per-minute left, resetting in 47 seconds. The daily
+# allowance was untouched; the per-minute token ceiling was the wall. Telling a
+# user to check the wrong limit costs them an afternoon.
+#
+# Providers report this in headers on every response, not just on failures, so
+# the ceiling is observable before it is hit rather than only afterwards.
+
+#: Duration strings as providers write them: "47.1s", "2m59.56s", "1h2m3s".
+_RESET_RE = re.compile(
+    r'(?:(?P<h>[\d.]+)h)?(?:(?P<m>[\d.]+)m(?!s))?(?:(?P<s>[\d.]+)s)?(?:(?P<ms>[\d.]+)ms)?')
+
+
+def _parse_reset(value: Optional[str]) -> Optional[float]:
+    """Seconds until a rate-limit window resets, from a provider's header."""
+    if not value:
+        return None
+    text = str(value).strip()
+    if _is_number(text):                       # a bare number is already seconds
+        return float(text)
+    m = _RESET_RE.fullmatch(text)
+    if not m or not any(m.groupdict().values()):
+        return None
+    parts = m.groupdict()
+    return (float(parts['h'] or 0) * 3600
+            + float(parts['m'] or 0) * 60
+            + float(parts['s'] or 0)
+            + float(parts['ms'] or 0) / 1000.0)
+
+
+@dataclass
+class QuotaStatus:
+    """What a provider last told us about the ceiling we are approaching."""
+    provider: str
+    tier: str
+    scope: str                       # 'tokens' (per minute) | 'requests' (per day)
+    limit: Optional[int] = None
+    remaining: Optional[int] = None
+    reset_seconds: Optional[float] = None
+    blocked: bool = False            # True when a request was actually refused
+
+    @property
+    def reset_at(self) -> Optional[datetime]:
+        if self.reset_seconds is None:
+            return None
+        return datetime.now(timezone.utc) + timedelta(seconds=self.reset_seconds)
+
+    def describe_wait(self) -> str:
+        s = self.reset_seconds
+        if s is None:
+            return 'shortly'
+        if s < 90:
+            return f'{int(round(s))} seconds'
+        if s < 5400:
+            return f'{s / 60:.0f} minutes'
+        return f'{s / 3600:.1f} hours'
+
+    def describe(self) -> str:
+        """One sentence a user can act on."""
+        window = 'per-minute token' if self.scope == 'tokens' else 'daily request'
+        head = (f'{self.provider} {window} limit reached'
+                if self.blocked else
+                f'{self.provider} {window} limit almost reached')
+        if self.limit is not None and self.remaining is not None:
+            head += f' ({self.remaining:,} of {self.limit:,} left)'
+        return f'{head}. Refills in about {self.describe_wait()}.'
+
+
+#: What actually answered, per tier, since the last `reset_provenance()`.
+#: {tier: {'provider': str, 'model': str, 'fell_back': bool}}
+#:
+#: Configured is not the same as actual once fallback exists, and the difference
+#: is exactly the kind of thing that must not be silent: a verdict decided by a
+#: 7b local judge after a hosted 429 looks identical on the report to one decided
+#: by a 70b hosted judge. It also has to reach the recall key, or a run that fell
+#: back could be recalled for one that did not.
+_provenance: dict = {}
+_provenance_lock = threading.Lock()
+
+
+def reset_provenance() -> None:
+    """Start a new run's provenance record. Call once per run."""
+    with _provenance_lock:
+        _provenance.clear()
+
+
+def last_provenance() -> dict:
+    """What served each tier, for the report and the recall key."""
+    with _provenance_lock:
+        return {k: dict(v) for k, v in _provenance.items()}
+
+
+def provenance_id() -> str:
+    """A stable one-line identity of the models that actually answered.
+
+    Falls back to the configured models when nothing has run yet, so a recall
+    key computed before the first call still describes the intended run.
+    """
+    with _provenance_lock:
+        seen = {k: dict(v) for k, v in _provenance.items()}
+    parts = []
+    for tier in (FAST, DEEP):
+        if tier in seen:
+            entry = seen[tier]
+            mark = '!' if entry.get('fell_back') else ''
+            parts.append(f"{tier}={entry['provider']}:{entry['model']}{mark}")
+        else:
+            try:
+                p = provider_for(tier)
+                parts.append(f'{tier}={p}:{model_for(tier, p)}')
+            except LLMError:
+                parts.append(f'{tier}=unknown')
+    return ' '.join(parts)
+
+
+def _record_provenance(tier: str, provider: str, model: str,
+                       fell_back: bool = False) -> None:
+    with _provenance_lock:
+        _provenance[tier] = {'provider': provider, 'model': model,
+                             'fell_back': fell_back}
+
+
+#: Subscribers notified when a ceiling is hit. The UI registers one to raise a
+#: notice; headless callers (the ablation harness, tests) simply never do.
+_quota_listeners: list = []
+
+
+def on_quota_event(callback) -> None:
+    """Register `callback(QuotaStatus)`. Called from worker threads."""
+    if callback not in _quota_listeners:
+        _quota_listeners.append(callback)
+
+
+def clear_quota_listeners() -> None:
+    _quota_listeners.clear()
+
+
+def _emit_quota(status: QuotaStatus) -> None:
+    for cb in list(_quota_listeners):
+        try:
+            cb(status)
+        except Exception:
+            # A broken listener must never take a run down with it.
+            logging.exception('llm: quota listener failed')
+
+
+def _quota_from_headers(headers, provider: str, tier: str,
+                        blocked: bool) -> Optional[QuotaStatus]:
+    """Read the tighter of the two ceilings out of a response's headers.
+
+    Tokens before requests: on every free tier measured here the per-minute
+    token window binds long before the daily request count, and reporting the
+    slack one is how the old message misled.
+    """
+    def _int(name):
+        raw = headers.get(name)
+        try:
+            return int(float(raw)) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    for scope, rem_h, lim_h, reset_h in (
+        ('tokens', 'x-ratelimit-remaining-tokens', 'x-ratelimit-limit-tokens',
+         'x-ratelimit-reset-tokens'),
+        ('requests', 'x-ratelimit-remaining-requests', 'x-ratelimit-limit-requests',
+         'x-ratelimit-reset-requests'),
+    ):
+        remaining, limit = _int(rem_h), _int(lim_h)
+        if remaining is None and limit is None:
+            continue
+        reset = _parse_reset(headers.get(reset_h))
+        # "Almost" is 5%: enough warning to finish a thought, not so much that
+        # the notice cries wolf on every run.
+        near = limit is not None and remaining is not None and remaining <= limit * 0.05
+        if blocked or near:
+            return QuotaStatus(provider=provider, tier=tier, scope=scope,
+                               limit=limit, remaining=remaining,
+                               reset_seconds=reset, blocked=blocked)
+    return None
 
 
 class LLMError(RuntimeError):
@@ -283,6 +484,65 @@ def active_provider() -> str:
     return 'ollama'
 
 
+def provider_for(tier: str) -> str:
+    """The provider that should serve one tier.
+
+    A base provider plus an optional deep-tier override, rather than a full
+    per-tier table, because the shapes of the two tiers are genuinely different
+    and only one split is worth having:
+
+        STRATA_LLM_PROVIDER=ollama          base: 32 agent calls, and embeddings
+        STRATA_LLM_DEEP_PROVIDER=groq       override: the 7 judge calls
+
+    That split exists because free tiers throttle on TOKENS per minute. The 32
+    agent calls spend about 44,800 fast-tier tokens against Groq's 6,000/min
+    ceiling, which is a run that 429s. The 7 judge calls spend about 24,300
+    against the deep tier's 12,000/min, which is a run that finishes. Keeping
+    the bulk local removes the bottleneck and spends the hosted budget on the
+    calls that actually decide the verdict.
+
+    The base stays local for a second reason: `is_local()` also routes
+    `embed()`. A hosted base sends every RAG query to Gemini's embedding
+    endpoint, capped at 9 requests per minute, which is a fresh bottleneck in
+    place of the one just removed.
+
+    `STRATA_LLM_FAST_PROVIDER` works the same way, though the deep override is
+    the one worth shipping. It exists because moving the agents by changing the
+    BASE would also move embeddings, so an A/B on the agent model would silently
+    be an A/B on the retriever as well. A per-tier override keeps such a
+    comparison to one variable.
+    """
+    var = f'STRATA_LLM_{tier.upper()}_PROVIDER'
+    override = (os.getenv(var) or '').strip().lower()
+    if override:
+        if override not in _DEFAULT_MODELS:
+            raise LLMError(
+                f"Unknown {var} {override!r}. "
+                f"Supported: {', '.join(sorted(_DEFAULT_MODELS))}."
+            )
+        return override
+    return active_provider()
+
+
+def fallback_provider(tier: str) -> Optional[str]:
+    """Where to retry when `provider_for(tier)` cannot serve, or None.
+
+    Only ever the base provider, and only when it differs from the one that
+    failed. A hosted tier falling back to local turns a quota wall into a slower
+    answer instead of a dead run — the failure mode seen live, where one group's
+    429 aborted the whole swarm with the daily allowance untouched.
+
+    Falling back is not free and must never be silent: the run's verdict was
+    then decided by a different model than the one configured. `last_provenance`
+    records what actually answered so the report and the recall key can say so.
+    """
+    primary = provider_for(tier)
+    base = active_provider()
+    if base == primary:
+        return None
+    return base
+
+
 def is_local(provider: Optional[str] = None) -> bool:
     """True when inference runs on this machine — no key, no quota."""
     try:
@@ -378,9 +638,16 @@ def describe_model(tier: str) -> str:
     Recording *which* model produced a claim must not itself be able to fail a
     run, so an unconfigured provider degrades to the tier name rather than
     raising the way `model_for` does.
+
+    Resolves through `provider_for(tier)`, not the base provider. With the deep
+    tier overridden to a hosted provider, `model_for(tier)` alone reported the
+    LOCAL model for a call that a hosted one would serve — observed as
+    "deep: groq qwen2.5:7b". That label feeds the provenance record and the
+    recall key, so a wrong one means a run is filed under models that never
+    touched it.
     """
     try:
-        return model_for(tier)
+        return model_for(tier, provider_for(tier))
     except LLMError:
         return tier
 
@@ -517,6 +784,7 @@ def _post_sse(
     than guessed at.
     """
     last_err: Optional[str] = None
+    last_quota: Optional[QuotaStatus] = None
     for attempt in range(_MAX_RETRIES):
         _limiter_for(provider, tier).acquire(tokens)
         try:
@@ -531,17 +799,66 @@ def _post_sse(
 
         if resp.status_code == 429 or resp.status_code >= 500:
             retry_after = resp.headers.get('Retry-After')
+            status = _quota_from_headers(resp.headers, provider, tier, blocked=True)
+            headers_snapshot = dict(resp.headers)
             resp.close()
             last_err = f'HTTP {resp.status_code}'
-            delay = float(retry_after) if _is_number(retry_after) else _backoff(attempt)
-            time.sleep(delay)
+            last_quota = status
+
+            # Wait for the window the provider actually names. `Retry-After` is
+            # absent on Groq's token-limit 429s — it sends
+            # `x-ratelimit-reset-tokens` instead — so exponential backoff took
+            # over and gave up after about 30 seconds against a 47 second
+            # window. The run then died with 14,399 of 14,400 daily requests
+            # unspent. Honouring the reset header is the difference between a
+            # slow run and a failed one.
+            delay = None
+            if _is_number(retry_after):
+                delay = float(retry_after)
+            elif status is not None and status.reset_seconds is not None:
+                delay = status.reset_seconds
+            else:
+                delay = _parse_reset(headers_snapshot.get('x-ratelimit-reset-tokens'))
+            if delay is None:
+                delay = _backoff(attempt)
+            # A window can be longer than any sane retry budget (a daily cap
+            # resets in hours). Waiting that out silently would look like a
+            # hang, so cap the wait and let the caller fall back instead.
+            if delay > _MAX_RATE_WAIT:
+                if status is not None:
+                    _emit_quota(status)
+                raise LLMError(
+                    f'{provider} {tier} tier rate limited; '
+                    f'{status.describe() if status else "retry later"}')
+            if status is not None:
+                _emit_quota(status)
+            time.sleep(delay + random.uniform(0, 0.5))
             continue
+
+        # A successful response still carries the ceilings, so the notice can
+        # warn before the wall rather than only on impact.
+        near = _quota_from_headers(resp.headers, provider, tier, blocked=False)
+        if near is not None:
+            _emit_quota(near)
 
         if resp.status_code != 200:
             detail = resp.text[:400]
             resp.close()
             raise LLMError(f'{provider} returned HTTP {resp.status_code}: {detail}')
 
+        # Decode as UTF-8, explicitly. `iter_lines(decode_unicode=True)` uses
+        # `resp.encoding`, and requests falls back to ISO-8859-1 whenever the
+        # response carries no charset — which SSE endpoints routinely do not.
+        # Every non-ASCII character then arrives as mojibake.
+        #
+        # The peso sign is not incidental here, it is the unit of the answer.
+        # `ESTIMATE: -₱1.50/L` came back as `ESTIMATE: -â\x82±1.50/L`, which
+        # `parse_fuel_estimate` cannot read, so a correct estimate counted as no
+        # estimate at all. Measured: the hosted agent arm of the model A/B parsed
+        # 6.2 percent of its responses against 96.9 percent for the local arm,
+        # and the entire gap was this line. The A/B looked like a verdict on
+        # model quality and was a verdict on character encoding.
+        resp.encoding = 'utf-8'
         with resp:
             for raw in resp.iter_lines(decode_unicode=True):
                 if not raw:
@@ -555,10 +872,14 @@ def _post_sse(
                     continue      # partial/keepalive frame; the stream continues
         return
 
+    # Name the limit that was actually hit. This used to say "check your daily
+    # request limit" unconditionally, which was wrong in the case that happens:
+    # the run that produced this comment died with 14,399 of 14,400 daily
+    # requests remaining and the per-minute token window exhausted.
+    detail = last_quota.describe() if last_quota is not None else (
+        'no rate-limit headers were returned, so the cause is unclear')
     raise LLMError(
-        f'{provider} unavailable after {_MAX_RETRIES} attempts ({last_err}). '
-        'Free-tier quota may be exhausted — check your daily request limit.'
-    )
+        f'{provider} unavailable after {_MAX_RETRIES} attempts ({last_err}). {detail}')
 
 
 def _ollama_stream(
@@ -615,6 +936,12 @@ def _ollama_stream(
             resp.close()
             raise LLMError(f'Ollama returned HTTP {resp.status_code}: {detail}')
 
+        # Same reason as the hosted path: requests guesses ISO-8859-1 when the
+        # response carries no charset, which turns the peso sign into mojibake
+        # and an estimate into an unparseable one. Ollama's ndjson has not been
+        # observed to trigger it, but the guess is a property of requests rather
+        # than of the server, so relying on that is relying on luck.
+        resp.encoding = 'utf-8'
         with resp:
             try:
                 for raw in resp.iter_lines(decode_unicode=True):
@@ -696,12 +1023,56 @@ def stream(
     temperature: Optional[float] = None,
     seed: Optional[int] = None,
 ) -> Iterator[str]:
-    """Yield response text incrementally. Mirrors the old ollama stream shape.
+    """Yield response text incrementally, falling back when a tier is blocked.
+
+    The fallback is deliberately restricted to failures that happen BEFORE any
+    token is yielded. Once output has started, switching provider mid-answer
+    would splice two different models' prose into one statement, which is worse
+    than the failure it avoids.
+    """
+    if provider is not None:
+        yield from _stream_via(provider, messages, tier, max_tokens, json_mode,
+                               temperature, seed)
+        return
+
+    primary = provider_for(tier)
+    gen = _stream_via(primary, messages, tier, max_tokens, json_mode,
+                      temperature, seed)
+    try:
+        first = next(gen)
+    except StopIteration:
+        _record_provenance(tier, primary, model_for(tier, primary))
+        return
+    except LLMError as exc:
+        backup = fallback_provider(tier)
+        if backup is None:
+            raise
+        logging.warning('llm: %s tier fell back from %s to %s (%s)',
+                        tier, primary, backup, exc)
+        _record_provenance(tier, backup, model_for(tier, backup), fell_back=True)
+        yield from _stream_via(backup, messages, tier, max_tokens, json_mode,
+                               temperature, seed)
+        return
+
+    _record_provenance(tier, primary, model_for(tier, primary))
+    yield first
+    yield from gen
+
+
+def _stream_via(
+    provider: str,
+    messages: list[dict],
+    tier: str = FAST,
+    max_tokens: Optional[int] = None,
+    json_mode: bool = False,
+    temperature: Optional[float] = None,
+    seed: Optional[int] = None,
+) -> Iterator[str]:
+    """One provider's stream. Mirrors the old ollama stream shape.
 
     `json_mode` constrains the reply to a single JSON object — the replacement
     for ollama's `format='json'`, which several callers parse directly.
     """
-    provider = provider or active_provider()
     model = model_for(tier, provider)
     key = _api_key(provider)
     cost = estimate_tokens(messages, max_tokens)
