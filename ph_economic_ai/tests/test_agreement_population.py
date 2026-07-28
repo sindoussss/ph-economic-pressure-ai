@@ -320,3 +320,89 @@ def test_the_basis_line_states_the_distinct_count():
     from ph_economic_ai.ui import honesty
     line = honesty.agreement_basis(32, (4, 4), echo_n=0, distinct=2)
     assert 'taking 2 distinct values' in line
+
+
+# ── Blinding is the shipped default ──────────────────────────────────────────
+
+def test_the_estimating_roles_are_blind_by_default():
+    """Shipped 2026-07-29. An agent forming its opening read no longer sees what
+    its neighbours just said, which is what the Forum has always done and the
+    swarm never did.
+
+    Measured over one paired run: 2 distinct estimates became 6 and the spread
+    went from 0.26 to 2.50 PHP/L, at a cost of 8 points of reported agreement.
+    The lower number over six real opinions is the better one; the previous
+    configuration was scoring the room's collapse as its consensus.
+    """
+    from ph_economic_ai.engine.swarm import GroupArena, build_swarm_agents
+
+    rag = MagicMock()
+    rag.query.return_value = []
+    agents = [a for a in build_swarm_agents() if a.group_id == 0]
+    arena = GroupArena(group_id=0, agents=agents, rag=rag, scenario=SCENARIO)
+    peers = [AgentResponse('NCR Forecaster', 1, '', 'Prices fall sharply.', -2.0)]
+
+    for role in ('Forecaster', 'DataExtractor', 'Synthesizer'):
+        agent = next(a for a in agents if a.role == role)
+        prompt = ' '.join(m['content'] for m in arena._build_prompt(agent, 1, peers))
+        assert 'This round so far' not in prompt, f'{role} can still see its peers'
+
+
+def test_the_scoring_roles_still_read_their_peers():
+    """They score other agents by name. A blind Critic has nothing to critique,
+    and the elimination bracket then measures nothing."""
+    from ph_economic_ai.engine.swarm import GroupArena, build_swarm_agents
+
+    rag = MagicMock()
+    rag.query.return_value = []
+    agents = [a for a in build_swarm_agents() if a.group_id == 0]
+    arena = GroupArena(group_id=0, agents=agents, rag=rag, scenario=SCENARIO)
+    peers = [AgentResponse('NCR Forecaster', 1, '', 'Prices fall sharply.', -2.0)]
+
+    for role in ('Critic', 'ConfidenceScorer'):
+        agent = next(a for a in agents if a.role == role)
+        prompt = ' '.join(m['content'] for m in arena._build_prompt(agent, 1, peers))
+        assert 'This round so far' in prompt, f'{role} was blinded and cannot score'
+
+
+def test_earlier_rounds_are_never_hidden():
+    """Round 2 exists so an agent can respond to what the room said. Blinding is
+    about same-round contamination, not about removing the debate."""
+    from ph_economic_ai.engine.swarm import GroupArena, build_swarm_agents
+
+    rag = MagicMock()
+    rag.query.return_value = []
+    agents = [a for a in build_swarm_agents() if a.group_id == 0]
+    arena = GroupArena(group_id=0, agents=agents, rag=rag, scenario=SCENARIO)
+    arena._history = [AgentResponse('a', 1, '', 'Round one view.', -2.0),
+                      AgentResponse('b', 1, '', 'Another view.', -1.0)]
+    agent = next(a for a in agents if a.role == 'Forecaster')
+    prompt = ' '.join(m['content'] for m in arena._build_prompt(agent, 2, []))
+    assert 'Previous rounds' in prompt
+
+
+def test_the_orchestrator_ships_the_same_default():
+    """A default that only holds when GroupArena is constructed directly would
+    never reach a real run."""
+    from ph_economic_ai.engine.swarm import SwarmOrchestrator
+
+    orch = SwarmOrchestrator(rag=MagicMock(), scenario=SCENARIO)
+    assert orch._blind_round_one is True
+    assert orch._reconcile is True, (
+        'the reconciliation rule was left on: the blind-arm experiment could not '
+        'separate its effect from noise')
+
+
+def test_peer_visibility_can_still_be_turned_back_on():
+    """The experiment has to be able to re-run the old configuration."""
+    from ph_economic_ai.engine.swarm import GroupArena, build_swarm_agents
+
+    rag = MagicMock()
+    rag.query.return_value = []
+    agents = [a for a in build_swarm_agents() if a.group_id == 0]
+    arena = GroupArena(group_id=0, agents=agents, rag=rag, scenario=SCENARIO,
+                       blind_round_one=False)
+    peers = [AgentResponse('NCR Forecaster', 1, '', 'Prices fall sharply.', -2.0)]
+    agent = next(a for a in agents if a.role == 'Forecaster')
+    prompt = ' '.join(m['content'] for m in arena._build_prompt(agent, 1, peers))
+    assert 'This round so far' in prompt

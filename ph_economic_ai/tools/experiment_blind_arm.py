@@ -1,11 +1,14 @@
 """Is the agent agreement real, or is the design manufacturing it?
 
 The report shows a percentage labelled "agent agreement". Three mechanisms in
-the swarm could produce that number without any agents independently agreeing,
-and all three are active in the shipped configuration:
+the swarm could produce that number without any agents independently agreeing.
+All three were active when this was written; the first was turned off on
+2026-07-29 on the strength of what this measured, so a re-run now compares the
+current default against the old one rather than against itself.
 
-1. **Round 1 is not blind.** It runs sequentially and every agent's prompt
-   carries the statements of the agents before it. The Forum was deliberately
+1. **Round 1 was not blind.** It runs sequentially and every agent's prompt
+   carried the statements of the agents before it. Now off by default for the
+   estimating roles. The Forum was deliberately
    fixed to stop doing this, on the grounds recorded in the vault: agreement
    between agents that have read each other is herding rather than
    corroboration, and the confidence number is computed from exactly that
@@ -15,16 +18,17 @@ and all three are active in the shipped configuration:
    to revise toward the group median unless they can cite a reason not to, and
    to prefer consensus over an outlier.
 
-3. **The threshold in that instruction is the threshold the metric measures.**
-   Agents are told to land within 1.00 PHP/L of the median; `agreement` scores
-   the fraction within 1.00 PHP/L of the medoid. A compliant agent is scored as
-   an agreeing agent by construction, which makes the number partly a measure of
-   instruction-following.
+3. **The threshold in that instruction WAS the threshold the metric measures.**
+   Agents are told to land within 1.00 PHP/L of the median, and `agreement`
+   scored the fraction within 1.00 PHP/L of the medoid, so a compliant agent was
+   scored as an agreeing agent by construction. The metric band moved to 0.50 on
+   2026-07-29, so the two no longer coincide; the instruction itself is
+   unchanged and still nudges toward consensus.
 
 This runs the same scenario three times to separate them:
 
-    A  shipped        peers visible in round 1, reconciliation rule on
-    B  blind          estimating roles cannot see same-round peers
+    A  peers visible  round 1 as it was before 2026-07-29
+    B  blind          estimating roles cannot see same-round peers (now default)
     C  blind + free   also without the reconciliation rule
 
 Only the estimating roles go blind. The Critic and ConfidenceScorer score other
@@ -61,10 +65,13 @@ ARTIFACT = Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts' / 'bl
 SCENARIO = {'oil_pct': -8.0, 'usd_pct': -0.1, 'bsp_rate': 6.5, 'demand_index': 75.0}
 _ECHO_TOL = 0.005
 
+# Named by CONFIGURATION, not by which one happens to ship. Blinding became the
+# default on 2026-07-29, so "A_shipped" would now point at the arm the experiment
+# argued against, and a re-run would read backwards.
 ARMS = [
-    ('A_shipped',    dict(blind_round_one=False, reconcile=True)),
-    ('B_blind',      dict(blind_round_one=True,  reconcile=True)),
-    ('C_blind_free', dict(blind_round_one=True,  reconcile=False)),
+    ('A_peers_visible', dict(blind_round_one=False, reconcile=True)),
+    ('B_blind',         dict(blind_round_one=True,  reconcile=True)),
+    ('C_blind_free',    dict(blind_round_one=True,  reconcile=False)),
 ]
 
 
@@ -167,7 +174,7 @@ def main() -> int:
             print(f'{label:<20}' + ''.join(f'{ok[n].get(key, 0):>16}' for n in names))
         print()
 
-        a = ok.get('A_shipped')
+        a = ok.get('A_peers_visible')
         b = ok.get('B_blind')
         c = ok.get('C_blind_free')
         if a and b:
