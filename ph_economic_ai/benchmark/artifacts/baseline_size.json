@@ -1,6 +1,7 @@
 {
   "alpha": 0.05,
   "note": "Size: fraction of PURE-NOISE targets declared beats_best_naive (every rejection is a false positive; nominal rate is alpha). Power: fraction of targets with a genuine driver correctly detected. Both arms score the identical fitted losses under two baseline pools, so the pool is the only difference.",
+  "power_caveat": "The without-mean column of the power arm is NOT power. On these targets the same pool has a 43-100% false-positive rate, so its detections are power and size confounded. Only the with-mean column measures detection of real signal.",
   "methods": [
     "random_walk",
     "seasonal_naive",
@@ -128,5 +129,47 @@
   "worst_case_cell": {
     "rho": 0.0,
     "n": 151
-  }
+  },
+  "max_rate_at_or_above_crossover": 0.0133,
+  "max_rate_well_below_crossover": 0.9967,
+  "distortion_confined_below_crossover": true,
+  "false_positive_rate_by_n": [
+    {
+      "rho": 0.0,
+      "n_small": 61,
+      "rate_small": 0.4333,
+      "n_large": 151,
+      "rate_large": 0.9967
+    },
+    {
+      "rho": 0.2,
+      "n_small": 61,
+      "rate_small": 0.1967,
+      "n_large": 151,
+      "rate_large": 0.8767
+    },
+    {
+      "rho": 0.35,
+      "n_small": 61,
+      "rate_small": 0.0467,
+      "n_large": 151,
+      "rate_large": 0.2633
+    },
+    {
+      "rho": 0.5,
+      "n_small": 61,
+      "rate_small": 0.01,
+      "n_large": 151,
+      "rate_large": 0.0133
+    },
+    {
+      "rho": 0.7,
+      "n_small": 61,
+      "rate_small": 0.0,
+      "n_large": 151,
+      "rate_large": 0.0
+    }
+  ],
+  "worsens_with_more_data": true,
+  "max_size_with_mean": 0.0
 }

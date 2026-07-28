@@ -22,9 +22,28 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from ph_economic_ai.benchmark.provenance import write_record
 
 HERE = Path(__file__).parent
 XLSX = HERE / 'global_fuel_prices.xlsx'
+# Provenance constants. These describe what the builders below actually do, so the
+# committed sidecars record the endpoint decision rather than leaving it buried in
+# a function argument, which is how the interval=1mo defect stayed invisible.
+YAHOO_CHART = 'https://query1.finance.yahoo.com/v8/finance/chart/<ticker>'
+DAILY_TRANSFORMS = [
+    'request interval=1d; never interval=1mo, which omits months non-randomly',
+    'resample to month start, value = last observed close of the month',
+    'round to 2dp; drop duplicated months keeping last',
+    'inner join across tickers; dropna',
+    'assert_complete_months before writing',
+]
+CHUNKED_TRANSFORMS = [
+    'request interval=1d in explicit five-year period1/period2 windows; '
+    'range=max is insufficient because Yahoo thins old daily history',
+    'skip windows preceding the ticker (HTTP 400 or empty payload)',
+    'concatenate, sort, drop duplicate days keeping last',
+] + DAILY_TRANSFORMS[1:]
+
 WB_OUT = HERE / 'data' / 'world_bank_ron95.csv'
 FEATURES_OUT = HERE / 'data' / 'features_monthly.csv'
 
@@ -118,6 +137,17 @@ def build_world_bank_csv() -> None:
     out = out[~out['date'].duplicated(keep='last')].sort_values('date')
     WB_OUT.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(WB_OUT, index=False)
+    write_record(WB_OUT, source='World Bank Global Fuel Prices Database workbook',
+                 params={'workbook_url': os.environ.get('PH_ECON_WB_XLSX_URL') or WB_XLSX_URL
+                                         or 'not configured; built from a local copy',
+                         'workbook_path': str(xlsx), 'sheet': sheet},
+                 transformations=['parse the LCU premium-gasoline (RON95+) sheet',
+                                  'select the Philippines row with the most observed months',
+                                  'label months YYYY-MM, round to 2dp',
+                                  'drop duplicate months keeping last'],
+                 units='PHP per litre',
+                 notes='RON95 gold target. RSK-007: the workbook itself is not committed, '
+                       'so this record identifies it but does not make it retrievable.')
     if len(out):
         print(f'Wrote {len(out)} rows to {WB_OUT} '
               f'({out["date"].iloc[0]}..{out["date"].iloc[-1]})')
@@ -130,19 +160,99 @@ def build_world_bank_csv() -> None:
 # ── Predictor matrix (fully automatic) ──────────────────────────────────────────
 
 def _yahoo_monthly(ticker: str, rng: str = '10y') -> pd.Series:
-    """Monthly close series indexed 'YYYY-MM' (mirrors fetcher._fetch_yahoo, longer range)."""
+    """Monthly close series indexed 'YYYY-MM', built by resampling DAILY data.
+
+    Do not use Yahoo's `interval=1mo` endpoint here. It silently omits months, and
+    not at random: measured over ten years, `PHP=X` returned no October at all in
+    10 of 10 years, while `BZ=F` and `RB=F` each dropped 17 scattered months. The
+    three series are then inner-joined, so every gap compounds and the feature
+    panel lost 25 of 120 months. Because the backtest lags by ROW, those holes
+    turned a one-row lag into a two or three month lag without any error.
+
+    Resampling `interval=1d` ourselves gives 121 of 121 months for all three
+    tickers, with the month labelled by its start and valued at its last observed
+    close.
+
+    `rng='max'` is not enough on its own: Yahoo thins old history even on the daily
+    endpoint, so a single max-range call still lost 22 to 46 months per ticker
+    (`PHP=X` again dropped every October from 2004 to 2007). Long history is
+    therefore fetched in explicit five-year epoch windows, which returns true daily
+    data throughout -- `PHP=X` goes from 22 missing months to 0.
+    """
+    if rng == 'max':
+        daily = _yahoo_daily_chunked(ticker)
+    else:
+        daily = _yahoo_daily(ticker, params={'interval': '1d', 'range': rng})
+    if daily.empty:
+        return pd.Series(dtype=float)
+    monthly = daily.resample('MS').last().dropna().round(2)
+    monthly.index = monthly.index.strftime('%Y-%m')
+    return monthly[~monthly.index.duplicated(keep='last')]
+
+
+def _yahoo_daily(ticker: str, params: dict) -> pd.Series:
+    """Daily closes for one chart request. Empty series if the window predates the
+    ticker (Yahoo answers 400) or holds no observations."""
     import datetime as _dt
     url = f'https://query1.finance.yahoo.com/v8/finance/chart/{ticker}'
-    r = requests.get(url, params={'interval': '1mo', 'range': rng},
+    r = requests.get(url, params=params,
                      headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'},
-                     timeout=15)
+                     timeout=30)
+    if r.status_code == 400:
+        return pd.Series(dtype=float)
     r.raise_for_status()
     res = r.json()['chart']['result'][0]
-    ts = res['timestamp']
-    closes = res['indicators']['quote'][0]['close']
-    dates = [_dt.datetime.fromtimestamp(t, tz=_dt.timezone.utc).strftime('%Y-%m') for t in ts]
-    s = pd.Series(closes, index=dates, dtype=float).dropna().round(2)
-    return s[~s.index.duplicated(keep='last')]
+    if 'timestamp' not in res:
+        return pd.Series(dtype=float)
+    days = pd.to_datetime(
+        [_dt.datetime.fromtimestamp(t, tz=_dt.timezone.utc).date()
+         for t in res['timestamp']])
+    return pd.Series(res['indicators']['quote'][0]['close'],
+                     index=days, dtype=float).dropna()
+
+
+def _yahoo_daily_chunked(ticker: str, start_year: int = 1999,
+                         span_years: int = 5) -> pd.Series:
+    """Full daily history, requested in fixed epoch windows and concatenated.
+
+    Windows before the ticker's first trade come back 400 or empty and are skipped,
+    so the caller does not need to know when each contract starts.
+    """
+    import datetime as _dt
+    end_year = _dt.datetime.now(_dt.timezone.utc).year + 1
+    parts = []
+    for y0 in range(start_year, end_year, span_years):
+        y1 = min(y0 + span_years, end_year)
+        p1 = int(_dt.datetime(y0, 1, 1, tzinfo=_dt.timezone.utc).timestamp())
+        p2 = int(_dt.datetime(y1, 1, 1, tzinfo=_dt.timezone.utc).timestamp())
+        part = _yahoo_daily(ticker, {'interval': '1d', 'period1': p1, 'period2': p2})
+        if not part.empty:
+            parts.append(part)
+    if not parts:
+        return pd.Series(dtype=float)
+    daily = pd.concat(parts).sort_index()
+    return daily[~daily.index.duplicated(keep='last')]
+
+
+def assert_complete_months(index, label: str) -> None:
+    """Raise if `index` skips a calendar month.
+
+    The backtest lags by row position, so a gap silently changes what a lag means.
+    This makes that failure loud at build time instead of leaving it to be found in
+    the results. Call it on anything written to `data/`.
+    """
+    idx = pd.PeriodIndex(pd.to_datetime(sorted(index), format='%Y-%m'), freq='M')
+    if len(idx) == 0:
+        raise SystemExit(f'{label}: empty index')
+    expected = pd.period_range(idx.min(), idx.max(), freq='M')
+    missing = sorted(set(expected) - set(idx))
+    if missing:
+        shown = ', '.join(str(m) for m in missing[:12])
+        more = '' if len(missing) <= 12 else f' and {len(missing) - 12} more'
+        raise SystemExit(
+            f'{label}: {len(missing)} calendar months missing from '
+            f'{idx.min()}..{idx.max()} ({shown}{more}). Row lags would not be '
+            f'month lags. Fix the source before writing this file.')
 
 
 def build_features_csv() -> None:
@@ -160,15 +270,36 @@ def build_features_csv() -> None:
     base = base.drop(columns=['rbob']).reset_index().rename(columns={'index': 'date'})
     base['demand_index'] = _compute_demand(base['date'].tolist())
     base = base.sort_values('date')
+    # The three tickers are inner-joined above, so any month absent from one is
+    # absent from all. Fail here rather than write a panel whose row lags are not
+    # month lags.
+    assert_complete_months(base['date'], 'features_monthly.csv')
     FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
     base.to_csv(FEATURES_OUT, index=False)
+    write_record(FEATURES_OUT, source=YAHOO_CHART,
+                 params={'tickers': {'BZ=F': 'oil_price', 'PHP=X': 'usd_php', 'RB=F': 'rbob'},
+                         'interval': '1d', 'range': '10y'},
+                 transformations=DAILY_TRANSFORMS + [
+                     'gas_price = (rbob / 3.785 * usd_php) * 1.35 + 12',
+                     'demand_index from fetcher._compute_demand'],
+                 units='USD/bbl, PHP per USD, PHP per litre',
+                 notes='Short-window predictor panel.')
     print(f'Wrote features_monthly.csv ({len(base)} rows, '
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
 
 FX_OUT = HERE / 'data' / 'usd_php_monthly.csv'
 CPI_OUT = HERE / 'data' / 'ph_cpi_monthly.csv'
-FRED_CPI_ID = 'PHLCPIALLMINMEI'   # OECD MEI monthly CPI, Philippines (index)
+# RSK-002, resolved 2026-07-28. The committed ph_cpi_monthly.csv is byte-identical
+# to IMF IFS M.PH.PCPI_IX served by DBnomics: 821 months, 1957-01..2025-05, maximum
+# absolute difference 0.0000 across every overlapping month. The manuscript's stated
+# provenance (IMF IFS via DBnomics) was therefore correct and this module's label was
+# not. The FRED id below additionally now returns HTTP 404, so it could not have been
+# the live source either. DBnomics is the primary path; FRED is retained only as a
+# fallback and is expected to fail.
+DBNOMICS_CPI_URL = ('https://api.db.nomics.world/v22/series/IMF/IFS/'
+                    'M.PH.PCPI_IX?observations=1')
+FRED_CPI_ID = 'PHLCPIALLMINMEI'   # retired: returns 404 as of 2026-07-28
 
 
 def build_fx_csv() -> None:
@@ -176,18 +307,31 @@ def build_fx_csv() -> None:
     fx = _yahoo_monthly('PHP=X')
     df = fx.rename('usd_php').reset_index()
     df.columns = ['date', 'usd_php']
+    assert_complete_months(df['date'], 'usd_php_monthly.csv')
     FX_OUT.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(FX_OUT, index=False)
+    write_record(FX_OUT, source=YAHOO_CHART,
+                 params={'ticker': 'PHP=X', 'interval': '1d', 'range': '10y'},
+                 transformations=DAILY_TRANSFORMS,
+                 units='PHP per USD',
+                 notes='Before 2026-07-28 this file was built from interval=1mo and '
+                       'was missing all ten Octobers.')
     print(f'Wrote usd_php_monthly.csv ({len(df)} rows, {df["date"].iloc[0]}..{df["date"].iloc[-1]})')
 
 
-def build_cpi_csv() -> None:
-    """PH monthly CPI index from FRED -> data/ph_cpi_monthly.csv.
+def _cpi_from_dbnomics() -> pd.DataFrame:
+    """PH monthly CPI index from IMF IFS via DBnomics. The authoritative path."""
+    r = requests.get(DBNOMICS_CPI_URL, headers=_HEADERS, timeout=45)
+    r.raise_for_status()
+    doc = r.json()['series']['docs'][0]
+    frame = pd.DataFrame({'date': doc['period'], 'cpi_index': doc['value']})
+    frame = frame[pd.to_numeric(frame['cpi_index'], errors='coerce').notna()]
+    frame['date'] = frame['date'].astype(str).str.slice(0, 7)
+    return frame.reset_index(drop=True)
 
-    If FRED is unreachable or the id is retired, download manually from DBnomics:
-      https://api.db.nomics.world/v22/series/IMF/IFS/M.PH.PCPI_IX?observations=1
-    and save a 2-column CSV 'date,cpi_index' (date YYYY-MM) to CPI_OUT.
-    """
+
+def _cpi_from_fred() -> pd.DataFrame:
+    """Retired fallback. Kept so the failure is explicit rather than silent."""
     import io
     url = f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_CPI_ID}'
     r = requests.get(url, headers=_HEADERS, timeout=30)
@@ -195,10 +339,48 @@ def build_cpi_csv() -> None:
     raw = pd.read_csv(io.StringIO(r.text))
     raw.columns = ['date', 'cpi_index']
     raw['date'] = pd.to_datetime(raw['date']).dt.strftime('%Y-%m')
-    raw = raw[pd.to_numeric(raw['cpi_index'], errors='coerce').notna()]
+    return raw[pd.to_numeric(raw['cpi_index'], errors='coerce').notna()].reset_index(drop=True)
+
+
+def build_cpi_csv() -> None:
+    """PH monthly CPI index -> data/ph_cpi_monthly.csv, from IMF IFS via DBnomics.
+
+    This used to fetch FRED `PHLCPIALLMINMEI` and label it OECD MEI, which created
+    `RSK-002`: the manuscript claimed IMF IFS via DBnomics and the code claimed
+    something else. The conflict is resolved in favour of the manuscript, on
+    evidence rather than preference. The committed file matches IMF IFS
+    `M.PH.PCPI_IX` exactly over all 821 shared months, and the FRED id now 404s, so
+    it cannot have been the source of the committed data.
+
+    Because the two agree exactly, this repair changes no downstream result.
+    """
+    try:
+        frame = _cpi_from_dbnomics()
+        source = 'IMF IFS M.PH.PCPI_IX via DBnomics'
+        params = {'url': DBNOMICS_CPI_URL, 'provider': 'DBnomics',
+                  'dataset': 'IMF/IFS', 'series': 'M.PH.PCPI_IX'}
+    except Exception as primary_error:
+        print(f'  DBnomics unavailable ({primary_error!r}); trying the retired FRED path')
+        frame = _cpi_from_fred()
+        source = f'FRED series {FRED_CPI_ID} (retired fallback)'
+        params = {'url': f'https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_CPI_ID}',
+                  'series_id': FRED_CPI_ID}
+
+    frame = frame[~frame['date'].duplicated(keep='last')].sort_values('date')
+    assert_complete_months(frame['date'], 'ph_cpi_monthly.csv')
     CPI_OUT.parent.mkdir(parents=True, exist_ok=True)
-    raw.to_csv(CPI_OUT, index=False)
-    print(f'Wrote ph_cpi_monthly.csv ({len(raw)} rows, {raw["date"].iloc[0]}..{raw["date"].iloc[-1]})')
+    frame.to_csv(CPI_OUT, index=False)
+    write_record(CPI_OUT, source=source, params=params,
+                 transformations=['take the observations array',
+                                  'drop non-numeric observations',
+                                  'label months YYYY-MM',
+                                  'drop duplicate months keeping last',
+                                  'assert_complete_months before writing'],
+                 units='CPI index',
+                 notes='RSK-002 RESOLVED 2026-07-28. Verified byte-identical to the '
+                       'previously committed file over all 821 months.')
+    print(f'Wrote ph_cpi_monthly.csv ({len(frame)} rows, '
+          f'{frame["date"].iloc[0]}..{frame["date"].iloc[-1]}) from {source}')
 
 
 LONG_FEATURES_OUT = HERE / 'data' / 'features_monthly_long.csv'
@@ -218,8 +400,17 @@ def build_long_features(rng: str = 'max') -> None:
     base = base.drop(columns=['rbob']).reset_index().rename(columns={'index': 'date'})
     base['demand_index'] = _compute_demand(base['date'].tolist())
     base = base.sort_values('date')
+    assert_complete_months(base['date'], 'features_monthly_long.csv')
     LONG_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
     base.to_csv(LONG_FEATURES_OUT, index=False)
+    write_record(LONG_FEATURES_OUT, source=YAHOO_CHART,
+                 params={'tickers': {'BZ=F': 'oil_price', 'PHP=X': 'usd_php', 'RB=F': 'rbob'},
+                         'interval': '1d', 'window': 'five-year epoch chunks'},
+                 transformations=CHUNKED_TRANSFORMS + [
+                     'gas_price = (rbob / 3.785 * usd_php) * 1.35 + 12',
+                     'demand_index from fetcher._compute_demand'],
+                 units='USD/bbl, PHP per USD, PHP per litre',
+                 notes='Long-window panel.')
     print(f'Wrote features_monthly_long.csv ({len(base)} rows, '
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
@@ -235,8 +426,16 @@ def build_food_features(rng: str = 'max') -> None:
     parts = [_yahoo_monthly(t, rng).rename(name) for t, name in cols.items()]
     base = pd.concat(parts, axis=1).dropna().reset_index().rename(columns={'index': 'date'})
     base = base.sort_values('date')
+    assert_complete_months(base['date'], 'food_features_monthly.csv')
     FOOD_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
     base.to_csv(FOOD_FEATURES_OUT, index=False)
+    write_record(FOOD_FEATURES_OUT, source=YAHOO_CHART,
+                 params={'tickers': {'ZR=F': 'rice', 'ZW=F': 'wheat', 'ZC=F': 'corn',
+                                     'ZS=F': 'soybean', 'BZ=F': 'oil_price', 'PHP=X': 'usd_php'},
+                         'interval': '1d', 'window': 'five-year epoch chunks'},
+                 transformations=CHUNKED_TRANSFORMS,
+                 units='futures settlement, PHP per USD',
+                 notes='Food-CPI predictor panel.')
     print(f'Wrote food_features_monthly.csv ({len(base)} rows, '
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 
@@ -251,8 +450,15 @@ def build_electricity_features(rng: str = 'max') -> None:
     parts = [_yahoo_monthly(t, rng).rename(name) for t, name in cols.items()]
     base = pd.concat(parts, axis=1).dropna().reset_index().rename(columns={'index': 'date'})
     base = base.sort_values('date')
+    assert_complete_months(base['date'], 'electricity_features_monthly.csv')
     ELECTRICITY_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
     base.to_csv(ELECTRICITY_FEATURES_OUT, index=False)
+    write_record(ELECTRICITY_FEATURES_OUT, source=YAHOO_CHART,
+                 params={'tickers': {'BZ=F': 'oil_price', 'NG=F': 'natgas', 'PHP=X': 'usd_php'},
+                         'interval': '1d', 'window': 'five-year epoch chunks'},
+                 transformations=CHUNKED_TRANSFORMS,
+                 units='USD/bbl, USD/MMBtu, PHP per USD',
+                 notes='Electricity-CPI predictor panel.')
     print(f'Wrote electricity_features_monthly.csv ({len(base)} rows, '
           f'{base["date"].iloc[0]}..{base["date"].iloc[-1]})')
 

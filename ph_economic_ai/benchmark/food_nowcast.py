@@ -8,6 +8,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from ph_economic_ai.benchmark.calendar_index import (
+    calendar_lag, require_complete_calendar)
+
 from ph_economic_ai.benchmark.nowcast import run_driver_only_ablation, run_mom_nowcast
 from ph_economic_ai.benchmark.psa_cpi import load_food_mom
 
@@ -26,9 +29,12 @@ def _build_food_frame(features: pd.DataFrame) -> pd.DataFrame:
         'fx': features['usd_php'],
     })
     base = base.join(tgt.rename('target'), how='inner').sort_index()
-    base['prev_mom'] = base['target'].shift(1)
+    # Calendar lag, not a row lag: the feature panel skips months, so shift(1)
+    # would reach two or three months back at a gap. NaN where the true previous
+    # month is absent, which dropna then removes.
+    base['prev_mom'] = calendar_lag(base['target'], 1)
     cols = ['rice', 'wheat', 'corn', 'soybean', 'oil', 'fx', 'prev_mom', 'target']
-    return base[cols].dropna()
+    return require_complete_calendar(base[cols].dropna(), 'food nowcast frame')
 
 
 def run_food_nowcast(min_train: int = 24, features=None, prelim_months: int = 6) -> dict:

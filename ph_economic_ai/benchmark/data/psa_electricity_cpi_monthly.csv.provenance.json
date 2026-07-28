@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "file": "psa_electricity_cpi_monthly.csv",
+  "source": "PSA OpenStat PX-Web CPI by commodity group, COICOP 04.5.1 Electricity",
+  "request_params": {
+    "coicop_prefix": "04.5.1",
+    "base_year": "2018=100",
+    "endpoints": "backcast + current PX-Web tables"
+  },
+  "transformations": [
+    "fetch both PX-Web tables",
+    "filter to the COICOP prefix",
+    "splice backcast and current on the overlap",
+    "label months YYYY-MM, sort"
+  ],
+  "units": "CPI index (2018=100)",
+  "notes": "PSA gold target for the electricity nowcast.",
+  "retrieved_at": "2026-07-27T19:40:13+00:00",
+  "sha256": "c9698a124e9f19ac5147b637a7bf287500fe6a95b98b53f8e3e00896965e4d17",
+  "rows": 390,
+  "first_month": "1994-01",
+  "last_month": "2026-06",
+  "missing_months": []
+}

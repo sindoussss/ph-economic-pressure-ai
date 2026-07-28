@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "file": "food_features_monthly.csv",
+  "source": "https://query1.finance.yahoo.com/v8/finance/chart/<ticker>",
+  "request_params": {
+    "tickers": {
+      "ZR=F": "rice",
+      "ZW=F": "wheat",
+      "ZC=F": "corn",
+      "ZS=F": "soybean",
+      "BZ=F": "oil_price",
+      "PHP=X": "usd_php"
+    },
+    "interval": "1d",
+    "window": "five-year epoch chunks"
+  },
+  "transformations": [
+    "request interval=1d in explicit five-year period1/period2 windows; range=max is insufficient because Yahoo thins old daily history",
+    "skip windows preceding the ticker (HTTP 400 or empty payload)",
+    "concatenate, sort, drop duplicate days keeping last",
+    "resample to month start, value = last observed close of the month",
+    "round to 2dp; drop duplicated months keeping last",
+    "inner join across tickers; dropna",
+    "assert_complete_months before writing"
+  ],
+  "units": "futures settlement, PHP per USD",
+  "notes": "Food-CPI predictor panel.",
+  "retrieved_at": "2026-07-27T19:29:38+00:00",
+  "sha256": "af6aeddce7e84f126fd5de393f7d1bd806bbf2b179b55eb38db1c4121165ab75",
+  "rows": 229,
+  "first_month": "2007-07",
+  "last_month": "2026-07",
+  "missing_months": []
+}

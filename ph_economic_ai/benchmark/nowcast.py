@@ -11,6 +11,8 @@ the unknowable future.
 """
 import pandas as pd
 
+from ph_economic_ai.benchmark.calendar_index import (
+    calendar_lag, require_complete_calendar)
 from ph_economic_ai.benchmark.targets import _features, load_inflation
 
 
@@ -28,8 +30,16 @@ def build_nowcast_frame(target_loader=None, prev_col: str = 'prev_inflation', fe
         'fuel': feats['gas_price'],
     })
     base = base.join(tgt.rename('target'), how='inner').sort_index()
-    base[prev_col] = base['target'].shift(1)
-    return base[['oil', 'fx', 'fuel', prev_col, 'target']].dropna()
+    # Lag by CALENDAR MONTH, not by row.
+    #
+    # `shift(1)` takes the previous ROW. After an inner join that row is only the
+    # previous month if the frame has no gaps, and the feature panel had 25 of 120
+    # months missing, so `prev_mom` was silently reaching two or three months back
+    # at 18 transitions. `calendar_lag` returns NaN where the true previous month is
+    # absent, which `dropna` then removes: a row is kept only when its lag is real.
+    base[prev_col] = calendar_lag(base['target'], 1)
+    out = base[['oil', 'fx', 'fuel', prev_col, 'target']].dropna()
+    return require_complete_calendar(out, 'nowcast frame')
 
 
 from ph_economic_ai.benchmark.backtest import walk_forward

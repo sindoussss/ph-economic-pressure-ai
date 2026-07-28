@@ -49,39 +49,39 @@
   "targets": [
     {
       "target": "headline MoM",
-      "rho": 0.3432,
-      "predicted_spurious_skill": 0.1275,
-      "observed_mean_vs_rw_skill": 0.1258,
-      "abs_error": 0.0017
+      "rho": 0.3628,
+      "predicted_spurious_skill": 0.1142,
+      "observed_mean_vs_rw_skill": 0.1064,
+      "abs_error": 0.0078
     },
     {
       "target": "headline MoM (long)",
-      "rho": 0.3686,
-      "predicted_spurious_skill": 0.1101,
-      "observed_mean_vs_rw_skill": 0.1222,
-      "abs_error": 0.0121
+      "rho": 0.397,
+      "predicted_spurious_skill": 0.0894,
+      "observed_mean_vs_rw_skill": 0.1207,
+      "abs_error": 0.0313
     },
     {
       "target": "food MoM",
-      "rho": 0.375,
-      "predicted_spurious_skill": 0.1056,
-      "observed_mean_vs_rw_skill": 0.1276,
-      "abs_error": 0.022
+      "rho": 0.3883,
+      "predicted_spurious_skill": 0.0959,
+      "observed_mean_vs_rw_skill": 0.1236,
+      "abs_error": 0.0277
     },
     {
       "target": "electricity MoM",
-      "rho": 0.0019,
-      "predicted_spurious_skill": 0.2922,
-      "observed_mean_vs_rw_skill": 0.2959,
-      "abs_error": 0.0037
+      "rho": 0.0718,
+      "predicted_spurious_skill": 0.266,
+      "observed_mean_vs_rw_skill": 0.2639,
+      "abs_error": 0.0021
     },
     {
       "target": "transport MoM",
-      "rho": 0.1397,
-      "predicted_spurious_skill": 0.2376,
-      "observed_mean_vs_rw_skill": 0.2477,
-      "abs_error": 0.0101
+      "rho": 0.359,
+      "predicted_spurious_skill": 0.1168,
+      "observed_mean_vs_rw_skill": 0.1404,
+      "abs_error": 0.0236
     }
   ],
-  "max_abs_error_targets": 0.022
+  "max_abs_error_targets": 0.0313
 }

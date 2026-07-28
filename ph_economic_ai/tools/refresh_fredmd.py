@@ -19,6 +19,7 @@ import sys
 import pandas as pd
 
 from ph_economic_ai.benchmark.paths import data
+from ph_economic_ai.benchmark.provenance import write_record
 
 URL = ('https://www.stlouisfed.org/-/media/project/frbstl/stlouisfed/research/'
        'fred-md/monthly/current.csv')
@@ -41,6 +42,14 @@ def refresh(url: str = URL, out=OUT) -> int:
         return 0
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
+    write_record(out, source='FRED-MD monthly database (McCracken and Ng 2016)',
+                 params={'vintage': 'current'},
+                 transformations=['keep the tcode header row',
+                                  'no transform applied at snapshot time; the '
+                                  'recommended tcode transform is applied by '
+                                  'vulnerability_survey at analysis time'],
+                 units='mixed, per series; see the tcode row',
+                 notes='Frozen snapshot backing the exposure census.')
     print(f'fredmd: wrote {len(df) - 1} months x {df.shape[1] - 1} series -> {out}')
     return len(df) - 1
 

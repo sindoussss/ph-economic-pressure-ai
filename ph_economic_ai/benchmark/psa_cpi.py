@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from ph_economic_ai.benchmark.targets import cpi_to_mom
+from ph_economic_ai.benchmark.provenance import write_record
 
 HERE = Path(__file__).parent
 TRANSPORT_CSV = HERE / 'data' / 'psa_transport_cpi_monthly.csv'
@@ -187,6 +188,15 @@ def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
     )
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_csv, index=False)
+    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 07 Transport',
+                 params={'coicop_prefix': '07', 'base_year': '2018=100',
+                         'endpoints': 'backcast + current PX-Web tables'},
+                 transformations=['fetch both PX-Web tables',
+                                  'filter to the COICOP prefix',
+                                  'splice backcast and current on the overlap',
+                                  'label months YYYY-MM, sort'],
+                 units='CPI index (2018=100)',
+                 notes='PSA gold target for the transport nowcast.')
     print(
         f'Wrote psa_transport_cpi_monthly.csv ({len(df)} rows, '
         f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})'
@@ -215,6 +225,15 @@ def fetch_food_cpi(out_csv: Path = FOOD_CSV) -> None:
           .sort_values('date'))
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_csv, index=False)
+    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 01 Food and non-alcoholic beverages',
+                 params={'coicop_prefix': '01', 'base_year': '2018=100',
+                         'endpoints': 'backcast + current PX-Web tables'},
+                 transformations=['fetch both PX-Web tables',
+                                  'filter to the COICOP prefix',
+                                  'splice backcast and current on the overlap',
+                                  'label months YYYY-MM, sort'],
+                 units='CPI index (2018=100)',
+                 notes='PSA gold target for the food nowcast.')
     print(f'Wrote psa_food_cpi_monthly.csv ({len(df)} rows, '
           f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
 
@@ -253,6 +272,15 @@ def fetch_electricity_cpi(out_csv: Path = ELECTRICITY_CSV) -> None:
           .sort_values('date'))
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_csv, index=False)
+    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 04.5.1 Electricity',
+                 params={'coicop_prefix': '04.5.1', 'base_year': '2018=100',
+                         'endpoints': 'backcast + current PX-Web tables'},
+                 transformations=['fetch both PX-Web tables',
+                                  'filter to the COICOP prefix',
+                                  'splice backcast and current on the overlap',
+                                  'label months YYYY-MM, sort'],
+                 units='CPI index (2018=100)',
+                 notes='PSA gold target for the electricity nowcast.')
     print(f'Wrote psa_electricity_cpi_monthly.csv ({len(df)} rows, '
           f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
 
