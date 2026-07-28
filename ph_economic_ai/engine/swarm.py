@@ -1100,7 +1100,7 @@ class GroupArena:
         data_brief: Optional['LiveDataBrief'] = None,
         ml_baseline: str = '',
         anchor: Optional[float] = None,
-        blind_round_one: bool = False,
+        blind_round_one: bool = True,
         reconcile: bool = True,
     ):
         self._group_id = group_id
@@ -1111,15 +1111,28 @@ class GroupArena:
         self._data_brief = data_brief
         self._ml_baseline = ml_baseline
         self._anchor = anchor
-        # Two switches for the mechanisms that can manufacture agreement. Both
-        # default to the shipped behaviour so nothing changes until an experiment
-        # or a decision says otherwise.
+        # Two switches for the mechanisms that can manufacture agreement.
         #
         # `blind_round_one` hides same-round peer statements from the estimating
-        # roles. `reconcile` controls the round-2 instruction to move toward the
-        # group median. Each is measured separately because they are different
-        # claims: one is contamination, the other is an instruction the metric
-        # then scores compliance with.
+        # roles, and is ON. An agent forming its opening read no longer sees what
+        # its neighbours just said, which is what the Forum has always done and
+        # the swarm never did. Measured over one paired run: the room went from
+        # 2 distinct estimates to 6, and the spread from 0.26 to 2.50 PHP/L, at a
+        # cost of 8 points of reported agreement. That trade is the point rather
+        # than a regression — a lower number over six real opinions beats a higher
+        # one over two, and the previous configuration was scoring the room's
+        # collapse as its consensus.
+        #
+        # The Critic and ConfidenceScorer are exempt via `_PEER_READING_ROLES`:
+        # they score other agents by name and a blind Critic has nothing to
+        # critique. Round 1 therefore stays sequential, because those two still
+        # need the estimating roles to have spoken first.
+        #
+        # `reconcile` controls the round-2 instruction to move toward the group
+        # median, and stays ON. The blind-arm experiment could not separate its
+        # effect from noise: removing it SCORED HIGHER (96 against 92), which it
+        # cannot genuinely do, so that arm measured sampling variation rather
+        # than the rule. It is left alone until there is a reason to touch it.
         self._blind_round_one = blind_round_one
         self._reconcile = reconcile
         self._history: list[AgentResponse] = []
@@ -1801,7 +1814,8 @@ class SwarmOrchestrator:
         data_brief: Optional['LiveDataBrief'] = None,
         ml_baseline: str = '',
         evolved_agents: Optional[list] = None,
-        blind_round_one: bool = False,
+        # Shipped defaults. See GroupArena for the measurement behind them.
+        blind_round_one: bool = True,
         reconcile: bool = True,
     ):
         self._rag = rag
