@@ -51,14 +51,21 @@ def add_round(builder, responses, agent_meta, rag, scenario, top_k: int = 3) -> 
         aid = builder.add_agent(name, getattr(meta, 'role', '') if meta else '', region, est)
         if est is not None:
             builder.add_claim(aid, est, getattr(r, 'statement', ''))
-        rs = getattr(meta, 'rag_sources', None) if meta else None
-        try:
-            chunks = rag.query(text, top_k=top_k, sources=rs) if rag is not None else []
-        except Exception:
-            chunks = []
+        # Prefer what the agent actually read. Re-querying is a RECONSTRUCTION:
+        # it answers "what would this agent retrieve now", which diverges from
+        # "what did it read" as soon as the corpus, embeddings, or top_k move
+        # (RSK-019). Only fall back when a response predates stored retrieval.
+        chunks = list(getattr(r, 'retrieval', None) or [])
+        preserved = bool(chunks)
+        if not preserved:
+            rs = getattr(meta, 'rag_sources', None) if meta else None
+            try:
+                chunks = rag.query(text, top_k=top_k, sources=rs) if rag is not None else []
+            except Exception:
+                chunks = []
         for i, c in enumerate(chunks or []):
             ev = builder.add_evidence(c.get('source', '?'), i, c.get('text', ''))
-            builder.add_edge(aid, ev, 'retrieved')
+            builder.add_edge(aid, ev, 'retrieved' if preserved else 'reconstructed')
 
 
 def add_regional(builder, region_pair, estimate, agent_meta) -> None:

@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+from ph_economic_ai.engine import interval as _interval
+from ph_economic_ai.engine import price_calendar as _calendar
 from ph_economic_ai.engine.monitor import MonitorThread
 from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
 from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn, seed_sectors
@@ -49,9 +51,12 @@ def _initials(name: str) -> str:
 class PressureMonitorPanel(QWidget):
     run_finished = pyqtSignal()          # emitted when a Monitor run ends (ok or error)
 
-    def __init__(self, rag, parent=None):
+    def __init__(self, rag, store=None, parent=None):
         super().__init__(parent)
         self._rag = rag
+        # Optional: without it the band still renders, but reports itself as an
+        # uncalibrated prior rather than silently looking calibrated.
+        self._store = store
         self._thread: MonitorThread | None = None
         self.setStyleSheet('background:#EDEFF3;')       # greyer page so white cards pop
 
@@ -489,6 +494,28 @@ class PressureMonitorPanel(QWidget):
         lay.addWidget(sub)
         return card
 
+    # Which dated event each sector's next move actually happens on. Fuel moves on
+    # the weekly DOE adjustment; the CPI-derived sectors move on the PSA release.
+    # This is a schedule lookup, not a forecast, which is why the app can state a
+    # date at all.
+    _SECTOR_EVENT = {'gas': 'fuel', 'food': 'cpi', 'electricity': 'cpi'}
+
+    def _next_event(self, sector: str) -> dict:
+        if self._SECTOR_EVENT.get(sector, 'cpi') == 'fuel':
+            return _calendar.describe_next_fuel_adjustment()
+        return _calendar.describe_next_cpi_release()
+
+    def _graded_errors(self) -> list:
+        """Past absolute errors, for calibrating the band. Empty is fine: the band
+        then reports itself as uncalibrated rather than pretending."""
+        store = self._store
+        if store is None:
+            return []
+        try:
+            return store.get_graded_errors()
+        except Exception:
+            return []
+
     def _sector_card(self, r) -> QFrame:
         card = QFrame()
         card.setStyleSheet(
@@ -507,9 +534,62 @@ class PressureMonitorPanel(QWidget):
                           f'color:{_DIR_COLOR.get(r.direction, _T3)};')
         top.addWidget(val)
         lay.addLayout(top)
-        meta = QLabel(f"{r.direction}  ·  agreement {r.confidence}% (not a probability)  ·  "
+
+        # WHEN. A single magnitude floating free of a date was the gap users hit:
+        # "is it tomorrow, or the 27th?". The date is a published schedule, so it is
+        # stated plainly and never presented as a prediction.
+        event = self._next_event(r.sector)
+        when = QLabel(f"next change  ·  {event['when']}  ·  {event['label']}")
+        when.setStyleSheet(f'color:{_INK};font-size:12px;font-weight:600;margin-top:6px;')
+        lay.addWidget(when)
+
+        # RANGE. One number reads as more precise than this system can justify. The
+        # 50% band leads because it is narrow enough to act on; the 90% band is the
+        # honest full picture, one click away rather than hidden.
+        if r.estimate is not None:
+            errors = self._graded_errors()
+            b50 = _interval.band(r.estimate, errors, _interval.DEFAULT_LEVEL, r.sector)
+            b90 = _interval.band(r.estimate, errors, _interval.EXPANDED_LEVEL, r.sector)
+
+            rng = QLabel(f"{b50['low']:+.2f} to {b50['high']:+.2f} {r.unit}  ·  50% range")
+            rng.setStyleSheet(f'color:{_T2};font-size:12px;margin-top:2px;')
+            lay.addWidget(rng)
+
+            wide = QLabel(f"{b90['low']:+.2f} to {b90['high']:+.2f} {r.unit}  ·  90% range"
+                          f"  ·  {b50['source']}")
+            wide.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:2px;')
+            wide.setWordWrap(True)
+            wide.setVisible(False)
+            lay.addWidget(wide)
+
+            more = QPushButton('show 90% range')
+            more.setCursor(Qt.CursorShape.PointingHandCursor)
+            more.setFlat(True)
+            more.setStyleSheet(
+                f'QPushButton{{border:none;background:transparent;color:{_T3};'
+                f'font-size:11px;text-align:left;padding:0;margin-top:2px;}}'
+                f'QPushButton:hover{{color:{_INK};text-decoration:underline;}}')
+
+            def _toggle(_=False, w=wide, btn=more):
+                shown = not w.isVisible()
+                w.setVisible(shown)
+                btn.setText('hide 90% range' if shown else 'show 90% range')
+
+            more.clicked.connect(_toggle)
+            lay.addWidget(more)
+
+            if not b50['calibrated']:
+                warn = QLabel(f"range not yet calibrated · {b50['source']}")
+                warn.setStyleSheet(f'color:{_T3};font-size:10px;font-style:italic;')
+                warn.setWordWrap(True)
+                lay.addWidget(warn)
+
+        da = getattr(r, 'direction_agreement', 0)
+        agree_bit = (f"direction agreement {da}%  ·  magnitude {r.confidence}%"
+                     if da else f"agreement {r.confidence}%")
+        meta = QLabel(f"{r.direction}  ·  {agree_bit} (not a probability)  ·  "
                       f"{', '.join(r.sources) or 'no sources'}")
-        meta.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:4px;')
+        meta.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:6px;')
         meta.setWordWrap(True)
         lay.addWidget(meta)
         if r.drivers:
