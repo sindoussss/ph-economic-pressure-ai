@@ -464,3 +464,48 @@ def test_labelling_did_not_change_a_single_number():
     derived = derive_regional_estimates(2.42, {0: 2.42, 3: 2.42})
     assert derived['NCR'] == pytest.approx(2.42)
     assert derived['Zamboanga'] == pytest.approx(round(2.42 * (1.08 / 1.05), 2))
+
+
+# ── The price baseline's provenance, as told to the agents ────────────────────
+
+def test_the_prompt_no_longer_claims_the_price_is_doe_published():
+    """It said "The current DOE-published retail gasoline price ... (unleaded 95)"
+    and was wrong three times: the source is a fuelprice.ph regex scrape, the
+    value is a MEDIAN across every listed grade rather than unleaded 95, and on a
+    failed scrape it is a stored constant from May 2026 still called current. The
+    same value is grading's baseline."""
+    from ph_economic_ai.engine.swarm import _make_system_prompt
+    prompt = _make_system_prompt('Forecaster', 'NCR', 98.82, True)
+    assert 'DOE-published' not in prompt
+    assert 'unleaded 95' not in prompt
+    assert 'fuelprice.ph' in prompt
+    assert 'median across the fuel grades' in prompt
+
+
+def test_a_stale_fallback_price_says_so_and_names_its_date():
+    from ph_economic_ai.engine.swarm import _FALLBACK_PRICE_AS_OF, _make_system_prompt
+    prompt = _make_system_prompt('Forecaster', 'NCR', 98.82, False)
+    assert 'STORED REFERENCE' in prompt
+    assert _FALLBACK_PRICE_AS_OF in prompt
+    assert 'months out of date' in prompt
+    assert 'fuelprice.ph' not in prompt, 'a fallback did not come from the scrape'
+
+
+def test_liveness_reaches_every_agent_in_the_roster():
+    """`price_is_live` existed on the orchestrator and never reached the prompt,
+    so a run on a stale constant read identically to a run on a live price."""
+    from ph_economic_ai.engine.swarm import build_swarm_agents
+    for live, expected in ((True, 'fuelprice.ph'), (False, 'STORED REFERENCE')):
+        agents = build_swarm_agents(98.82, models=[], price_is_live=live)
+        assert agents, 'no agents built'
+        for agent in agents:
+            assert expected in agent.system_prompt, agent.name
+
+
+def test_the_baseline_is_described_as_a_scale_not_a_level():
+    """A median across grades is not any one grade's price, so the agents are
+    told to use it for magnitude rather than to reason from its exact value."""
+    from ph_economic_ai.engine.swarm import _make_system_prompt
+    prompt = _make_system_prompt('Forecaster', 'NCR', 98.82, True)
+    assert 'as a SCALE' in prompt
+    assert 'not output the absolute price' in prompt.replace('Do NOT', 'not')

@@ -613,6 +613,46 @@ def is_configured() -> bool:
         return False
 
 
+#: Cached once per process. `installed_models` is consulted while building the
+#: agent roster, which happens on every run and in most tests, so it must not
+#: make a network call each time and must never raise.
+_installed_cache: Optional[frozenset] = None
+_installed_lock = threading.Lock()
+
+
+def local_providers() -> frozenset:
+    """Providers served by a local daemon, whose model tags are Ollama tags."""
+    return _LOCAL_PROVIDERS
+
+
+def installed_models(refresh: bool = False) -> frozenset:
+    """Model tags the local daemon actually has, or an empty set.
+
+    Empty on any failure, including no daemon and a hosted-only setup. Callers
+    must treat empty as "cannot confirm" rather than "nothing installed", because
+    the two are indistinguishable from here and only one of them is safe to act
+    on. The cross-family roster default uses this to avoid asking for a model the
+    user never pulled, which would fail every call on a fresh install.
+    """
+    global _installed_cache
+    with _installed_lock:
+        if _installed_cache is not None and not refresh:
+            return _installed_cache
+    found: frozenset = frozenset()
+    try:
+        resp = requests.get(f'{ollama_host()}/api/tags', timeout=3)
+        resp.raise_for_status()
+        names = {m['name'] for m in resp.json().get('models', [])}
+        # Both the exact tag and its bare name, since `llama3.2` and
+        # `llama3.2:latest` are the same model and either may be configured.
+        found = frozenset(names | {n.split(':')[0] for n in names})
+    except Exception:
+        logging.debug('llm: could not list installed models', exc_info=True)
+    with _installed_lock:
+        _installed_cache = found
+    return found
+
+
 def probe() -> tuple[bool, str]:
     """Actually check that a call would work. Returns (ok, human message).
 

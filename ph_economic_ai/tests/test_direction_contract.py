@@ -99,11 +99,23 @@ def test_every_agent_role_is_asked_for_a_direction():
 
 
 def test_the_agent_prompt_requires_the_two_to_agree():
+    """Asserts the CONTRACT, not the wording.
+
+    This pinned the literal menu "DIRECTION: UP or DIRECTION: DOWN or DIRECTION:
+    FLAT", which is a template a small model copies back — five of twenty agents
+    did exactly that on a live run. A test that freezes the exact string a fix
+    needs to change turns a defect into a passing assertion, so it now checks
+    that the prompt asks for a direction, offers the three values, and requires
+    them to agree with the estimate.
+    """
     agents = [a for a in build_swarm_agents() if a.group_id == 0]
     arena = GroupArena(group_id=0, agents=agents, rag=_rag(), scenario=SCENARIO)
     prompt = ' '.join(m['content'] for m in arena._build_prompt(agents[0], 1, []))
-    assert 'DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT' in prompt
+    assert 'DIRECTION:' in prompt
+    for value in ('UP', 'DOWN', 'FLAT'):
+        assert value in prompt, value
     assert 'must agree' in prompt
+    assert 'or DIRECTION:' not in prompt, 'the menu is back'
 
 
 # ── Resolution ────────────────────────────────────────────────────────────────

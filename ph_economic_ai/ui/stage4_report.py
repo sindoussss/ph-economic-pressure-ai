@@ -594,6 +594,19 @@ class Stage4ReportPanel(QWidget):
         cross_lbl.setWordWrap(True)
         cross_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
         cross_lbl.setVisible(bool(_cross))
+        # That the headline is one model's synthesis however varied the roster.
+        _synth = _honesty.synthesis_note(consensus.get('agreement_models', {}))
+        synth_lbl = QLabel(_synth)
+        synth_lbl.setWordWrap(True)
+        synth_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        synth_lbl.setVisible(bool(_synth))
+        # Which models actually reached the judges. A model with no survivors
+        # contributed nothing to the published number however many agents it had.
+        _bracket = _honesty.bracket_note(consensus.get('agreement_models', {}))
+        bracket_lbl = QLabel(_bracket)
+        bracket_lbl.setWordWrap(True)
+        bracket_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        bracket_lbl.setVisible(bool(_bracket))
 
         range_row = QHBoxLayout()
         _conf_cell = f'{conf}%' if _n >= 2 else '—'
@@ -617,6 +630,8 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(sub_lbl)
         cf_layout.addWidget(basis_lbl)
         cf_layout.addWidget(cross_lbl)
+        cf_layout.addWidget(synth_lbl)
+        cf_layout.addWidget(bracket_lbl)
         cf_layout.addWidget(caveat_lbl)
         if consensus.get('outside_regional'):
             _outside = QLabel(

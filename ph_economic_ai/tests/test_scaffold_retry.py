@@ -233,3 +233,99 @@ def test_the_detector_still_catches_the_wording_that_caused_this():
         '[consumer impact]')
     assert unfilled_scaffold('CAUSAL CHAIN: <trigger> → <effect> → '
                              '<household impact>')
+
+
+# ── Enumerate EVERY prompt, not one of them ──────────────────────────────────
+
+def _every_prompt() -> dict:
+    """Every prompt string this engine can hand a model, by name.
+
+    `test_no_output_line_is_something_an_agent_can_copy` checked
+    `arena._build_prompt`, the agent USER turn, and passed while six role SYSTEM
+    prompts, two regional-judge prompts, the master prompt, two retry prompts and
+    twenty-three personas in `engine.debate` still shipped a copyable template.
+    Testing the class means enumerating the population, not picking a member.
+    """
+    from unittest.mock import MagicMock
+    from ph_economic_ai.engine import debate, swarm
+
+    rag = MagicMock()
+    rag.query.return_value = []
+    scenario = {'oil_pct': 5.0, 'usd_pct': 2.0, 'current_price': 98.82,
+                'bsp_rate': 6.5, 'demand_index': 72.0}
+    agents = swarm.build_swarm_agents(98.82, models=[])
+    out = {f'swarm role system: {a.name}': a.system_prompt for a in agents}
+
+    arena = swarm.GroupArena(group_id=0,
+                             agents=[a for a in agents if a.group_id == 0],
+                             rag=rag, scenario=scenario)
+    out['swarm agent user turn'] = arena._build_prompt(agents[0], 1, [])[-1]['content']
+
+    for roster in ('DEFAULT_AGENTS', 'FOOD_AGENTS', 'ELECTRICITY_AGENTS'):
+        for a in getattr(debate, roster):
+            out[f'debate {roster}: {a.name}'] = a.system_prompt
+
+    out['swarm estimate retry'] = swarm._ESTIMATE_RETRY_PROMPT
+    out['swarm scaffold retry'] = debate._SCAFFOLD_RETRY_PROMPT
+    return out
+
+
+#: Wordings a small model copies back verbatim instead of instantiating. Each was
+#: found in a live run, not imagined.
+_COPYABLE = ('X.XX/L or ESTIMATE', 'X.X% or ESTIMATE', 'X.XX/kWh or ESTIMATE',
+             'DIRECTION: UP or DIRECTION', '[scenario shock]', '[trigger]',
+             'ALL THREE LINES')
+
+
+def test_no_prompt_anywhere_ships_a_copyable_template():
+    offenders = {name: pattern
+                 for name, prompt in _every_prompt().items()
+                 for pattern in _COPYABLE
+                 if pattern in prompt}
+    assert not offenders, f'{len(offenders)} prompts still copyable: {offenders}'
+
+
+def test_the_enumeration_actually_covers_the_layers_it_claims():
+    """A guard over an empty or truncated population passes for the wrong reason,
+    which is how the narrow version of this test stayed green."""
+    prompts = _every_prompt()
+    assert sum(1 for k in prompts if k.startswith('swarm role system')) == 20
+    assert sum(1 for k in prompts if k.startswith('debate ')) == 23
+    assert 'swarm agent user turn' in prompts
+    assert len(prompts) >= 45
+
+
+def test_every_estimate_line_names_its_unit_and_shows_a_real_number():
+    from ph_economic_ai.engine.debate import ESTIMATE_LINE
+    for sector, unit in (('gas', '/L'), ('food', '%'), ('electricity', '/kWh')):
+        line = ESTIMATE_LINE[sector]
+        assert 'worked example' in line, sector
+        assert unit in line, sector
+        assert 'never write' in line, sector
+        assert not unfilled_scaffold(f'CAUSAL CHAIN: {line}')
+
+
+def test_the_direction_instruction_is_not_a_menu():
+    from ph_economic_ai.engine.debate import DIRECTION_INSTRUCTION
+    assert 'or DIRECTION:' not in DIRECTION_INSTRUCTION
+    assert DIRECTION_INSTRUCTION.count('UP') == 1
+
+
+def test_the_output_lines_have_exactly_one_definition():
+    """`forum._EST_LINE` was the ORIGINAL fix, and because it lived only in the
+    Forum the same remedy had to be rediscovered three more times: the swarm's
+    chain line, its estimate line, and its DIRECTION menu. One definition, aliased
+    where call sites want a local name."""
+    from ph_economic_ai.engine import debate, forum
+    assert forum._EST_LINE is debate.ESTIMATE_LINE
+
+
+def test_no_module_defines_its_own_copy_of_the_estimate_lines():
+    """A copy drifts. The point of centralising is that a fix reaches every
+    caller, so a second dict literal anywhere defeats it."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1] / 'engine'
+    definers = [f.name for f in root.glob('*.py')
+                if 'ESTIMATE_LINE = {' in f.read_text(encoding='utf-8')
+                or "_EST_LINE = {" in f.read_text(encoding='utf-8')]
+    assert definers == ['debate.py'], f'defined in {definers}'
