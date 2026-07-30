@@ -90,6 +90,37 @@ def agreement_basis(n: int, regions: tuple[int, int] = (0, 0),
     return basis
 
 
+def cross_model_note(across: dict) -> str:
+    """Whether the agreement survived a change of model, in the reader's words.
+
+    This is the only line on the card that can distinguish agreement from one
+    model's determinism. A measured run scored 100 percent over ONE distinct
+    estimate with agents that were blinded, independent and separately reasoned:
+    twenty agents on one model are one model asked twenty times, so on a
+    single-model roster the percentage is substantially that model's consistency.
+
+    Silent on a single-model roster. It must not imply a comparison it did not
+    make, and an absent line is honest where "1 model" dressed up as a finding
+    would not be.
+    """
+    if not across or not across.get('measurable'):
+        return ''
+    n = across.get('models', 0)
+    between = across.get('between_spread', 0.0)
+    within = across.get('within_spread', 0.0)
+    lead = f'checked across {n} different models'
+    if within <= 0.005:
+        return (f'{lead}: each was internally identical, so the agents are not '
+                f'sampling opinions, they are reciting one')
+    if between <= within:
+        return (f'{lead}: they land ₱{between:.2f}/L apart, within the ₱{within:.2f} '
+                f'each spans on its own — the agreement is not one model repeating '
+                f'itself')
+    return (f'{lead}: they land ₱{between:.2f}/L apart while each spans only '
+            f'₱{within:.2f} on its own — the models disagree, and this percentage '
+            f'averages over that')
+
+
 RECALL_NOTE = (
     'this run was not recomputed — the inputs have not moved since, so the '
     'stored answer is the current answer'

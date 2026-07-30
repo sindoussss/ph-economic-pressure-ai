@@ -266,7 +266,12 @@ def reset_provenance() -> None:
 def last_provenance() -> dict:
     """What served each tier, for the report and the recall key."""
     with _provenance_lock:
-        return {k: dict(v) for k, v in _provenance.items()}
+        out = {}
+        for k, v in _provenance.items():
+            entry = dict(v)
+            entry['models'] = sorted(v.get('models', ()))
+            out[k] = entry
+        return out
 
 
 def provenance_id() -> str:
@@ -282,7 +287,11 @@ def provenance_id() -> str:
         if tier in seen:
             entry = seen[tier]
             mark = '!' if entry.get('fell_back') else ''
-            parts.append(f"{tier}={entry['provider']}:{entry['model']}{mark}")
+            # Sorted so the identity does not depend on which agent finished
+            # first. A mixed roster must not collide with a single-model run.
+            served = sorted(entry.get('models')
+                            or [f"{entry['provider']}:{entry['model']}"])
+            parts.append(f"{tier}={'+'.join(served)}{mark}")
         else:
             try:
                 p = provider_for(tier)
@@ -294,9 +303,24 @@ def provenance_id() -> str:
 
 def _record_provenance(tier: str, provider: str, model: str,
                        fell_back: bool = False) -> None:
+    """Record what served a tier, keeping EVERY distinct model, not the last one.
+
+    A heterogeneous roster puts several models on one tier in a single run, and
+    `_provenance[tier] = ...` would have kept whichever agent happened to finish
+    last. That silently turns a mixed-model run into a single-model one in the
+    recall key, so a run answered by three models could be recalled for a run
+    answered by one. `models` is therefore a set, and `model` stays as the
+    first-seen value so existing readers keep working.
+    """
     with _provenance_lock:
-        _provenance[tier] = {'provider': provider, 'model': model,
-                             'fell_back': fell_back}
+        entry = _provenance.get(tier)
+        if entry is None:
+            _provenance[tier] = {'provider': provider, 'model': model,
+                                 'fell_back': fell_back,
+                                 'models': {f'{provider}:{model}'}}
+            return
+        entry['models'].add(f'{provider}:{model}')
+        entry['fell_back'] = entry['fell_back'] or fell_back
 
 
 #: Subscribers notified when a ceiling is hit. The UI registers one to raise a
@@ -1022,8 +1046,15 @@ def stream(
     json_mode: bool = False,
     temperature: Optional[float] = None,
     seed: Optional[int] = None,
+    model: Optional[str] = None,
 ) -> Iterator[str]:
     """Yield response text incrementally, falling back when a tier is blocked.
+
+    `model` overrides the tier's default for this one call. It exists so a
+    HETEROGENEOUS roster can put different models on the same tier: the tier
+    still selects the provider and the token budget, while the caller names the
+    weights. A fallback to another provider drops the override, because a model
+    ID is provider-specific and `qwen2.5:3b` means nothing to Groq.
 
     The fallback is deliberately restricted to failures that happen BEFORE any
     token is yielded. Once output has started, switching provider mid-answer
@@ -1032,16 +1063,16 @@ def stream(
     """
     if provider is not None:
         yield from _stream_via(provider, messages, tier, max_tokens, json_mode,
-                               temperature, seed)
+                               temperature, seed, model)
         return
 
     primary = provider_for(tier)
     gen = _stream_via(primary, messages, tier, max_tokens, json_mode,
-                      temperature, seed)
+                      temperature, seed, model)
     try:
         first = next(gen)
     except StopIteration:
-        _record_provenance(tier, primary, model_for(tier, primary))
+        _record_provenance(tier, primary, model or model_for(tier, primary))
         return
     except LLMError as exc:
         backup = fallback_provider(tier)
@@ -1049,12 +1080,15 @@ def stream(
             raise
         logging.warning('llm: %s tier fell back from %s to %s (%s)',
                         tier, primary, backup, exc)
+        # The override is deliberately NOT carried across. Model IDs are
+        # provider-specific, so asking Groq for 'qwen2.5:3b' fails the request
+        # rather than the tier.
         _record_provenance(tier, backup, model_for(tier, backup), fell_back=True)
         yield from _stream_via(backup, messages, tier, max_tokens, json_mode,
                                temperature, seed)
         return
 
-    _record_provenance(tier, primary, model_for(tier, primary))
+    _record_provenance(tier, primary, model or model_for(tier, primary))
     yield first
     yield from gen
 
@@ -1067,13 +1101,14 @@ def _stream_via(
     json_mode: bool = False,
     temperature: Optional[float] = None,
     seed: Optional[int] = None,
+    model_override: Optional[str] = None,
 ) -> Iterator[str]:
     """One provider's stream. Mirrors the old ollama stream shape.
 
     `json_mode` constrains the reply to a single JSON object — the replacement
     for ollama's `format='json'`, which several callers parse directly.
     """
-    model = model_for(tier, provider)
+    model = model_override or model_for(tier, provider)
     key = _api_key(provider)
     cost = estimate_tokens(messages, max_tokens)
 

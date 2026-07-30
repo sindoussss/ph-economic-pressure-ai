@@ -92,7 +92,7 @@ def test_stream_falls_back_when_the_primary_is_blocked(monkeypatch):
     seen = []
 
     def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
-             temperature=None, seed=None):
+             temperature=None, seed=None, model_override=None):
         seen.append(provider)
         if provider == 'groq':
             raise llm.LLMError('groq deep tier rate limited')
@@ -112,7 +112,7 @@ def test_a_fallback_is_recorded_not_hidden(monkeypatch):
     monkeypatch.setenv('STRATA_LLM_DEEP_PROVIDER', 'groq')
 
     def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
-             temperature=None, seed=None):
+             temperature=None, seed=None, model_override=None):
         if provider == 'groq':
             raise llm.LLMError('blocked')
         yield 'x'
@@ -128,7 +128,7 @@ def test_a_failure_with_no_fallback_still_raises(monkeypatch):
     monkeypatch.setenv('STRATA_LLM_PROVIDER', 'ollama')
 
     def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
-             temperature=None, seed=None):
+             temperature=None, seed=None, model_override=None):
         raise llm.LLMError('ollama is down')
         yield  # pragma: no cover
 
@@ -144,7 +144,7 @@ def test_a_mid_stream_failure_does_not_splice_two_models(monkeypatch):
     monkeypatch.setenv('STRATA_LLM_DEEP_PROVIDER', 'groq')
 
     def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
-             temperature=None, seed=None):
+             temperature=None, seed=None, model_override=None):
         if provider == 'groq':
             yield 'half an ans'
             raise llm.LLMError('died mid-stream')
@@ -158,7 +158,7 @@ def test_a_mid_stream_failure_does_not_splice_two_models(monkeypatch):
 def test_an_explicit_provider_argument_disables_fallback(monkeypatch):
     """Callers naming a provider mean it — the ablation harness pins one."""
     def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
-             temperature=None, seed=None):
+             temperature=None, seed=None, model_override=None):
         raise llm.LLMError('nope')
         yield  # pragma: no cover
 
@@ -196,3 +196,53 @@ def test_reset_clears_the_previous_run(monkeypatch):
     llm._record_provenance(llm.DEEP, 'groq', 'x', fell_back=True)
     llm.reset_provenance()
     assert llm.last_provenance() == {}
+
+
+# ── A per-agent model override must not survive a provider fallback ──────────
+
+def test_the_model_override_is_not_carried_to_the_fallback_provider(monkeypatch):
+    """A heterogeneous roster names concrete model IDs, and those are
+    provider-specific: asking Groq for `qwen2.5:3b` fails the request rather than
+    the tier. When a tier falls back, the override has to be dropped so the
+    backup answers with a model it actually has."""
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'ollama')
+    monkeypatch.setenv('STRATA_LLM_FAST_PROVIDER', 'groq')
+    monkeypatch.setenv('GROQ_API_KEY', 'k')
+    seen = []
+
+    def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
+             temperature=None, seed=None, model_override=None):
+        seen.append((provider, model_override))
+        if provider == 'groq':
+            raise llm.LLMError('groq blocked')
+        yield 'ok'
+
+    monkeypatch.setattr(llm, '_stream_via', fake)
+    llm.reset_provenance()
+    out = ''.join(llm.stream([{'role': 'user', 'content': 'x'}],
+                             tier=llm.FAST, model='qwen2.5:3b'))
+    llm.reset_provenance()
+
+    assert out == 'ok'
+    assert seen[0] == ('groq', 'qwen2.5:3b'), 'the primary should get the override'
+    assert seen[1][0] == 'ollama'
+    assert seen[1][1] is None, "the fallback must not be asked for the primary's model"
+
+
+def test_the_override_reaches_the_provider_and_the_provenance(monkeypatch):
+    monkeypatch.setenv('STRATA_LLM_PROVIDER', 'ollama')
+    got = []
+
+    def fake(provider, messages, tier=llm.FAST, max_tokens=None, json_mode=False,
+             temperature=None, seed=None, model_override=None):
+        got.append(model_override)
+        yield 'ok'
+
+    monkeypatch.setattr(llm, '_stream_via', fake)
+    llm.reset_provenance()
+    ''.join(llm.stream([{'role': 'user', 'content': 'x'}],
+                       tier=llm.FAST, model='qwen2.5:7b'))
+    identity = llm.provenance_id()
+    llm.reset_provenance()
+    assert got == ['qwen2.5:7b']
+    assert 'qwen2.5:7b' in identity

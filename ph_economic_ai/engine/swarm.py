@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import os
 import re
 import statistics
 import threading
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import requests
@@ -313,6 +314,7 @@ def _strip_chain_line(statement: str) -> str:
 
 def _reask_for_causal_chain(
     messages: list[dict], statement: str, *, tier: str, max_tokens: int, seed: int,
+    model: Optional[str] = None,
 ) -> str:
     """Ask once more for a chain the agent actually filled in.
 
@@ -329,7 +331,7 @@ def _reask_for_causal_chain(
     ]
     try:
         full = ''.join(llm.stream(followup, tier=tier, max_tokens=max_tokens,
-                                  seed=seed))
+                                  seed=seed, model=model))
     except Exception:
         logging.exception('swarm: causal chain retry call failed')
         return statement
@@ -358,6 +360,7 @@ _DIRECTION_RETRY_PROMPT = (
 def _resolve_direction_conflict(
     messages: list[dict], statement: str, direction: Optional[int],
     estimate: Optional[float], *, tier: str, max_tokens: int, seed: int,
+    model: Optional[str] = None,
 ) -> tuple[str, Optional[float]]:
     """Ask an agent which it meant when its direction and sign disagree.
 
@@ -384,7 +387,7 @@ def _resolve_direction_conflict(
     ]
     try:
         full = ''.join(llm.stream(followup, tier=tier, max_tokens=max_tokens,
-                                  seed=seed))
+                                  seed=seed, model=model))
     except Exception:
         logging.exception('swarm: direction retry call failed')
         return statement, None
@@ -399,6 +402,7 @@ def _resolve_direction_conflict(
 
 def _reask_for_estimate(
     messages: list[dict], statement: str, *, tier: str, max_tokens: int, seed: int,
+    model: Optional[str] = None,
 ) -> tuple[str, Optional[float]]:
     """Ask once more for a missing ESTIMATE line. Returns (statement, estimate).
 
@@ -418,7 +422,7 @@ def _reask_for_estimate(
     ]
     try:
         full = ''.join(llm.stream(followup, tier=tier, max_tokens=max_tokens,
-                                  seed=seed))
+                                  seed=seed, model=model))
     except Exception:
         # A failed retry must not take the original answer down with it.
         logging.exception('swarm: estimate retry call failed')
@@ -579,6 +583,62 @@ def agent_responses_of(history: list) -> list:
             if _is_realistic_fuel_change(getattr(r, 'price_estimate', None))]
 
 
+def agreement_across_models(responses: list, models_by_agent: dict) -> dict:
+    """Does the agreement survive a change of model, or is it one model repeating?
+
+    This is the only statistic in the file that can answer the question a
+    single-model roster cannot. A live run scored 100 percent agreement over ONE
+    distinct estimate because twenty agents on `qwen2.5:3b` are one model asked
+    twenty times: blinding removes peer contamination and cannot remove model
+    identity. Agreement measured ACROSS models is evidence; agreement measured
+    within one model is that model's determinism.
+
+    Read `between` against `within`:
+
+    * `between` much larger than `within` means the models disagree and the
+      headline percentage was averaging over a real split.
+    * `between` at or below `within` means the models land in the same place by
+      different routes, which is the only version of this number worth trusting.
+    * `between` at 0 with two models is not corroboration on its own. Two
+      checkpoints of one family share a training lineage, so a null here bounds
+      how much heterogeneity was actually tested rather than proving agreement.
+
+    `cross_pct` deliberately carries its own tiny n. With two models it is a
+    two-point measurement, and this project has already published one of those
+    as a headline once.
+    """
+    by_model: dict = {}
+    for r in responses:
+        est = getattr(r, 'price_estimate', None)
+        model = models_by_agent.get(getattr(r, 'agent_name', None))
+        if est is None or model is None:
+            continue
+        by_model.setdefault(model, []).append(est)
+
+    if len(by_model) < 2:
+        return {'models': len(by_model), 'measurable': False}
+
+    medians = {m: statistics.median(v) for m, v in sorted(by_model.items())}
+    spreads = [max(v) - min(v) for v in by_model.values() if len(v) > 1]
+    cross_pct, cross_n = measure_agreement(list(medians.values()))
+    between = max(medians.values()) - min(medians.values())
+    within = statistics.fmean(spreads) if spreads else 0.0
+    return {
+        'models': len(by_model),
+        'measurable': True,
+        'n_by_model': {m: len(v) for m, v in sorted(by_model.items())},
+        'median_by_model': {m: round(v, 3) for m, v in medians.items()},
+        'between_spread': round(between, 3),
+        'within_spread': round(within, 3),
+        # Guarded: a zero within-spread would divide by nothing, and it means
+        # every model was internally identical, which is itself the finding.
+        'between_over_within': (round(between / within, 2) if within > 0.005
+                                else None),
+        'cross_pct': cross_pct,
+        'cross_n': cross_n,
+    }
+
+
 def opening_diversity(responses: list) -> float:
     """Share of agents whose OPENING READ is distinct, 0 to 1.
 
@@ -690,6 +750,9 @@ class SwarmAgent:
     rag_sources: list[str]
     is_alive: bool = True
     combined_score: float = 0.0
+    #: Concrete model ID for this seat, or None for the tier default. Set by
+    #: `assign_models` so one roster can span several models.
+    model: Optional[str] = None
 
 
 @dataclass
@@ -761,6 +824,10 @@ class MasterVerdict:
     # collapsed room and 92 percent over 6 is a working one.
     agreement_distinct: int = 0
     agreement_diversity: float = 0.0
+    #: `agreement_across_models` output, or {'measurable': False} on a
+    #: single-model roster. The percentage above cannot tell agreement from one
+    #: model's determinism; this is what can.
+    agreement_models: dict = field(default_factory=dict)
     # The retail price this run actually reasoned from. The orchestrator scrapes
     # it into its OWN copy of the scenario, so without carrying it back the caller
     # stores a scenario the run never saw — and grading compares the observed
@@ -949,11 +1016,46 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
     )
 
 
-def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> list[SwarmAgent]:
+def roster_models() -> list[str]:
+    """The models the agent roster should span, or empty for one model.
+
+    `STRATA_SWARM_AGENT_MODELS`, comma separated, e.g. `qwen2.5:3b,qwen2.5:7b`.
+    Empty or unset keeps the tier default for every agent, which is the shipped
+    behaviour: heterogeneity is opt-in, because it is an experiment before it is
+    a feature and because the models must actually be pulled.
+    """
+    raw = os.getenv('STRATA_SWARM_AGENT_MODELS', '')
+    return [m.strip() for m in raw.split(',') if m.strip()]
+
+
+def assign_models(models: list[str], group_id: int, role_index: int) -> Optional[str]:
+    """Which model answers for one (region, role) seat.
+
+    **Model is CROSSED with region and role, never nested inside either.** The
+    obvious assignment, one model per region group, would have made model and
+    region the same variable: a regional card reading 2 PHP/L below the others
+    could be Western Visayas disagreeing or it could be the smaller model
+    disagreeing, and no run could tell the two apart. The whole reason for a
+    heterogeneous roster is to measure whether agreement survives a change of
+    model, which requires the change of model to vary WITHIN a region.
+
+    The rotation gives every group the same model mix and moves each model
+    through every role across the four groups, so neither region nor role is
+    confounded with weights. It is a pure function of the seat, so it needs no
+    seed and reproduces by construction.
+    """
+    if not models:
+        return None
+    return models[(role_index + group_id) % len(models)]
+
+
+def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP,
+                       models: Optional[list[str]] = None) -> list[SwarmAgent]:
     """Build all 20 SwarmAgents (4 groups × 5 agents = 1 per role per group)."""
+    models = roster_models() if models is None else models
     agents: list[SwarmAgent] = []
     for group_id, region in enumerate(REGIONS):
-        for role in _ROLE_ORDER:
+        for role_index, role in enumerate(_ROLE_ORDER):
             agents.append(SwarmAgent(
                 name=f"{region} {role}",
                 role=role,
@@ -962,6 +1064,7 @@ def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> lis
                 region_name=region,
                 system_prompt=_make_system_prompt(role, region, current_price),
                 rag_sources=_ROLE_RAG[role],
+                model=assign_models(models, group_id, role_index),
             ))
     return agents
 
@@ -1362,7 +1465,8 @@ class GroupArena:
         full_text = ''
         seed = _vintage_seed(self._group_id, agent.name)
         for token in llm.stream(messages, tier=agent.tier,
-                                max_tokens=_AGENT_MAX_TOKENS, seed=seed):
+                                max_tokens=_AGENT_MAX_TOKENS, seed=seed,
+                                model=agent.model):
             full_text += token
         if self._on_event:
             self._on_event('agent_done_typing', self._group_id, agent.name)
@@ -1377,6 +1481,7 @@ class GroupArena:
                 messages, statement, tier=agent.tier,
                 max_tokens=_AGENT_RETRY_MAX_TOKENS,
                 seed=_vintage_seed(self._group_id, agent.name, 'chain'),
+                model=agent.model,
             )
         estimate = _extract_fuel_change(statement)
         if estimate is None:
@@ -1387,6 +1492,7 @@ class GroupArena:
                 max_tokens=_AGENT_RETRY_MAX_TOKENS,
                 seed=_vintage_seed(self._group_id, agent.name,
                                     'retry'),
+                model=agent.model,
             )
         # An agent that reasons one way and signs the other is the largest single
         # source of apparent disagreement measured on this swarm, so the number is
@@ -1395,6 +1501,7 @@ class GroupArena:
             messages, statement, parse_direction(statement), estimate,
             tier=agent.tier, max_tokens=_AGENT_RETRY_MAX_TOKENS,
             seed=_vintage_seed(self._group_id, agent.name, 'direction'),
+            model=agent.model,
         )
         return AgentResponse(
             agent_name=agent.name,
@@ -1697,6 +1804,7 @@ class MasterJudge:
         data_brief: Optional['LiveDataBrief'] = None,
         group_histories: Optional[dict[int, list]] = None,
         anchor: Optional[float] = None,
+        models_by_agent: Optional[dict] = None,
     ):
         self._verdicts = verdicts
         self._rag = rag
@@ -1707,6 +1815,10 @@ class MasterJudge:
         # see run(). Without them the master can only see the survivors, which
         # is how the headline came to be a two-agent measurement.
         self._group_histories = group_histories or {}
+        # {agent_name: model}. Empty on a single-model roster, which makes
+        # `agreement_across_models` report itself unmeasurable rather than
+        # inventing a comparison.
+        self._models_by_agent = models_by_agent or {}
         self._anchor = (anchor if anchor is not None
                         else self._compute_physical_anchor())
 
@@ -1857,6 +1969,8 @@ class MasterJudge:
         scored_estimates = [r.price_estimate for r in scored_responses]
         agreement_distinct = len({round(e, 2) for e in scored_estimates})
         agreement_diversity = opening_diversity(scored_responses)
+        agreement_models = agreement_across_models(
+            scored_responses, self._models_by_agent)
 
         dissenting = [
             ' & '.join(v.region_pair)
@@ -1881,6 +1995,7 @@ class MasterJudge:
             agreement_echo_n=echoed,
             agreement_distinct=agreement_distinct,
             agreement_diversity=agreement_diversity,
+            agreement_models=agreement_models,
             dissenting_regions=dissenting,
             reasoning=statement,
             regional_verdicts=self._verdicts,
@@ -2025,6 +2140,10 @@ class SwarmOrchestrator:
             data_brief=self._data_brief,
             group_histories=group_histories,
             anchor=anchor,
+            # Built from the agents that actually ran, so an evolved roster with
+            # benched seats reports the models that answered rather than the
+            # models the default roster would have used.
+            models_by_agent={a.name: a.model for a in all_agents if a.model},
         )
         mv = master.run()
         mv.all_responses = all_arena_responses
