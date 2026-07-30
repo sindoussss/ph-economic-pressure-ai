@@ -513,6 +513,7 @@ class Stage4ReportPanel(QWidget):
             'agreement_echo_n': getattr(master_verdict, 'agreement_echo_n', 0),
             'agreement_distinct': getattr(master_verdict, 'agreement_distinct', 0),
             'agreement_diversity': getattr(master_verdict, 'agreement_diversity', 0.0),
+            'agreement_models': getattr(master_verdict, 'agreement_models', {}) or {},
             'verdicts': [],
         }
         self._consensus = consensus
@@ -572,6 +573,15 @@ class Stage4ReportPanel(QWidget):
         caveat_lbl.setWordWrap(True)
         caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
         caveat_lbl.setVisible(bool(_caveat))
+        # Whether the agreement survived a change of MODEL, which is the only
+        # thing on this card that can separate consensus from one model's
+        # determinism. Silent on a single-model roster rather than claiming a
+        # comparison it never made.
+        _cross = _honesty.cross_model_note(consensus.get('agreement_models', {}))
+        cross_lbl = QLabel(_cross)
+        cross_lbl.setWordWrap(True)
+        cross_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        cross_lbl.setVisible(bool(_cross))
 
         range_row = QHBoxLayout()
         _conf_cell = f'{conf}%' if _n >= 2 else '—'
@@ -594,6 +604,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
         cf_layout.addWidget(basis_lbl)
+        cf_layout.addWidget(cross_lbl)
         cf_layout.addWidget(caveat_lbl)
         if consensus.get('outside_regional'):
             _outside = QLabel(
