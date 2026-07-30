@@ -1203,6 +1203,29 @@ def _make_system_prompt(role: str, region: str,
 DEFAULT_AGENT_MODELS: tuple[str, ...] = ('qwen2.5:3b', 'llama3.2')
 
 
+def judge_model() -> Optional[str]:
+    """The model the judges and the master run on, or None for the tier default.
+
+    `STRATA_SWARM_JUDGE_MODEL`. Exists so `Q-ENG-011` can be TESTED rather than
+    only labelled: the survivors feed the regional judges and the master, all on
+    the deep tier, so a heterogeneous agent roster diversifies the debate and
+    leaves the synthesis one model's reading of it. The report says so; until now
+    nothing could check whether that reading is model-dependent.
+
+    Deliberately NOT defaulted to a second model, and not varied per region. A
+    single synthesis call can only be one model, so there is no heterogeneous
+    master to build. Varying it per REGION would confound model with region,
+    which is the exact confound `assign_models` was designed to avoid, and it
+    would make the regional cards uninterpretable to answer a question about the
+    national one.
+
+    The honest experiment is instead to run the SAME agent population through two
+    different masters and compare, which this makes possible and which nothing
+    else in the engine needs.
+    """
+    return os.getenv('STRATA_SWARM_JUDGE_MODEL', '').strip() or None
+
+
 def roster_models() -> list[str]:
     """The models the agent roster should span, or empty for one model.
 
@@ -1951,7 +1974,8 @@ class RegionalJudge:
         # three would share a seed and the judge would answer itself identically.
         seed = _vintage_seed(self._judge_id, tag)
         full = ''.join(llm.stream(messages, tier=tier,
-                                  max_tokens=_JUDGE_MAX_TOKENS, seed=seed))
+                                  max_tokens=_JUDGE_MAX_TOKENS, seed=seed,
+                                  model=judge_model()))
         _, statement = _parse_think(full)
         return statement
 
@@ -1970,7 +1994,7 @@ class RegionalJudge:
                          self._judge_id)
             synthesis, estimate = _reask_for_estimate(
                 synthesis_messages, synthesis, tier=_JUDGE_TIER,
-                max_tokens=_JUDGE_RETRY_MAX_TOKENS,
+                max_tokens=_JUDGE_RETRY_MAX_TOKENS, model=judge_model(),
                 seed=_vintage_seed(self._judge_id,
                                     'synthesis', 'retry'),
             )
@@ -1981,6 +2005,7 @@ class RegionalJudge:
         synthesis, estimate = _resolve_direction_conflict(
             synthesis_messages, synthesis, parse_direction(synthesis), estimate,
             tier=_JUDGE_TIER, max_tokens=_JUDGE_RETRY_MAX_TOKENS,
+            model=judge_model(),
             seed=_vintage_seed(self._judge_id, 'synthesis', 'direction'),
         )
         # Measured, not assumed. This was previously a hardcoded 0.75 whenever
@@ -2090,7 +2115,7 @@ class MasterJudge:
         full = ''.join(
             llm.stream(self._build_prompt(), tier=_JUDGE_TIER,
                        max_tokens=_MASTER_MAX_TOKENS,
-                       seed=_vintage_seed('master'))
+                       seed=_vintage_seed('master'), model=judge_model())
         )
         _, statement = _parse_think(full)
 
@@ -2218,7 +2243,7 @@ class MasterJudge:
                 # The synthesis is one model whatever the roster does: survivors
                 # feed the regional judges and the master, all on the DEEP tier,
                 # which `assign_models` does not reach.
-                'synthesis_model': llm.describe_model(_JUDGE_TIER),
+                'synthesis_model': judge_model() or llm.describe_model(_JUDGE_TIER),
             } if agreement_models.get('measurable') else agreement_models,
             dissenting_regions=dissenting,
             reasoning=statement,
