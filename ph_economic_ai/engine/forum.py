@@ -30,7 +30,7 @@ from ph_economic_ai.engine.auto_assemble import (
 from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
-    _extract_price, _parse_think, unfilled_scaffold)
+    ESTIMATE_LINE, _extract_price, _parse_think, unfilled_scaffold)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
 # Per-sector estimate parsing, agreement band, and the "flat" threshold.
@@ -119,27 +119,17 @@ _TOLERANCE = {
     'food': anchoring.FOOD_TOLERANCE_PCT,
     'electricity': anchoring.ELECTRICITY_TOLERANCE_PHP_KWH,
 }
-# The final line every agent must emit.
+# The final line every agent must emit, shared with `engine.debate` and
+# `engine.swarm` rather than copied.
 #
-# These read as instructions, NOT as templates, because a small model will copy a
-# template verbatim: with the previous wording ("ESTIMATE: +₱X.XX/L") a live
-# 17-agent run had agents literally answer "ESTIMATE: +₱X.XX/L", placeholder and
-# all, which parses to nothing. That single formatting choice was losing most of
-# the roster's estimates. Each line therefore names the quantity, gives a worked
-# example with a real number, and says outright not to echo the placeholder.
-_EST_LINE = {
-    'gas': ('ESTIMATE: <the peso-per-litre CHANGE you expect, signed> '
-            '(worked example — "ESTIMATE: +0.85/L" for a rise of 85 centavos, or '
-            '"ESTIMATE: -0.40/L" for a fall. Write your own number; never write '
-            'X.XX.)'),
-    'food': ('ESTIMATE: <the percent month-on-month CHANGE you expect, signed> '
-             '(worked example — "ESTIMATE: +0.4%" or "ESTIMATE: -0.2%". Write your '
-             'own number; never write X.X.)'),
-    'electricity': ('ESTIMATE: <the peso-per-kWh CHANGE you expect, signed> '
-                    '(worked example — "ESTIMATE: +0.30/kWh" or '
-                    '"ESTIMATE: -0.15/kWh". Write your own number; never write '
-                    'X.XX.)'),
-}
+# This file's own `_EST_LINE` was the ORIGINAL fix for a template a small model
+# copies verbatim, and it was right: a live 17-agent run had agents answer
+# "ESTIMATE: +PHP X.XX/L", placeholder and all. The remedy then had to be
+# rediscovered three more times, in the swarm's chain line, its estimate line and
+# its DIRECTION menu, because it lived only here. It now lives in `debate`, the
+# layer all three import, and this name is an alias so the Forum's call sites stay
+# readable.
+_EST_LINE = ESTIMATE_LINE
 
 # Capability channels: each agent stays strictly in its lane so the three do NOT
 # converge on the same paragraph — the point of a forum over a single model.

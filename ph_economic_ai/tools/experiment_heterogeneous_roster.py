@@ -17,20 +17,25 @@ This runs the same scenario twice, shared seeds:
     A  homogeneous    every agent on the tier default, as shipped
     B  heterogeneous  the roster spans --models, crossed with region and role
 
-Read it this way. If B's `between_spread` is at or below its `within_spread`, the
-models reach the same answer by different routes and the agreement means
-something. If `between_spread` dwarfs `within_spread`, the headline percentage was
-averaging over a real split between models and A's number was that split hidden
-by a single model's consistency.
+Read `models_agree`: the model medians either sit inside the same
+`_AGREEMENT_BAND` used to decide whether two AGENTS agree, or they do not. One
+standard covers both questions and no new threshold is invented.
+
+The first version of this compared `between_spread` against the mean within-model
+RANGE and got the 2026-07-30 run backwards, calling it "agreement survives the
+model change" when llama3.2's median was +2.50 and qwen2.5:3b's was +1.20, a
+factor of 2.08. The range was 3.4 times that arm's own standard deviation, so it
+was measuring a single outlier, and the comparison amounted to "is the gap smaller
+than the within-model worst case", which nearly anything passes. Median absolute
+deviation is now reported alongside the range, and the verdict uses the band.
 
 ## What this experiment cannot settle
 
-**The models must be genuinely different for a null to mean anything.** Only
-`qwen2.5:3b` and `qwen2.5:7b` are installed here, which are two sizes of one
-family sharing a training lineage. A `between_spread` of zero across them bounds
-how much heterogeneity was tested; it does not show that agreement would survive
-a different family. Pass `--models` explicitly with pulled models from other
-families (llama, gemma, mistral, phi) for the stronger version.
+**The models must be genuinely different for a null to mean anything.** Two sizes
+of one family share a training lineage, so medians landing together across them
+bounds how much heterogeneity was tested rather than showing agreement would
+survive a different family. This prints a warning when every `--models` entry
+shares a family prefix.
 
 `DEC-022` is also worth remembering before reading B as a free improvement: a
 stronger hosted agent model left agreement unchanged, dropped causal-chain
@@ -127,33 +132,53 @@ def _interpret(a: dict, b: dict) -> list[str]:
                    'that every --models entry is actually pulled.')
         return out
 
-    between, within = x['between_spread'], x['within_spread']
+    between, band = x['between_spread'], x.get('band', 0.50)
+    mad, rng = x.get('within_mad', 0.0), x.get('within_range', 0.0)
     ratio = x.get('between_over_within')
-    out.append(f"MEDIANS: {x['median_by_model']}  "
-               f"between {between} PHP/L, within {within} PHP/L"
-               + (f", ratio {ratio}" if ratio is not None else ''))
+    out.append(f"MEDIANS: {x['median_by_model']}  between {between} PHP/L; "
+               f"within-model MAD {mad}, range {rng}"
+               + (f"; ratio {ratio}" if ratio is not None else ''))
 
-    if within <= 0.005:
+    # A BAND test, not a ratio. The first version compared `between` against the
+    # mean RANGE and reported a run backwards: medians +2.50 and +1.20, a factor
+    # of 2.08, called "agreement survives" because 1.30 fell under a 3.25 range
+    # that one outlier had set.
+    if x.get('models_agree'):
         out.append(
-            'Every model was internally IDENTICAL, so there is no within-model '
-            'spread to compare against. That is itself the determinism finding: '
-            'the agents are not sampling, they are reciting.')
-    elif between <= within:
-        out.append(
-            f'AGREEMENT SURVIVES THE MODEL CHANGE: the models sit {between} '
-            f'PHP/L apart while each spans {within} internally. They reach the '
-            f'same place by different routes, which is the only version of this '
-            f'number worth trusting. Bounded by which models were compared.')
-    elif ratio and ratio >= 3:
-        out.append(
-            f'THE MODELS DISAGREE: {between} PHP/L between them against {within} '
-            f'within, a ratio of {ratio}. Arm A\'s percentage was that split '
-            f'hidden by one model\'s consistency, not a consensus.')
+            f'AGREEMENT SURVIVES THE MODEL CHANGE: the medians land {between} '
+            f'PHP/L apart, inside the {band} band that decides whether two AGENTS '
+            f'agree. One standard for both questions. Still bounded by which '
+            f'models were compared.')
     else:
         out.append(
-            f'PARTIAL: the models sit {between} PHP/L apart, wider than the '
-            f'{within} within them but not by much. One run cannot separate that '
-            f'from sampling noise.')
+            f"THE MODELS DISAGREE: medians {between} PHP/L apart against a {band} "
+            f"band, so arm A's percentage was this split hidden by one model's "
+            f"consistency rather than a consensus.")
+    surv = x.get('survivors_by_model') or {}
+    if surv:
+        on_roster = set((x.get('n_by_model') or {}).keys())
+        shut_out = sorted(on_roster - set(surv))
+        out.append(
+            f'BRACKET: survivors reaching the judges {surv}'
+            + (f'. {", ".join(shut_out)} produced NONE, so it debated and reached '
+               f'the published number through no one. The Critic and '
+               f'ConfidenceScorer score peers in prose, so a shut-out is a '
+               f'plausible style preference rather than a numbers one.'
+               if shut_out else
+               '. Four survivors over two models is too few to read as bias.'))
+        # Only when the models actually differ. Run 2 had the medians 0.005 PHP/L
+        # apart and this printed "landed nearest llama", which is naming noise.
+        near = x.get('nearest_model') if not x.get('models_agree') else None
+        if near:
+            out.append(f'WINNER: the published estimate landed nearest {near}, '
+                       f'while the population was {x.get("n_by_model")}. Population '
+                       f'weight does not decide it; the deep-tier synthesis does.')
+
+    if rng > 3 * max(mad, 0.01):
+        out.append(
+            f'  Note the within-model RANGE of {rng} against a MAD of {mad}: '
+            f'outliers are present, which is why the range is reported and not '
+            f'used as the test.')
 
     out.append(
         f"DISTINCT ESTIMATES: {a['distinct_estimates']} homogeneous, "

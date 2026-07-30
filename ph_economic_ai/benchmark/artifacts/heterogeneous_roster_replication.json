@@ -1,0 +1,142 @@
+{
+  "question": "Q-ENG-006: does agent agreement survive a change of model?",
+  "models": [
+    "qwen2.5:3b",
+    "llama3.2:latest"
+  ],
+  "families": 2,
+  "scenario": {
+    "oil_pct": 5.0,
+    "usd_pct": 2.0,
+    "bsp_rate": 6.5,
+    "demand_index": 72.0
+  },
+  "runs": [
+    {
+      "run": 1,
+      "note": "first observation, retained as recorded",
+      "between_spread": 1.3,
+      "models_agree": false,
+      "median_by_model": {
+        "llama3.2:latest": 2.5,
+        "qwen2.5:3b": 1.2
+      },
+      "agreement_a": 97,
+      "agreement_b": 60,
+      "distinct_a": 3,
+      "distinct_b": 8,
+      "survivors_by_model": null
+    },
+    {
+      "run": 2,
+      "between_spread": 0.005,
+      "models_agree": true,
+      "median_by_model": {
+        "llama3.2:latest": 1.5,
+        "qwen2.5:3b": 1.505
+      },
+      "agreement_a": 89,
+      "agreement_b": 75,
+      "distinct_a": 9,
+      "distinct_b": 13,
+      "survivors_by_model": {
+        "llama3.2:latest": 2,
+        "qwen2.5:3b": 2
+      },
+      "seconds_a": 241.5,
+      "seconds_b": 229.0
+    },
+    {
+      "run": 3,
+      "between_spread": 0.25,
+      "models_agree": true,
+      "median_by_model": {
+        "llama3.2:latest": 1.5,
+        "qwen2.5:3b": 1.25
+      },
+      "agreement_a": 98,
+      "agreement_b": 64,
+      "distinct_a": 3,
+      "distinct_b": 13,
+      "survivors_by_model": {
+        "qwen2.5:3b": 2,
+        "llama3.2:latest": 2
+      },
+      "seconds_a": 253.8,
+      "seconds_b": 236.0
+    },
+    {
+      "run": 4,
+      "between_spread": 0.3,
+      "models_agree": true,
+      "median_by_model": {
+        "llama3.2:latest": 1.5,
+        "qwen2.5:3b": 1.2
+      },
+      "agreement_a": 89,
+      "agreement_b": 78,
+      "distinct_a": 4,
+      "distinct_b": 15,
+      "survivors_by_model": {
+        "qwen2.5:3b": 2,
+        "llama3.2:latest": 2
+      },
+      "seconds_a": 251.8,
+      "seconds_b": 240.8
+    },
+    {
+      "run": 5,
+      "between_spread": 0.25,
+      "models_agree": true,
+      "median_by_model": {
+        "llama3.2:latest": 1.5,
+        "qwen2.5:3b": 1.25
+      },
+      "agreement_a": 89,
+      "agreement_b": 74,
+      "distinct_a": 5,
+      "distinct_b": 14,
+      "survivors_by_model": {
+        "qwen2.5:3b": 2,
+        "llama3.2:latest": 2
+      },
+      "seconds_a": 245.3,
+      "seconds_b": 229.0
+    }
+  ],
+  "summary": {
+    "between_spread_median": 0.25,
+    "between_spread_range": [
+      0.005,
+      1.3
+    ],
+    "band": 0.5,
+    "runs_saying_models_agree": 4,
+    "runs_total": 5,
+    "agreement_drop_points": [
+      37,
+      14,
+      34,
+      11,
+      15
+    ],
+    "agreement_drop_median": 15,
+    "distinct_gain": [
+      5,
+      4,
+      10,
+      11,
+      9
+    ],
+    "distinct_gain_median": 9,
+    "seconds_median_a": 248.55,
+    "seconds_median_b": 232.5
+  },
+  "reading": [
+    "The models AGREE. Between-model spread has a median of 0.250 PHP/L against a 0.50 band, and 4 of 5 runs fall inside it.",
+    "Run 1 is a 5x outlier at 1.30 and was the first observation. A verdict was published from it alone and was wrong; that is why this file exists.",
+    "Agreement FALLS every run under heterogeneity, median 15 points, while distinct estimates rise every run, median +9. The falling percentage and genuine cross-family corroboration are the same event: the metric is measuring a wider population, not a worse one.",
+    "No bracket bias: survivors 2 and 2 in every run where recorded.",
+    "Two models is the minimum that can answer this. A third family would test whether the agreement generalises beyond qwen and llama."
+  ]
+}

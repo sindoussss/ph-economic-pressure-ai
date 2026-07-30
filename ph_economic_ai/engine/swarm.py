@@ -16,14 +16,18 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from ph_economic_ai.engine import anchoring, llm, vintage
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
-    AgentResponse, _MAX_REALISTIC_FUEL_PHP_L, _SCAFFOLD_RETRY_PROMPT,
-    _extract_price, _parse_think, unfilled_scaffold)
+    DIRECTION_INSTRUCTION, ESTIMATE_LINE, AgentResponse,
+    _MAX_REALISTIC_FUEL_PHP_L, _SCAFFOLD_RETRY_PROMPT, _extract_price,
+    _parse_think, unfilled_scaffold)
 from ph_economic_ai.engine.live_data import LiveDataBrief
 
 
 # Fallback price used when live fetch fails (₱/L, NCR unleaded 91 avg).
 # Only needs updating if the live fetcher stops working for an extended period.
 _FALLBACK_RETAIL_PRICE_PHP: float = 98.82  # NCR Unleaded 91 avg May 20 2026
+#: Named so the prompt can say HOW STALE the fallback is rather than calling a
+#: two-month-old constant "the current price". Update both together.
+_FALLBACK_PRICE_AS_OF: str = 'May 2026 (NCR unleaded 91)'
 
 _PRICE_FETCH_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
@@ -197,7 +201,10 @@ def _is_realistic_fuel_change(value: Optional[float]) -> bool:
 #: reads as consensus. Committing to a word first is a cheap scaffold that makes
 #: the sign explicit, and it gives the parser something to check the number
 #: against instead of trusting a lone character.
-DIRECTION_LINE = 'DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT'
+#: What the prompts ASK for. A menu, which is why five of twenty agents
+#: copied it back verbatim; `DIRECTION_INSTRUCTION` is what they are shown
+#: now. Kept only for the retry prompt's worked example.
+DIRECTION_LINE = DIRECTION_INSTRUCTION
 
 _DIRECTION_RE = re.compile(
     r'DIRECTION\s*:?\s*\**\s*(UP|DOWN|FLAT|RISE|RISING|FALL|FALLING|'
@@ -298,7 +305,7 @@ _ESTIMATE_RETRY_PROMPT = (
     'Your reply did not end with a usable estimate line. Do not repeat your '
     'analysis. Reply with that one line and nothing else, using the sign that '
     'matches the reasoning you just gave:\n'
-    'ESTIMATE: +₱X.XX/L   or   ESTIMATE: -₱X.XX/L'
+    + ESTIMATE_LINE['gas']
 )
 # Enough room for a reasoning model to think briefly and emit one line. A cap
 # that lands mid-thought yields nothing, which is the failure being fixed.
@@ -352,8 +359,8 @@ _DIRECTION_RETRY_PROMPT = (
     'those can be what you meant.\n'
     'Do not repeat your analysis. Reply with exactly these two lines, consistent '
     'with each other:\n'
-    'DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n'
-    'ESTIMATE: +PHP X.XX/L or ESTIMATE: -PHP X.XX/L'
+    + DIRECTION_INSTRUCTION + '\n'
+    + ESTIMATE_LINE['gas']
 )
 
 
@@ -593,15 +600,24 @@ def agreement_across_models(responses: list, models_by_agent: dict) -> dict:
     identity. Agreement measured ACROSS models is evidence; agreement measured
     within one model is that model's determinism.
 
-    Read `between` against `within`:
+    `models_agree` is the verdict: the model medians sit inside the same
+    `_AGREEMENT_BAND` the metric already uses to call two AGENTS agreeing, so one
+    standard covers both questions and no new threshold is invented.
 
-    * `between` much larger than `within` means the models disagree and the
-      headline percentage was averaging over a real split.
-    * `between` at or below `within` means the models land in the same place by
-      different routes, which is the only version of this number worth trusting.
-    * `between` at 0 with two models is not corroboration on its own. Two
-      checkpoints of one family share a training lineage, so a null here bounds
-      how much heterogeneity was actually tested rather than proving agreement.
+    `within_mad` is context, not the test. An earlier version compared `between`
+    against the mean RANGE and got a real run backwards: llama3.2 at +2.50 median
+    against qwen2.5:3b at +1.20, a factor of 2.08, reported as "agreement
+    survives the model change" because 1.30 fell under a 3.25 range. The range
+    was 3.4 times that arm's own standard deviation, so it was measuring one
+    outlier, and the comparison amounted to "is the gap smaller than the
+    within-model worst case", which nearly anything passes. Median absolute
+    deviation replaces it: median-based like `between`, and unmoved by one wild
+    estimate.
+
+    A null result is still bounded by WHICH models were compared. Two
+    checkpoints of one family share a training lineage, so medians landing
+    together says less than it appears to; `experiment_heterogeneous_roster`
+    prints that caveat when every model shares a family prefix.
 
     `cross_pct` deliberately carries its own tiny n. With two models it is a
     two-point measurement, and this project has already published one of those
@@ -619,24 +635,108 @@ def agreement_across_models(responses: list, models_by_agent: dict) -> dict:
         return {'models': len(by_model), 'measurable': False}
 
     medians = {m: statistics.median(v) for m, v in sorted(by_model.items())}
-    spreads = [max(v) - min(v) for v in by_model.values() if len(v) > 1]
-    cross_pct, cross_n = measure_agreement(list(medians.values()))
     between = max(medians.values()) - min(medians.values())
-    within = statistics.fmean(spreads) if spreads else 0.0
+    cross_pct_and_n = measure_agreement(list(medians.values()))
+
+    # Dispersion within each model, measured two ways because the first version
+    # used only the RANGE and drew the wrong conclusion from a real run.
+    #
+    # Measured 2026-07-30: llama3.2 median +2.50 against qwen2.5:3b median +1.20,
+    # a factor of 2.08, and the verdict printed "agreement survives the model
+    # change" because between (1.30) fell under the mean range (3.25). The range
+    # is set by a single outlier — it came out 3.4 times the arm's own standard
+    # deviation — so the test was "is the between-model gap smaller than the
+    # within-model WORST CASE", which nearly anything passes.
+    mads = []
+    for v in by_model.values():
+        if len(v) > 1:
+            med = statistics.median(v)
+            mads.append(statistics.median([abs(x - med) for x in v]))
+    within_mad = statistics.fmean(mads) if mads else 0.0
+    within_range = statistics.fmean(
+        [max(v) - min(v) for v in by_model.values() if len(v) > 1] or [0.0])
+
+    # The verdict is a BAND test, not a ratio. Two models count as agreeing when
+    # their medians sit inside the same band the metric already uses to call two
+    # agents agreeing, so one standard applies to both questions. A ratio needs
+    # an invented threshold; this one is already justified by the control study
+    # in ADR-009 that disqualified 1.00.
     return {
         'models': len(by_model),
         'measurable': True,
         'n_by_model': {m: len(v) for m, v in sorted(by_model.items())},
         'median_by_model': {m: round(v, 3) for m, v in medians.items()},
         'between_spread': round(between, 3),
-        'within_spread': round(within, 3),
-        # Guarded: a zero within-spread would divide by nothing, and it means
-        # every model was internally identical, which is itself the finding.
-        'between_over_within': (round(between / within, 2) if within > 0.005
-                                else None),
-        'cross_pct': cross_pct,
-        'cross_n': cross_n,
+        'models_agree': bool(between <= _AGREEMENT_BAND),
+        'band': _AGREEMENT_BAND,
+        #: Median absolute deviation, averaged over models. Median-based, so it
+        #: is consistent with `between` and unmoved by one wild estimate.
+        'within_mad': round(within_mad, 3),
+        #: Kept for transparency, NOT used for the verdict. A range this much
+        #: larger than the MAD is the signal that outliers are present.
+        'within_range': round(within_range, 3),
+        'between_over_within': (round(between / within_mad, 2)
+                                if within_mad > 0.005 else None),
+        #: With two models this is a TWO-POINT measurement, which this project
+        #: has published as a headline once already. Reported, never used for the
+        #: verdict, and the UI does not read it.
+        'cross_pct': cross_pct_and_n[0],
+        'cross_n': cross_pct_and_n[1],
     }
+
+
+def nearest_model(final_estimate: Optional[float], across: dict) -> Optional[str]:
+    """Which model's median the published number landed nearest.
+
+    Reporting that the models disagree without saying WHICH ONE WON leaves the
+    reader with the disagreement and none of the consequence. Measured
+    2026-07-30: llama3.2 median +2.50, qwen2.5:3b median +1.20, published
+    estimate +2.39 — 0.11 from llama and 1.19 from qwen, while qwen supplied 19 of
+    the 32 responses. Population weight did not decide it.
+
+    The reason is structural and worth stating where someone will find it. The
+    estimate is not an average of the agents: it comes from survivors, then the
+    regional judges, then the master judge, and all of those run on the DEEP tier,
+    which the agent roster does not touch. So a heterogeneous roster diversifies
+    the debate and leaves the synthesis single-model.
+    """
+    if final_estimate is None or not across.get('measurable'):
+        return None
+    medians = across.get('median_by_model') or {}
+    if not medians:
+        return None
+    # Silent when the models AGREE. A second run put the two medians 0.005 PHP/L
+    # apart and this still named a winner, which is picking noise: with no gap
+    # there is nothing for the estimate to be nearer to. A winner is only
+    # meaningful when one model's answer was published and another's was not.
+    if across.get('models_agree'):
+        return None
+    return min(medians, key=lambda m: abs(medians[m] - final_estimate))
+
+
+def survivors_by_model(survivors: list, models_by_agent: dict) -> dict:
+    """How many elimination survivors each model produced.
+
+    A bracket that systematically eliminates one family is selecting on writing
+    style rather than on reasoning, and nothing measured that. The Critic and the
+    ConfidenceScorer score peers by name and in prose, so a model whose prose they
+    prefer wins the tournament regardless of its numbers.
+
+    Measured over five paired runs on 2026-07-30, and the answer is a NULL:
+    survivors came out 2 and 2 in every run where this was recorded, with the
+    response population 16 and 16. The 13-to-19 split that motivated building this
+    appeared in the first run only and did not reproduce, so the style-preference
+    hypothesis has no support. Kept because a null needs an instrument as much as a
+    finding does, and because the bracket is where a bias would show if one
+    developed.
+    """
+    out: dict = {}
+    for s in survivors or []:
+        name = getattr(getattr(s, 'response', None), 'agent_name', None)
+        model = models_by_agent.get(name)
+        if model:
+            out[model] = out.get(model, 0) + 1
+    return out
 
 
 def opening_diversity(responses: list) -> float:
@@ -987,10 +1087,38 @@ def derive_regional_estimates(
     return result
 
 
-def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK_RETAIL_PRICE_PHP) -> str:
+def _make_system_prompt(role: str, region: str,
+                        current_price: float = _FALLBACK_RETAIL_PRICE_PHP,
+                        price_is_live: bool = True) -> str:
+    """The role's system prompt, including an honestly-sourced price baseline.
+
+    This block used to open "The current DOE-published retail gasoline price in
+    the Philippines is approximately X/L (unleaded 95)", and that was wrong three
+    times over:
+
+    * **Not DOE.** `fetch_live_retail_price_checked` scrapes `fuelprice.ph`, a
+      third-party aggregator, by regex.
+    * **Not unleaded 95.** It takes the MEDIAN across every fuel grade the page
+      lists between 60 and 150, so diesel and the RON91/95/97 grades are pooled.
+      `_FALLBACK_RETAIL_PRICE_PHP` is documented as unleaded 91.
+    * **Not necessarily current.** On a failed scrape the fallback constant is a
+      stored figure from May 2026, and the prompt still called it current.
+
+    The same value is grading's baseline, so a run whose agents were told a
+    provenance it does not have was also scored against it. `price_is_live`
+    already existed on the orchestrator and simply never reached here.
+    """
+    if price_is_live:
+        provenance = ("a median across the fuel grades listed by fuelprice.ph "
+                      "rather than a DOE bulletin figure for a single grade")
+    else:
+        provenance = (f"a STORED REFERENCE from {_FALLBACK_PRICE_AS_OF} and may "
+                      f"be months out of date, no live price having been "
+                      f"available this run")
     price_anchor = (
-        f"IMPORTANT: The current DOE-published retail gasoline price in the Philippines "
-        f"is approximately ₱{current_price:.2f}/L (unleaded 95). "
+        f"IMPORTANT: Treat approximately ₱{current_price:.2f}/L as the pump price "
+        f"baseline. It is {provenance}, so use it as a SCALE for your change "
+        f"rather than as a precise level. "
         f"Your ESTIMATE must be a realistic price CHANGE from this baseline — "
         f"typical weekly adjustments are ±₱0.20 to ±₱3.00/L. "
         f"Do NOT output the absolute price; output only the signed change. "
@@ -1005,8 +1133,8 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
             "Project the short-term retail gasoline price CHANGE for this region "
             "based on crude oil prices, forex, and regional demand patterns. "
             "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
         )
     if role == 'DataExtractor':
         return (
@@ -1015,8 +1143,8 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
             "(infrastructure, income levels, freight costs, demand patterns). "
             "Reference specific peso values from the DOE bulletin context where available. "
             "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
         )
     if role == 'Synthesizer':
         return (
@@ -1024,8 +1152,8 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
             "Integrate all data and prior estimates into a coherent regional price view. "
             "Resolve contradictions between other agents' estimates. "
             "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
         )
     if role == 'Critic':
         return (
@@ -1035,8 +1163,8 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
             "agent's reasoning quality using this exact format on separate lines: "
             "SCORE: <agent_name>: X  (1–10, no /10 suffix). "
             "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
         )
     if role == 'ConfidenceScorer':
         return (
@@ -1046,26 +1174,67 @@ def _make_system_prompt(role: str, region: str, current_price: float = _FALLBACK
             "confidence using this exact format on separate lines: "
             "CONFIDENCE: <agent_name>: 0.XX  (0.0–1.0). "
             "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
         )
     return base + (
         "End with BOTH lines, and make them agree:\n"
-        "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-        "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+        + DIRECTION_INSTRUCTION + "\n"
+        + ESTIMATE_LINE['gas']
     )
+
+
+#: The cross-family pair the roster spans by default, measured over five paired
+#: runs on 2026-07-30. Two training lineages, which is the point: agreement across
+#: them is evidence, agreement within one model is that model's determinism.
+#:
+#: What the five runs showed. The between-model spread had a median of 0.250 PHP/L
+#: against the 0.50 agreement band, and llama3.2's median was 1.50 in four
+#: consecutive runs while qwen2.5:3b's sat at 1.20 to 1.505. The reported
+#: agreement percentage FALLS by a median 15 points, and that is the trade being
+#: made deliberately: the number gets smaller and starts measuring something, the
+#: same bargain `DEC-026` struck when blinding cost 8 points for three times the
+#: distinct opinions.
+#:
+#: It also costs nothing in time. Median wall clock went 245s to 236s, faster in
+#: four of five runs, despite the two agent models plus the 7b judge totalling
+#: 8.63 GB against an 8 GB card. The predicted model-swapping penalty never
+#: appeared.
+DEFAULT_AGENT_MODELS: tuple[str, ...] = ('qwen2.5:3b', 'llama3.2')
 
 
 def roster_models() -> list[str]:
     """The models the agent roster should span, or empty for one model.
 
-    `STRATA_SWARM_AGENT_MODELS`, comma separated, e.g. `qwen2.5:3b,qwen2.5:7b`.
-    Empty or unset keeps the tier default for every agent, which is the shipped
-    behaviour: heterogeneity is opt-in, because it is an experiment before it is
-    a feature and because the models must actually be pulled.
+    `STRATA_SWARM_AGENT_MODELS`, comma separated, overrides everything and is how
+    an experiment pins an arm.
+
+    Unset now means the CROSS-FAMILY DEFAULT, where it used to mean one model.
+    That changed on 2026-07-30 because a single-model roster's agreement figure
+    substantially measures one model's determinism: runs scored 89 to 98 percent
+    over as few as three distinct values.
+
+    Conditional on the models being present. Defaulting to a model the user never
+    pulled would fail every call on a fresh install, and `llm.installed_models`
+    returns empty when it cannot confirm, so an unreachable daemon falls back to
+    the tier default rather than to a guess. Both models must be there: one of the
+    pair is not a cross-family roster, it is the old behaviour with extra steps.
     """
     raw = os.getenv('STRATA_SWARM_AGENT_MODELS', '')
-    return [m.strip() for m in raw.split(',') if m.strip()]
+    if raw.strip():
+        return [m.strip() for m in raw.split(',') if m.strip()]
+
+    # Ollama tags only. A hosted provider names its models differently, so the
+    # local pair would be meaningless there.
+    if llm.provider_for(llm.FAST) not in llm.local_providers():
+        return []
+    have = llm.installed_models()
+    if all(m in have for m in DEFAULT_AGENT_MODELS):
+        return list(DEFAULT_AGENT_MODELS)
+    if have:
+        logging.info('swarm: cross-family roster needs %s; running single-model',
+                     ', '.join(m for m in DEFAULT_AGENT_MODELS if m not in have))
+    return []
 
 
 def assign_models(models: list[str], group_id: int, role_index: int) -> Optional[str]:
@@ -1090,7 +1259,8 @@ def assign_models(models: list[str], group_id: int, role_index: int) -> Optional
 
 
 def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP,
-                       models: Optional[list[str]] = None) -> list[SwarmAgent]:
+                       models: Optional[list[str]] = None,
+                       price_is_live: bool = True) -> list[SwarmAgent]:
     """Build all 20 SwarmAgents (4 groups × 5 agents = 1 per role per group)."""
     models = roster_models() if models is None else models
     agents: list[SwarmAgent] = []
@@ -1102,7 +1272,8 @@ def build_swarm_agents(current_price: float = _FALLBACK_RETAIL_PRICE_PHP,
                 tier=_ROLE_TIERS[role],
                 group_id=group_id,
                 region_name=region,
-                system_prompt=_make_system_prompt(role, region, current_price),
+                system_prompt=_make_system_prompt(
+                    role, region, current_price, price_is_live),
                 rag_sources=_ROLE_RAG[role],
                 model=assign_models(models, group_id, role_index),
             ))
@@ -1738,8 +1909,8 @@ class RegionalJudge:
                 f"Ignore estimates outside ±{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L as invalid absolute-price parses. "
                 "Apply the project calibration policy: prefer estimates close to the group median unless a cited figure justifies disagreement. "
                 "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
             )},
             {'role': 'user', 'content': (
                 f"{self._brief_block()}{self._scenario_text()}\n\n"
@@ -1762,8 +1933,8 @@ class RegionalJudge:
                 f"Ignore estimates outside ±{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L as invalid absolute-price parses. "
                 "Apply the project reconciliation policy: prefer the calibrated midpoint unless a cited figure justifies a regional exception. "
                 "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
             )},
             {'role': 'user', 'content': (
                 f"{self._brief_block()}{self._scenario_text()}\n\n"
@@ -1906,8 +2077,8 @@ class MasterJudge:
                 "Cite DATA BRIEF figures when available. Identify any dissenting regions. "
                 f"Ignore estimates outside ±{_MAX_REALISTIC_FUEL_CHANGE:.0f}/L as invalid absolute-price parses. "
                 "End with BOTH lines, and make them agree:\n"
-            "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT\n"
-            "ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L"
+            + DIRECTION_INSTRUCTION + "\n"
+            + ESTIMATE_LINE['gas']
             )},
             {'role': 'user', 'content': (
                 f"{self._brief_block()}{scenario_text}\n\n{anchor_text}\n\n"
@@ -2011,6 +2182,12 @@ class MasterJudge:
         agreement_diversity = opening_diversity(scored_responses)
         agreement_models = agreement_across_models(
             scored_responses, self._models_by_agent)
+        # Which model the published number actually landed on, and which models
+        # won the bracket. Reporting a disagreement without naming the winner
+        # leaves the reader with the disagreement and none of the consequence.
+        if agreement_models.get('measurable'):
+            agreement_models['survivors_by_model'] = survivors_by_model(
+                self._survivors, self._models_by_agent)
 
         dissenting = [
             ' & '.join(v.region_pair)
@@ -2035,7 +2212,14 @@ class MasterJudge:
             agreement_echo_n=echoed,
             agreement_distinct=agreement_distinct,
             agreement_diversity=agreement_diversity,
-            agreement_models=agreement_models,
+            agreement_models={
+                **agreement_models,
+                'nearest_model': nearest_model(final_estimate, agreement_models),
+                # The synthesis is one model whatever the roster does: survivors
+                # feed the regional judges and the master, all on the DEEP tier,
+                # which `assign_models` does not reach.
+                'synthesis_model': llm.describe_model(_JUDGE_TIER),
+            } if agreement_models.get('measurable') else agreement_models,
             dissenting_regions=dissenting,
             reasoning=statement,
             regional_verdicts=self._verdicts,
@@ -2086,7 +2270,8 @@ class SwarmOrchestrator:
         if self._evolved_agents is not None:
             all_agents = self._evolved_agents
         else:
-            all_agents = build_swarm_agents(live_price)
+            all_agents = build_swarm_agents(
+                live_price, price_is_live=price_is_live)
         sem = threading.Semaphore(self._parallel_n)
         # Derived from the agents actually built, not a hardcoded 4: the group
         # count follows REGIONS, so a hardcoded literal silently drops any

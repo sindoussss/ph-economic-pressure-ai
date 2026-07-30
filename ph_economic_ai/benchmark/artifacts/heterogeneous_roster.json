@@ -1,0 +1,90 @@
+{
+  "measured_at": "2026-07-30 (fuel pricing week of 2026-07-28)",
+  "scenario": {
+    "oil_pct": 5.0,
+    "usd_pct": 2.0,
+    "bsp_rate": 6.5,
+    "demand_index": 72.0
+  },
+  "requested_models": [
+    "qwen2.5:3b",
+    "llama3.2:latest"
+  ],
+  "arms": {
+    "A_homogeneous": {
+      "agreement_pct": 89,
+      "agreement_n": 32,
+      "distinct_estimates": 5,
+      "spread": 1.1,
+      "stdev": 0.404,
+      "opening_diversity": 0.5,
+      "echo_pct": 0.0,
+      "parse_rate_pct": 100.0,
+      "scaffold_echoes": 0,
+      "estimate": 1.63,
+      "estimate_source": "agent",
+      "models": [
+        "<tier default>"
+      ],
+      "across_models": {
+        "models": 0,
+        "measurable": false
+      },
+      "provenance": "fast=ollama:qwen2.5:3b deep=ollama:qwen2.5:7b",
+      "seconds": 245.3
+    },
+    "B_heterogeneous": {
+      "agreement_pct": 74,
+      "agreement_n": 32,
+      "distinct_estimates": 14,
+      "spread": 2.9,
+      "stdev": 0.597,
+      "opening_diversity": 0.6,
+      "echo_pct": 0.0,
+      "parse_rate_pct": 100.0,
+      "scaffold_echoes": 0,
+      "estimate": 1.65,
+      "estimate_source": "agent",
+      "models": [
+        "llama3.2:latest",
+        "qwen2.5:3b"
+      ],
+      "across_models": {
+        "models": 2,
+        "measurable": true,
+        "n_by_model": {
+          "llama3.2:latest": 14,
+          "qwen2.5:3b": 18
+        },
+        "median_by_model": {
+          "llama3.2:latest": 1.5,
+          "qwen2.5:3b": 1.25
+        },
+        "between_spread": 0.25,
+        "models_agree": true,
+        "band": 0.5,
+        "within_mad": 0.31,
+        "within_range": 2.1,
+        "between_over_within": 0.81,
+        "cross_pct": 98,
+        "cross_n": 2,
+        "survivors_by_model": {
+          "qwen2.5:3b": 2,
+          "llama3.2:latest": 2
+        },
+        "nearest_model": null,
+        "synthesis_model": "qwen2.5:7b"
+      },
+      "provenance": "fast=ollama:llama3.2:latest+ollama:qwen2.5:3b deep=ollama:qwen2.5:7b",
+      "seconds": 229.0
+    }
+  },
+  "interpretation": [
+    "MEDIANS: {'llama3.2:latest': 1.5, 'qwen2.5:3b': 1.25}  between 0.25 PHP/L; within-model MAD 0.31, range 2.1; ratio 0.81",
+    "AGREEMENT SURVIVES THE MODEL CHANGE: the medians land 0.25 PHP/L apart, inside the 0.5 band that decides whether two AGENTS agree. One standard for both questions. Still bounded by which models were compared.",
+    "BRACKET: survivors reaching the judges {'qwen2.5:3b': 2, 'llama3.2:latest': 2}. Four survivors over two models is too few to read as bias.",
+    "  Note the within-model RANGE of 2.1 against a MAD of 0.31: outliers are present, which is why the range is reported and not used as the test.",
+    "DISTINCT ESTIMATES: 5 homogeneous, 14 heterogeneous, over agreement 89 and 74 percent. A percentage that barely moves while the distinct count changes is the metric failing to respond to the thing it claims to measure.",
+    "No quality cost: template echoes 0 to 0, parse rate 100.0 to 100.0 percent. B's spread is not weaker compliance."
+  ]
+}

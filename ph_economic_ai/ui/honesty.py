@@ -107,18 +107,80 @@ def cross_model_note(across: dict) -> str:
         return ''
     n = across.get('models', 0)
     between = across.get('between_spread', 0.0)
-    within = across.get('within_spread', 0.0)
+    band = across.get('band', 0.50)
     lead = f'checked across {n} different models'
-    if within <= 0.005:
-        return (f'{lead}: each was internally identical, so the agents are not '
-                f'sampling opinions, they are reciting one')
-    if between <= within:
-        return (f'{lead}: they land ₱{between:.2f}/L apart, within the ₱{within:.2f} '
-                f'each spans on its own — the agreement is not one model repeating '
-                f'itself')
-    return (f'{lead}: they land ₱{between:.2f}/L apart while each spans only '
-            f'₱{within:.2f} on its own — the models disagree, and this percentage '
-            f'averages over that')
+    # The band test, not a ratio against within-model spread. The first version
+    # compared `between` to the mean RANGE and would have told a reader "the
+    # agreement is not one model repeating itself" on a live run where the two
+    # models' medians were +2.50 and +1.20, a factor of 2.08 apart, because one
+    # outlier had inflated the range to 3.25. A false reassurance in the honesty
+    # layer is the worst place for one.
+    if across.get('models_agree'):
+        return (f'{lead}: their medians land ₱{between:.2f}/L apart, inside the '
+                f'₱{band:.2f} band used to call two agents agreeing, so this is '
+                f'not one model repeating itself')
+    # Naming the winner. A reader told only that the models disagree learns the
+    # disagreement and none of its consequence: on the 2026-07-30 run the two
+    # medians were +2.50 and +1.20 and the published number was +2.39, so one
+    # model's answer was published and the other's was not.
+    won = across.get('nearest_model')
+    whose = f', and the published number is {won}’s' if won else ''
+    return (f'{lead}: their medians are ₱{between:.2f}/L apart, wider than the '
+            f'₱{band:.2f} band used to call two agents agreeing — the models '
+            f'disagree{whose}, and this percentage averages over that')
+
+
+def bracket_note(across: dict) -> str:
+    """Whether the elimination bracket let every model reach the synthesis.
+
+    The survivors are the only agents the regional judges read, so a model with no
+    survivors contributed nothing to the published number however many agents it
+    fielded. That is checkable and worth saying. It is also a live possibility
+    rather than a hypothetical: the Critic and the ConfidenceScorer score peers by
+    name and in prose, so a model whose writing they prefer wins the tournament
+    regardless of its numbers. Five paired runs found no such bias: survivors were
+    2 and 2 every time. The 19-to-13 split that prompted this appeared once and did
+    not reproduce.
+
+    Only the shut-out case gets a verdict. With four survivors and two models a
+    3-to-1 split is well within chance, and calling that bias would be the kind of
+    unearned conclusion this project keeps having to retract.
+    """
+    counts = (across or {}).get('survivors_by_model')
+    if not counts:
+        return ''
+    listed = ', '.join(f'{m} {n}' for m, n in sorted(counts.items()))
+    on_roster = set((across.get('n_by_model') or {}).keys())
+    shut_out = sorted(on_roster - set(counts))
+    if shut_out:
+        return (f'the elimination bracket sent {listed} through to the judges, and '
+                f'none from {", ".join(shut_out)} — that model debated but reached '
+                f'the final number through no one')
+    return (f'survivors reaching the judges: {listed} (too few to read as bias '
+            f'either way)')
+
+
+def synthesis_note(across: dict) -> str:
+    """That the headline comes from ONE model however varied the roster is.
+
+    A heterogeneous roster diversifies the debate and not the synthesis. The
+    survivors feed the regional judges and the master judge, all on the deep tier,
+    which the agent roster does not touch, so the published number is one model's
+    reading of the room. That holds regardless of whether the models agree: over
+    five paired runs their medians sat a median 0.250 PHP/L apart, and the
+    published figure still came from the deep tier rather than from any tally of
+    the agents.
+
+    Silent on a single-model roster, where there is no contrast to draw.
+    """
+    if not across or not across.get('measurable'):
+        return ''
+    model = across.get('synthesis_model')
+    if not model:
+        return ''
+    return (f'the agents ran on several models but the final number is one '
+            f'model’s synthesis ({model}), so it is a judgement about the debate '
+            f'rather than a vote across it')
 
 
 #: The four regions a swarm group actually debates. Every other region's figure is

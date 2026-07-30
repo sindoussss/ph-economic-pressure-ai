@@ -27,6 +27,37 @@ _GAS_PRICE_PHP_L: float = 98.82           # NCR Unleaded 91 avg May 20 2026
 #: shape of a causal chain. Matched only INSIDE brackets and only against these
 #: exact words, so an agent that writes its own bracketed aside — "[Brent +5%]"
 #: — is not punished for using a bracket.
+# -- The output lines every prompt in this project must use --------------------
+#
+# Instructions, NEVER templates. `engine.forum` found this first: with the
+# wording "ESTIMATE: +PHP X.XX/L" a live 17-agent run had agents answer
+# "ESTIMATE: +PHP X.XX/L", placeholder and all, which parses to nothing and was
+# losing most of the roster's estimates. The swarm then reproduced the same
+# failure twice more, in its causal-chain line and in its DIRECTION menu.
+#
+# Centralised here, in the layer `swarm` and `forum` both import, because the
+# previous fix corrected one call site and left the agent system prompts, both
+# judge layers and every persona in this file still handing models something to
+# copy. Four discoveries of one bug is enough to give it a single home.
+ESTIMATE_LINE = {
+    'gas': ('ESTIMATE: <the peso-per-litre CHANGE you expect, signed> '
+            '(worked example: "ESTIMATE: +0.85/L" for a rise of 85 centavos, or '
+            '"ESTIMATE: -0.40/L" for a fall. Write your own number; never write '
+            'X.XX.)'),
+    'food': ('ESTIMATE: <the percent month-on-month CHANGE you expect, signed> '
+             '(worked example: "ESTIMATE: +0.4%" or "ESTIMATE: -0.2%". Write '
+             'your own number; never write X.X.)'),
+    'electricity': ('ESTIMATE: <the peso-per-kWh CHANGE you expect, signed> '
+                    '(worked example: "ESTIMATE: +0.30/kWh" or '
+                    '"ESTIMATE: -0.15/kWh". Write your own number; never write '
+                    'X.XX.)'),
+}
+
+#: A menu is a template too. Five of twenty agents copied
+#: "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT" back verbatim.
+DIRECTION_INSTRUCTION = (
+    'DIRECTION: <write UP, DOWN or FLAT, the one you mean and not the list>')
+
 _SCAFFOLD_SLOTS = frozenset({
     'scenario shock', 'market effect', 'retail mechanism', 'consumer impact',
     'trigger', 'price mechanism', 'household impact', 'effect',
@@ -117,7 +148,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'Using the provided news and price data, estimate the short-term '
             'retail gasoline price CHANGE (not absolute price) of the given scenario. '
             'End your response with exactly one line in this format: '
-            'ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            + ESTIMATE_LINE['gas']
         ),
         rag_sources=['YahooFinanceCrude', 'YahooFinanceForex', 'BusinessWorld'],
     ),
@@ -128,7 +159,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a policy expert focused on BSP monetary policy and peso dynamics. '
             'Using BSP statements and economic reports, challenge or support the '
             'previous estimate. End your response with exactly one line in this format: '
-            'ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            + ESTIMATE_LINE['gas']
         ),
         rag_sources=['neda_2024_2026', 'YahooFinanceForex'],
     ),
@@ -138,7 +169,7 @@ DEFAULT_AGENTS: list[Agent] = [
         system_prompt=(
             'You are a risk assessor. Identify tail risks and softening factors '
             'the other agents may have missed. End your response with exactly one line: '
-            'ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            + ESTIMATE_LINE['gas']
         ),
         rag_sources=['ManilaBulletin', 'neda_2024_2026'],
     ),
@@ -149,7 +180,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a macroeconomist analyzing how Philippine GDP growth and '
             'inflation dynamics affect fuel demand and retail price pass-through. '
             'Factor in second-order effects like transportation cost inflation. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['neda_2024_2026', 'YahooFinanceForex'],
     ),
@@ -160,7 +191,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a supply chain analyst focused on Philippine petroleum importation. '
             'Analyze refinery margins, tanker freight rates, and terminal handling costs '
             'to estimate the landed cost component of the price change. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['YahooFinanceCrude', 'ManilaBulletin'],
     ),
@@ -171,7 +202,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a consumer behavior expert analyzing how Filipino commuters '
             'and logistics operators respond to fuel price changes. Assess demand '
             'elasticity, jeepney modernization impact, and e-vehicle substitution. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['ManilaBulletin', 'neda_2024_2026'],
     ),
@@ -182,7 +213,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are an energy policy analyst specializing in the Philippine DOE '
             'automatic oil pricing mechanism. Analyze how excise taxes, VAT, and '
             'any government subsidy buffer affect the consumer price change. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['neda_2024_2026', 'BusinessWorld'],
     ),
@@ -193,7 +224,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a geopolitical analyst evaluating how OPEC+ production quotas, '
             'Middle East tensions, and Red Sea shipping disruptions affect crude '
             'supply available to Philippine refiners. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['YahooFinanceCrude', 'BusinessWorld'],
     ),
@@ -204,7 +235,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a financial strategist analyzing crude oil futures markets. '
             'Evaluate speculative positioning, contango/backwardation structure, '
             'and hedging costs that oil companies pass on to Philippine consumers. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['YahooFinanceCrude', 'YahooFinanceForex'],
     ),
@@ -215,7 +246,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a regional development economist assessing how OFW remittance '
             'flows, provincial fuel demand patterns, and inter-island freight costs '
             'create price disparities across Philippine regions. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['neda_2024_2026', 'ManilaBulletin'],
     ),
@@ -229,7 +260,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'check whether the proposed price changes are within the historical '
             'range of Philippine fuel price adjustments (typically ±₱0.50–₱5.00/L). '
             'Flag any outlier. Give a brief validity verdict. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['YahooFinanceCrude', 'YahooFinanceForex'],
         tier=_MINI_TIER,
@@ -242,7 +273,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a sentiment screener. Scan the news context for market '
             'sentiment signals — are headlines bullish or bearish on fuel prices? '
             'How is media framing influencing public expectation? '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['ManilaBulletin', 'BusinessWorld'],
         tier=_MINI_TIER,
@@ -255,7 +286,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a consensus tracker. Review all previous responses and determine '
             'whether the agents are converging or diverging. Identify the range, '
             'median, and any persistent disagreements. Offer a synthesized mid-point. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=[],
         tier=_MINI_TIER,
@@ -268,7 +299,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'You are a historical comparator. Match the current scenario parameters '
             'to the closest historical episodes of Philippine fuel price changes '
             'from the NEDA data. What happened to prices then? Apply that lens. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=['neda_2024_2026'],
         tier=_MINI_TIER,
@@ -282,7 +313,7 @@ DEFAULT_AGENTS: list[Agent] = [
             'Identify which agent (if any) is significantly outside the group '
             'and explain why their reasoning may or may not be valid. '
             'Provide your own calibrated estimate. '
-            'End with: ESTIMATE: +₱X.XX/L or ESTIMATE: -₱X.XX/L'
+            'End with: ' + ESTIMATE_LINE['gas']
         ),
         rag_sources=[],
         tier=_MINI_TIER,
@@ -307,7 +338,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are an agricultural economist specializing in Philippine food markets. '
             'Using the gas price context and weather data provided, estimate the monthly '
             'food price index CHANGE. '
-            'End your response with exactly one line: ESTIMATE: +X.X% or ESTIMATE: -X.X%'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
         ),
         rag_sources=['neda_2024_2026', 'WBPhilFood', 'NFARiceRetail'],
     ),
@@ -319,7 +350,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a logistics expert analyzing how fuel price changes cascade into '
             'Philippine food distribution costs. Using the gas price context, estimate '
             'transport cost contribution to food price change. '
-            'End your response with exactly one line: ESTIMATE: +X.X% or ESTIMATE: -X.X%'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
         ),
         rag_sources=['YahooFinanceCrude', 'OpenMeteoManila'],
     ),
@@ -331,7 +362,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a climate-agriculture analyst. Using the rainfall and temperature '
             'data provided (weighted average across Central Luzon, Bicol, and Davao), '
             'assess crop stress and estimate weather-driven food price pressure. '
-            'End your response with exactly one line: ESTIMATE: +X.X% or ESTIMATE: -X.X%'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
         ),
         rag_sources=['PAGASAWeather', 'OpenMeteoManila'],
     ),
@@ -343,7 +374,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a trade policy analyst focused on Philippine food security. '
             'Challenge or support previous estimates based on NFA buffer stocks, '
             'import quotas, and tariff policy. '
-            'End your response with exactly one line: ESTIMATE: +X.X% or ESTIMATE: -X.X%'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
         ),
         rag_sources=['neda_2024_2026', 'WBPhilFood', 'NFARiceRetail'],
     ),
@@ -363,7 +394,7 @@ ELECTRICITY_AGENTS: list[Agent] = [
             _ELEC_ANCHOR +
             'You are an energy economist specializing in Philippine power markets. '
             'Using the gas price context, estimate the monthly electricity rate change (PHP/kWh). '
-            'End your response with exactly one line: ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['electricity']
         ),
         rag_sources=['YahooFinanceCrude', 'EIAElectricity', 'MeralcoCharge'],
     ),
@@ -374,7 +405,7 @@ ELECTRICITY_AGENTS: list[Agent] = [
             _ELEC_ANCHOR +
             'You are a grid operations analyst for the Philippine electricity market. '
             'Assess demand-supply balance and its effect on Meralco distribution charges. '
-            'End your response with exactly one line: ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['electricity']
         ),
         rag_sources=['EIAElectricity', 'OpenMeteoManila', 'WESMSpot'],
     ),
@@ -385,7 +416,7 @@ ELECTRICITY_AGENTS: list[Agent] = [
             _ELEC_ANCHOR +
             'You are a regulatory affairs expert specializing in ERC proceedings. '
             'Analyze pending rate reviews and stranded cost recovery affecting the next billing period. '
-            'End your response with exactly one line: ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['electricity']
         ),
         rag_sources=['neda_2024_2026', 'EIAElectricity', 'MeralcoCharge'],
     ),
@@ -396,7 +427,7 @@ ELECTRICITY_AGENTS: list[Agent] = [
             _ELEC_ANCHOR +
             'You are a demand forecasting analyst for Meralco service area. '
             'Estimate load growth and its effect on WESM spot prices. '
-            'End your response with exactly one line: ESTIMATE: +₱X.XX/kWh or ESTIMATE: -₱X.XX/kWh'
+            'End your response with exactly one line: ' + ESTIMATE_LINE['electricity']
         ),
         rag_sources=['EIAElectricity', 'OpenMeteoManila', 'WESMSpot'],
     ),
