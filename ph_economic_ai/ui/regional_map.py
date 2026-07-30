@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen, QBrush, QLinearGradient
 
 from ph_economic_ai.engine.swarm import ALL_REGIONS
+from ph_economic_ai.ui import honesty as _honesty
 
 # Island group bands: isle_code → (y_start, y_end, label)
 _ISLE_BANDS: dict[str, tuple[float, float, str]] = {
@@ -101,9 +102,14 @@ class RegionalMapWidget(QFrame):
             if math.hypot(pos.x() - c.x(), pos.y() - c.y()) <= r + 3:
                 self._hover = reg['name']
                 est = self._estimates.get(reg['name'])
+                # Which KIND of number this is. Thirteen of the seventeen are a
+                # debated region's estimate scaled by a fixed freight premium,
+                # and the tooltip used to present all seventeen identically.
+                basis = _honesty.regional_tooltip_note(reg['name'])
                 if est is not None:
                     sign = '+' if est >= 0 else ''
-                    tip = f"{reg['name']}\nEst. change: {sign}{est:.2f} ₱/L"
+                    tip = (f"{reg['name']}\nEst. change: {sign}{est:.2f} ₱/L"
+                           f"\n{basis}")
                 else:
                     tip = f"{reg['name']}\nNo estimate yet"
                 QToolTip.showText(ev.globalPosition().toPoint(), tip, self)

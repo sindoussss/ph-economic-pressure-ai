@@ -121,6 +121,43 @@ def cross_model_note(across: dict) -> str:
             f'averages over that')
 
 
+#: The four regions a swarm group actually debates. Every other region's figure is
+#: scaled from one of these, so the two are not the same kind of number and the
+#: card should not present them as one.
+DEBATED_REGIONS = ('NCR', 'Central Luzon', 'Western Visayas', 'Davao Region')
+
+
+def regional_basis() -> str:
+    """How the 17 regional figures were produced, under the map.
+
+    They are not seventeen forecasts. Four region groups debate, and the other
+    thirteen figures are those four scaled by a fixed freight premium, so a
+    reader comparing Zamboanga to NCR is comparing an estimate to arithmetic
+    performed on a different region's estimate.
+
+    Worth stating because nothing here has ever been checked. There is no
+    regional price series in the project: every stored file is national or
+    national CPI, and `engine.ground_truth` has no notion of region, so grading
+    has only ever scored the national number. The multipliers were not fitted
+    either, having arrived in a rebrand commit as assumed constants.
+
+    Scoped in the vault as the regional multiplier backtest. Until a DOE regional
+    series exists, "derived, not forecast, and never validated" is the accurate
+    description and this is where it belongs.
+    """
+    return ('4 region groups debated; the other 13 figures are scaled from them '
+            'by a fixed freight premium. Only the national figure is graded '
+            'against a real price, so treat the per-region numbers as derived '
+            'rather than forecast.')
+
+
+def regional_tooltip_note(region: str) -> str:
+    """One line inside a region's tooltip, naming which kind of number it is."""
+    if region in DEBATED_REGIONS:
+        return 'debated by this region\'s agents'
+    return 'scaled from a debated region, not separately forecast'
+
+
 RECALL_NOTE = (
     'this run was not recomputed — nothing the run depends on has moved, so the '
     'stored answer is the current answer'
