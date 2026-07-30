@@ -913,7 +913,7 @@ class SimMainWindow(QMainWindow):
         self._food_estimate = recalled.food_estimate
         self._elec_estimate = recalled.electricity_estimate
 
-        self._stage4.set_recall_note(recalled.describe())
+        self._stage4.set_recall_note(recalled.describe(), recalled.drift)
         self._on_swarm_complete_display(recalled.master_verdict, recalled=True)
         self._landing.set_busy(False)
 

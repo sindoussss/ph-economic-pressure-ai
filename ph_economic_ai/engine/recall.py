@@ -151,10 +151,15 @@ def restore_master_verdict(snapshot: dict) -> Optional[Any]:
 class RecalledRun:
     """A previous run that answers the question being asked now."""
 
-    def __init__(self, row: dict, snapshot: dict, master_verdict: Any):
+    def __init__(self, row: dict, snapshot: dict, master_verdict: Any,
+                 drift: str = ''):
         self.row = row
         self.snapshot = snapshot
         self.master_verdict = master_verdict
+        #: What moved between the stored run's inputs and this one's, inside
+        #: tolerance. Empty when genuinely nothing moved. The report needs it
+        #: because the gate is a tolerance, not an equality test.
+        self.drift = drift
 
     @property
     def run_id(self) -> int:
@@ -196,8 +201,13 @@ class RecalledRun:
             age = f', {int(hours)} hour{"s" if int(hours) != 1 else ""} ago'
         else:
             age = f', {int(hours // 24)} day{"s" if int(hours // 24) != 1 else ""} ago'
-        return (f'Recalled from run #{self.run_id} on {when}{age}. '
-                f'Inputs unchanged since, so the answer is unchanged.')
+        # Provenance only. This used to end "Inputs unchanged since, so the
+        # answer is unchanged", which asserts something the recall gate does not
+        # check: the gate is a TOLERANCE. Brent moving 74.20 to 74.69 passes it
+        # and rewrites three lines of the data brief in every prompt. The claim
+        # about inputs now lives in `ui.honesty.recall_note`, which is given the
+        # drift and can state it truthfully either way.
+        return f'Recalled from run #{self.run_id} on {when}{age}.'
 
 
 def find_recall(store: Any, run_key: str, inputs: dict) -> Optional[RecalledRun]:
@@ -240,5 +250,7 @@ def find_recall(store: Any, run_key: str, inputs: dict) -> Optional[RecalledRun]
         verdict = restore_master_verdict(snapshot)
         if verdict is None:
             continue
-        return RecalledRun(row, snapshot, verdict)
+        return RecalledRun(row, snapshot, verdict,
+                           drift=vintage.describe_drift(snapshot.get('inputs'),
+                                                        inputs))
     return None
