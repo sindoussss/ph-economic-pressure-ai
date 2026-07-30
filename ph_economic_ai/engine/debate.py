@@ -53,6 +53,25 @@ ESTIMATE_LINE = {
                     'X.XX.)'),
 }
 
+#: The Critic's and ConfidenceScorer's per-agent ratings. These were
+#: "SCORE: <agent_name>: X" and "CONFIDENCE: <agent_name>: 0.XX", the same
+#: copyable shape as every other line this project has had to rewrite. They were
+#: missed because the class-level guard checked a LIST OF KNOWN BAD STRINGS
+#: rather than the property, so it could only ever catch what had already been
+#: found.
+#:
+#: Likely the cause of Q-ENG-013. When a scorer echoes the template,
+#: `_parse_scores` finds no real agent name, every agent falls back to 0.5, every
+#: combined score comes out identical, and the elimination removes agents without
+#: measuring anything. Seen live on 2026-07-31.
+SCORE_LINE = ("SCORE: <the agent's name>: <your rating from 1 to 10> "
+              '(worked example: "SCORE: NCR Forecaster: 7". Use each agent'
+              "'s real name and your own number; never write agent_name or X.)")
+CONFIDENCE_LINE = ("CONFIDENCE: <the agent's name>: <your confidence from 0.0 to "
+                   '1.0> (worked example: "CONFIDENCE: NCR Forecaster: 0.75". '
+                   "Use each agent's real name and your own number; never write "
+                   "agent_name or 0.XX.)")
+
 #: A menu is a template too. Five of twenty agents copied
 #: "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT" back verbatim.
 DIRECTION_INSTRUCTION = (

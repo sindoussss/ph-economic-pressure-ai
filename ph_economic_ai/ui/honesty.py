@@ -130,6 +130,30 @@ def cross_model_note(across: dict) -> str:
             f'disagree{whose}, and this percentage averages over that')
 
 
+def unscored_survivor_note(regions: int = 0) -> str:
+    """That a regional card rests on a tie-break rather than on a tournament.
+
+    The elimination bracket is supposed to select the group's best agent, and the
+    survivor is the only thing the regional judge reads. When the Critic and the
+    ConfidenceScorer produce no parseable scores, every combined score comes out
+    identical and the round removes agents without measuring anything, so the
+    survivor is whoever the reproducible tie-break happened to reach.
+
+    `scores_are_degenerate` has detected this since the bracket was written, and
+    it logged a warning and emitted an event and stopped there. The card built
+    from that survivor looked exactly like one chosen on merit. Seen live on
+    2026-07-31 in one group of one run.
+
+    Silent when every group scored, which is the normal case.
+    """
+    if regions < 1:
+        return ''
+    which = 'a region' if regions == 1 else f'{regions} regions'
+    return (f'{which} had no usable agent scores, so the agent representing it was '
+            f'chosen by tie-break rather than by the tournament — that region\'s '
+            f'figure rests on an arbitrary pick, not a ranked one')
+
+
 def bracket_note(across: dict) -> str:
     """Whether the elimination bracket let every model reach the synthesis.
 

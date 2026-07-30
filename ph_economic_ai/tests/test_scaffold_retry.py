@@ -15,6 +15,7 @@ It corrupts the diversity metric too. Eleven identical openings read as a room
 herding, when it is really a room not answering. Two unrelated failures wearing
 one number, which is why the caveat text had to stop naming a cause.
 """
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -329,3 +330,75 @@ def test_no_module_defines_its_own_copy_of_the_estimate_lines():
                 if 'ESTIMATE_LINE = {' in f.read_text(encoding='utf-8')
                 or "_EST_LINE = {" in f.read_text(encoding='utf-8')]
     assert definers == ['debate.py'], f'defined in {definers}'
+
+
+# ── The guard was a blacklist, which can only catch what was already found ────
+
+#: An output-spec: an ALL-CAPS label the model is told to emit, wherever it
+#: appears. Anchored to the start of a LINE first, which missed the case this
+#: test was written for: "SCORE: <agent_name>: X" sits mid-sentence inside the
+#: Critic's system prompt, so a line-start match never saw it and the guard was
+#: decorative for its own motivating example.
+_SPEC_LINE = re.compile(r'\b([A-Z][A-Z ]{2,}):')
+#: Placeholder shapes. `<...>` and `[...]` around a descriptive word, or a token
+#: made only of X, x, dots and digits, which is how every X.XX in this project
+#: was written.
+_PLACEHOLDER = re.compile(r'[<\[][a-zA-Z][^\]>\n]{0,40}[>\]]|\b[Xx]\.?[Xx]{1,2}\b|\b0\.[Xx]{2}\b')
+
+
+def test_every_output_spec_carries_a_worked_example():
+    """The property, not a list of known-bad strings.
+
+    `test_no_prompt_anywhere_ships_a_copyable_template` enumerated the patterns
+    already discovered, so it passed while "SCORE: <agent_name>: X" and
+    "CONFIDENCE: <agent_name>: 0.XX" shipped in the Critic and ConfidenceScorer
+    prompts. A blacklist can only ever catch what has already been found, which
+    makes it a sampling guard wearing a class-level name.
+
+    The remedy `engine.forum` discovered is the property worth asserting: a line
+    that names a slot must show a worked example containing real content. A
+    descriptive placeholder is fine WITH one and a trap without.
+    """
+    offenders = []
+    for name, prompt in _every_prompt().items():
+        # Grouped by LABEL rather than by occurrence. A label appears twice when
+        # its own worked example quotes it back — "ESTIMATE: +0.85/L" contains
+        # the string ESTIMATE: — and scanning forward from that second match
+        # found no worked example ahead of it and flagged a line that was
+        # correct. The spec is satisfied when any line carrying the label shows
+        # an example.
+        by_label: dict = {}
+        for line in prompt.splitlines():
+            for m in _SPEC_LINE.finditer(line):
+                by_label.setdefault(m.group(1), []).append(line)
+        for label, lines in by_label.items():
+            if not any(_PLACEHOLDER.search(l) for l in lines):
+                continue
+            if not any('worked example' in l for l in lines):
+                offenders.append(f'{name}: {label}')
+    assert not offenders, (
+        f'{len(offenders)} output specs use a placeholder with no worked '
+        f'example: {sorted(set(offenders))}')
+
+
+def test_the_scoring_lines_are_the_case_that_blacklist_missed():
+    """Named directly so the regression is unambiguous, and because these are the
+    likely cause of Q-ENG-013: an echoed scorer template means `_parse_scores`
+    finds no real name, every agent defaults to 0.5, and the elimination stops
+    measuring anything."""
+    from ph_economic_ai.engine.debate import CONFIDENCE_LINE, SCORE_LINE
+    for line in (SCORE_LINE, CONFIDENCE_LINE):
+        assert 'worked example' in line
+        assert 'agent_name' in line and 'never write agent_name' in line
+        assert 'NCR Forecaster' in line, 'the example must name a real agent'
+    assert '0.XX' not in CONFIDENCE_LINE.split('never write')[0]
+
+
+def test_the_worked_examples_actually_parse():
+    """A worked example the parser rejects would teach the model a format that
+    scores nothing, which is worse than the template it replaced."""
+    from ph_economic_ai.engine.swarm import _parse_confidence, _parse_scores
+    names = ['NCR Forecaster', 'NCR Critic']
+    assert _parse_scores('SCORE: NCR Forecaster: 7', names)['NCR Forecaster'] == 0.7
+    assert _parse_confidence('CONFIDENCE: NCR Forecaster: 0.75',
+                             names)['NCR Forecaster'] == 0.75
