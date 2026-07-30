@@ -1511,6 +1511,11 @@ class GroupArena:
     ):
         self._group_id = group_id
         self._agents = agents          # 5 SwarmAgents, all is_alive=True
+        #: One entry per round whose scores could not tell the agents apart.
+        #: Instrumentation for the reopened `Q-ENG-013`, kept rather than logged
+        #: away because a copyable scoring template was already blamed for this,
+        #: fixed, and the condition did not go away.
+        self._degenerate_rounds: list[dict] = []
         self._rag = rag
         self._scenario = scenario
         self._on_event = on_event      # callable(event_type, *args)
@@ -1818,6 +1823,13 @@ class GroupArena:
                 r.price_estimate for r in round_responses if r.price_estimate is not None
             ]
 
+            # Which scoring roles actually survived into this round. Needed to
+            # tell an ABSENT scorer from one whose output did not parse, which
+            # the old warning conflated.
+            scorer_roles_alive = {a.role for a in alive
+                                  if a.role in _PEER_READING_ROLES}
+            scorers_present = bool(scorer_roles_alive)
+
             # Assign combined scores
             for agent, resp in zip(alive, round_responses):
                 agent.combined_score = compute_combined_score(
@@ -1833,15 +1845,48 @@ class GroupArena:
                 # make the survivor's provenance uncertain, and a later round
                 # that did discriminate cannot undo an arbitrary earlier cut.
                 self._any_round_degenerate = True
+                # WHICH failure this is. The old message asserted one cause,
+                # "the Critic and ConfidenceScorer produced no parseable
+                # scores", without ever checking, and there are two distinct
+                # ways to get here:
+                #
+                #   absent      no scoring role survived into this round, so
+                #               there was nothing to parse. Nothing exempts them
+                #               from `eliminate_bottom_n`, while blinding
+                #               (`_PEER_READING_ROLES`) and benching
+                #               (`_UNBENCHABLE_ROLES`, DEC-013 "they are the
+                #               scoring instruments, not contestants") both do.
+                #   unparsed    a scorer answered and its output did not parse.
+                #
+                # Both then need the deviation term to tie as well, which happens
+                # when the surviving agents give the same estimate.
+                #
+                # Recorded rather than concluded. A copyable scoring template was
+                # already blamed for this once, fixed, and the condition did not
+                # go away, so this run is instrumentation for a reopened question
+                # and not a diagnosis.
+                self._degenerate_rounds.append({
+                    'round': round_num,
+                    'reason': ('absent' if not scorers_present else 'unparsed'),
+                    'scorers_present': sorted(scorer_roles_alive),
+                    'alive': len(alive),
+                    'distinct_estimates': len({round(e, 2) for e in group_estimates}),
+                })
                 # Every agent scored identically, so this round removes agents
                 # without measuring anything. Say so rather than let the bracket
                 # look like a quality tournament.
                 logging.warning(
-                    'swarm group %s round %s: all combined scores equal (%.2f); '
-                    'the Critic and ConfidenceScorer produced no parseable scores, '
-                    'so this elimination is arbitrary',
+                    'swarm group %s round %s: all combined scores equal (%.2f), '
+                    'so this elimination is arbitrary. Scoring roles alive: %s. '
+                    'Cause: %s. Distinct estimates among the %s scored: %s',
                     self._group_id, round_num,
-                    alive[0].combined_score if alive else float('nan'))
+                    alive[0].combined_score if alive else float('nan'),
+                    sorted(scorer_roles_alive) or 'NONE',
+                    ('no scoring role survived into this round'
+                     if not scorers_present else
+                     'a scoring role answered but no score parsed'),
+                    len(group_estimates),
+                    len({round(e, 2) for e in group_estimates}))
                 if self._on_event:
                     self._on_event('scoring_degenerate', self._group_id, round_num,
                                    len(alive))

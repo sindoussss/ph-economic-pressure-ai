@@ -516,3 +516,49 @@ def test_the_card_is_silent_when_every_group_scored():
     """The normal case. A warning on every run is a warning nobody reads."""
     from ph_economic_ai.ui import honesty
     assert honesty.unscored_survivor_note(0) == ''
+
+
+# ── The degenerate warning must not assert a cause it never checked ──────────
+
+def test_the_warning_distinguishes_an_absent_scorer_from_an_unparsed_one():
+    """It read "the Critic and ConfidenceScorer produced no parseable scores" in
+    every case. There are two ways to reach this, and nothing exempts the scoring
+    roles from `eliminate_bottom_n` while blinding and benching both exempt them,
+    so an absent scorer is a live possibility rather than a hypothetical."""
+    import inspect
+    from ph_economic_ai.engine.swarm import GroupArena
+    src = inspect.getsource(GroupArena)
+    assert 'produced no parseable scores' not in src, 'the asserted cause is back'
+    assert 'no scoring role survived into this round' in src
+    assert 'a scoring role answered but no score parsed' in src
+
+
+def test_a_degenerate_round_is_recorded_with_its_reason():
+    """Instrumentation for the reopened Q-ENG-013. A copyable scoring template
+    was already blamed for this, fixed, and the condition did not go away, so the
+    next run must produce data rather than another hypothesis."""
+    from unittest.mock import MagicMock
+    from ph_economic_ai.engine.swarm import GroupArena, build_swarm_agents
+    rag = MagicMock()
+    rag.query.return_value = []
+    agents = [a for a in build_swarm_agents(models=[]) if a.group_id == 0]
+    arena = GroupArena(group_id=0, agents=agents, rag=rag, scenario=SCENARIO)
+    assert arena._degenerate_rounds == []
+
+
+def test_a_missing_scorer_alone_is_not_enough_to_go_degenerate():
+    """Both conditions are needed: no usable scores AND a tied deviation term.
+    Agents that disagree still separate on deviation even with no scorer, which
+    is why this does not fire on every round that loses its Critic."""
+    from ph_economic_ai.engine.swarm import compute_combined_score
+
+    def _resp(est):
+        return AgentResponse('a', 2, '', 'x', est)
+
+    spread = [1.5, 1.2, 1.8]
+    scores = [compute_combined_score(_resp(e), 0.5, 0.5, spread) for e in spread]
+    assert max(scores) - min(scores) > 1e-9, 'differing estimates must separate'
+
+    tied = [1.5, 1.5, 1.5]
+    scores = [compute_combined_score(_resp(e), 0.5, 0.5, tied) for e in tied]
+    assert max(scores) - min(scores) < 1e-9, 'identical estimates tie'
