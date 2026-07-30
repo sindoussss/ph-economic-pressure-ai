@@ -16,7 +16,8 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from ph_economic_ai.engine import anchoring, llm, vintage
 from ph_economic_ai.engine.rag import RagEngine
 from ph_economic_ai.engine.debate import (
-    DIRECTION_INSTRUCTION, ESTIMATE_LINE, AgentResponse,
+    CONFIDENCE_LINE, DIRECTION_INSTRUCTION, ESTIMATE_LINE, SCORE_LINE,
+    AgentResponse,
     _MAX_REALISTIC_FUEL_PHP_L, _SCAFFOLD_RETRY_PROMPT, _extract_price,
     _parse_think, unfilled_scaffold)
 from ph_economic_ai.engine.live_data import LiveDataBrief
@@ -863,6 +864,15 @@ class GroupSurvivor:
     combined_score: float
     agent_role: str
     agent_model: str
+    #: False when at least one elimination round in this group scored every agent
+    #: identically, so the bracket removed agents without measuring anything and
+    #: this survivor is whoever the tie-break reached.
+    #:
+    #: `scores_are_degenerate` has detected that since the bracket was written and
+    #: it was logged and emitted as an event, but it stopped there: the survivor
+    #: fed the regional judge and the card built from it looked exactly like one
+    #: chosen on merit. Seen live on 2026-07-31, one group of one run.
+    scored: bool = True
 
 
 @dataclass
@@ -877,6 +887,10 @@ class RegionalVerdict:
     # guard. Lets the report explain a missing estimate instead of showing a
     # bare dash that reads as a crash.
     rejected_estimate: Optional[float] = None
+    #: False when either survivor this judge read came from a group whose
+    #: elimination scored every agent identically. The judge's reasoning is only
+    #: as good as the two agents it was handed.
+    survivors_scored: bool = True
 
 
 @dataclass
@@ -1160,8 +1174,8 @@ def _make_system_prompt(role: str, region: str,
             base +
             "Challenge the reasoning of other agents in your group. Identify flaws, "
             "unsupported claims, and biases. Give your own estimate, then rate each "
-            "agent's reasoning quality using this exact format on separate lines: "
-            "SCORE: <agent_name>: X  (1–10, no /10 suffix). "
+            "agent's reasoning quality on separate lines: "
+            + SCORE_LINE + " "
             "End with BOTH lines, and make them agree:\n"
             + DIRECTION_INSTRUCTION + "\n"
             + ESTIMATE_LINE['gas']
@@ -1171,8 +1185,8 @@ def _make_system_prompt(role: str, region: str,
             base +
             "Evaluate confidence in each agent's price estimate based on evidence "
             "quality and internal consistency. Give your own estimate, then assign "
-            "confidence using this exact format on separate lines: "
-            "CONFIDENCE: <agent_name>: 0.XX  (0.0–1.0). "
+            "confidence on separate lines: "
+            + CONFIDENCE_LINE + " "
             "End with BOTH lines, and make them agree:\n"
             + DIRECTION_INSTRUCTION + "\n"
             + ESTIMATE_LINE['gas']
@@ -1815,6 +1829,10 @@ class GroupArena:
 
             degenerate = scores_are_degenerate(alive)
             if degenerate:
+                # Sticky for the whole group: one unmeasured round is enough to
+                # make the survivor's provenance uncertain, and a later round
+                # that did discriminate cannot undo an arbitrary earlier cut.
+                self._any_round_degenerate = True
                 # Every agent scored identically, so this round removes agents
                 # without measuring anything. Say so rather than let the bracket
                 # look like a quality tournament.
@@ -1858,6 +1876,7 @@ class GroupArena:
             group_id=self._group_id,
             region_name=winner.region_name,
             response=winner_resp,
+            scored=not getattr(self, '_any_round_degenerate', False),
             combined_score=winner.combined_score,
             agent_role=winner.role,
             # Record the concrete model, not the tier: this is provenance for
@@ -2022,6 +2041,10 @@ class RegionalJudge:
             reasoning=synthesis,
             survivor_names=(self._s1.response.agent_name, self._s2.response.agent_name),
             rejected_estimate=rejected,
+            # Either survivor being unscored taints the pair: this judge read two
+            # agents and one of them is there by tie-break rather than by merit.
+            survivors_scored=(getattr(self._s1, 'scored', True)
+                              and getattr(self._s2, 'scored', True)),
         )
 
 

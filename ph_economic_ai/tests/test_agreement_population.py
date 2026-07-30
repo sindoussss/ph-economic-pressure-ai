@@ -470,3 +470,49 @@ def test_diversity_reads_the_earliest_round_per_agent():
 def test_diversity_of_an_empty_room_is_zero():
     from ph_economic_ai.engine.swarm import opening_diversity
     assert opening_diversity([]) == 0.0
+
+
+# ── An arbitrary elimination must not look like a tournament ─────────────────
+
+def test_a_survivor_is_scored_by_default():
+    from ph_economic_ai.engine.swarm import GroupSurvivor
+    s = GroupSurvivor(group_id=0, region_name='NCR', response=None,
+                      combined_score=0.7, agent_role='Critic', agent_model='m')
+    assert s.scored is True
+
+
+def test_a_degenerate_round_taints_the_survivor():
+    """`scores_are_degenerate` has detected this since the bracket was written and
+    logged it, and the survivor still reached the regional judge indistinguishable
+    from one chosen on merit."""
+    from ph_economic_ai.engine.swarm import GroupSurvivor
+    s = GroupSurvivor(group_id=0, region_name='NCR', response=None,
+                      combined_score=0.5, agent_role='Critic', agent_model='m',
+                      scored=False)
+    assert s.scored is False
+
+
+def test_either_unscored_survivor_taints_the_regional_pair():
+    """The judge read two agents; one of them being a tie-break pick is enough."""
+    from ph_economic_ai.engine.swarm import RegionalVerdict
+    v = RegionalVerdict(judge_id=0, region_pair=('NCR', 'Davao Region'),
+                        estimate=1.5, confidence=0.8, reasoning='',
+                        survivor_names=('a', 'b'), survivors_scored=False)
+    assert v.survivors_scored is False
+    assert RegionalVerdict(judge_id=0, region_pair=('NCR', 'Davao Region'),
+                           estimate=1.5, confidence=0.8, reasoning='',
+                           survivor_names=('a', 'b')).survivors_scored is True
+
+
+def test_the_card_names_an_arbitrary_regional_pick():
+    from ph_economic_ai.ui import honesty
+    text = honesty.unscored_survivor_note(1)
+    assert 'a region had no usable agent scores' in text
+    assert 'arbitrary pick, not a ranked one' in text
+    assert '2 regions' in honesty.unscored_survivor_note(2)
+
+
+def test_the_card_is_silent_when_every_group_scored():
+    """The normal case. A warning on every run is a warning nobody reads."""
+    from ph_economic_ai.ui import honesty
+    assert honesty.unscored_survivor_note(0) == ''

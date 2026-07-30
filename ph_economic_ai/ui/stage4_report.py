@@ -526,6 +526,11 @@ class Stage4ReportPanel(QWidget):
             'agreement_distinct': getattr(master_verdict, 'agreement_distinct', 0),
             'agreement_diversity': getattr(master_verdict, 'agreement_diversity', 0.0),
             'agreement_models': getattr(master_verdict, 'agreement_models', {}) or {},
+            # How many regional judges read a survivor that was picked by
+            # tie-break rather than by the tournament.
+            'unscored_regions': sum(
+                1 for v in (getattr(master_verdict, 'regional_verdicts', None) or [])
+                if not getattr(v, 'survivors_scored', True)),
             'verdicts': [],
         }
         self._consensus = consensus
@@ -607,6 +612,13 @@ class Stage4ReportPanel(QWidget):
         bracket_lbl.setWordWrap(True)
         bracket_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
         bracket_lbl.setVisible(bool(_bracket))
+        # A regional figure resting on an arbitrary pick rather than a ranked one.
+        _unscored = _honesty.unscored_survivor_note(
+            consensus.get('unscored_regions', 0))
+        unscored_lbl = QLabel(_unscored)
+        unscored_lbl.setWordWrap(True)
+        unscored_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        unscored_lbl.setVisible(bool(_unscored))
 
         range_row = QHBoxLayout()
         _conf_cell = f'{conf}%' if _n >= 2 else '—'
@@ -632,6 +644,7 @@ class Stage4ReportPanel(QWidget):
         cf_layout.addWidget(cross_lbl)
         cf_layout.addWidget(synth_lbl)
         cf_layout.addWidget(bracket_lbl)
+        cf_layout.addWidget(unscored_lbl)
         cf_layout.addWidget(caveat_lbl)
         if consensus.get('outside_regional'):
             _outside = QLabel(
