@@ -60,6 +60,36 @@ ARTIFACT = (Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts'
 SCENARIO = {'oil_pct': 5.0, 'usd_pct': 2.0, 'bsp_rate': 6.5, 'demand_index': 72.0}
 
 
+#: Beyond this size ratio the two judges are not comparable and the run measures
+#: capability rather than family. 3.2B against 7.6B is 2.4x, which is how the
+#: first attempt at this experiment ended up answering a question it was not
+#: asking.
+_SIZE_RATIO_LIMIT = 1.8
+
+
+def _size_mismatch_warning(a_name: str, b_name: str) -> str:
+    """Warn when the two judges differ enough in size to confound the result."""
+    try:
+        import requests
+        tags = requests.get(f'{llm.ollama_host()}/api/tags', timeout=5).json()
+        size = {m['name']: m['size'] for m in tags.get('models', [])}
+    except Exception:
+        return ''
+
+    def _of(name):
+        return size.get(name) or size.get(f'{name}:latest')
+
+    a_sz, b_sz = _of(a_name), _of(b_name)
+    if not a_sz or not b_sz:
+        return ''
+    if max(a_sz, b_sz) <= _SIZE_RATIO_LIMIT * min(a_sz, b_sz):
+        return ''
+    return (f'WARNING: {a_name} is {a_sz / 1e9:.1f} GB and {b_name} is '
+            f'{b_sz / 1e9:.1f} GB, a {max(a_sz, b_sz) / min(a_sz, b_sz):.1f}x gap. '
+            f'That confounds model FAMILY with model CAPABILITY and the result '
+            f'will mostly measure the latter. Prefer judges of comparable size.')
+
+
 def _measure(verdict, seconds: float) -> dict:
     responses = list(getattr(verdict, 'all_responses', []) or [])
     estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -102,6 +132,32 @@ def _interpret(a: dict, b: dict) -> list[str]:
     out: list[str] = []
     if a['estimate'] is None or b['estimate'] is None:
         return ['An arm produced no estimate, so the two cannot be compared.']
+
+    # A judge whose estimate was CLAMPED did not publish a judgement. The anchor
+    # rejected its raw output as implausible and substituted its own boundary, so
+    # comparing the arms would compare one judge against the physics guard.
+    #
+    # This check exists because the first version of this interpretation missed
+    # it. Measured 2026-07-31: llama3.2 as master came back clamped in all three
+    # runs at an identical +0.21, which is the CLAMP reproducing rather than a
+    # judge reproducing, with regional verdicts identical within each run and
+    # negative while the agents' median was +1.2. A judge failing the task was
+    # being reported as "PARTIAL: the judges differ".
+    bad = [nm for nm, arm in (('A', a), ('B', b))
+           if arm.get('estimate_source') != 'agent']
+    if bad:
+        sources = ', '.join(f"{nm}={arm['estimate_source']}"
+                            for nm, arm in (('A', a), ('B', b)))
+        return [
+            f"NOT A COMPARISON: arm {' and '.join(bad)} did not publish its own "
+            f"estimate ({sources}); the anchor overrode it, so comparing the two "
+            f"numbers compares a judge against the physics guard.",
+            f"A {a['estimate']:+.2f} regional {a['regional']}    "
+            f"B {b['estimate']:+.2f} regional {b['regional']}",
+            "A judge that cannot produce a plausible synthesis is a CAPABILITY "
+            "result, not an opinion result. Check the judges are comparable in "
+            "size before reading anything into the gap.",
+        ]
 
     gap = abs(a['estimate'] - b['estimate'])
     band = swarm._AGREEMENT_BAND
@@ -150,6 +206,13 @@ def main() -> int:
     print(f'  B judge {args.judge_model}')
     print(f'  agents unchanged in both arms: {swarm.roster_models() or "tier default"}')
     print(f'  vintage: {vintage.describe_vintage()}')
+    # Family and CAPABILITY are different variables, and the first run of this
+    # experiment confounded them: llama3.2 is 3.2B against qwen2.5:7b's 7.6B, so
+    # arm B swapped a 7B judge for a 3B one and the result measured size.
+    warning = _size_mismatch_warning(llm.describe_model(llm.DEEP), args.judge_model)
+    if warning:
+        print(f'\n  {warning}')
+
     if args.dry_run:
         return 0
 

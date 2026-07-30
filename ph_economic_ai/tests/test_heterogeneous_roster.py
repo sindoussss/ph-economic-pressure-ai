@@ -577,3 +577,78 @@ def test_the_judge_override_does_not_touch_the_agent_roster(monkeypatch):
     monkeypatch.setenv('STRATA_SWARM_AGENT_MODELS', 'model-a,model-b')
     agents = build_swarm_agents(models=None)
     assert {a.model for a in agents} == {'model-a', 'model-b'}
+
+
+# ── The judge experiment must not read a FAILED arm as an opinion ────────────
+
+_JUDGE_A = {'estimate': 2.14, 'estimate_source': 'agent', 'regional': [2.3, 1.18],
+            'agent_median': 1.225, 'agent_spread': 5.5,
+            'synthesis_model': 'qwen2.5:7b'}
+
+
+def test_a_clamped_arm_is_not_a_judgement():
+    """Measured 2026-07-31: llama3.2 as master came back CLAMPED in all three
+    runs at an identical +0.21, which is the anchor's boundary reproducing rather
+    than a judge reproducing, with regional verdicts identical within each run and
+    negative while the agents' median was +1.2. The interpretation reported that
+    as "PARTIAL: the judges differ". Comparing a clamped arm compares a judge
+    against the physics guard."""
+    from ph_economic_ai.tools.experiment_judge_model import _interpret
+    b = {'estimate': 0.21, 'estimate_source': 'clamped',
+         'regional': [-0.35, -0.35], 'agent_median': 1.2, 'agent_spread': 5.0,
+         'synthesis_model': 'llama3.2'}
+    lines = _interpret(_JUDGE_A, b)
+    assert 'NOT A COMPARISON' in lines[0]
+    assert 'CAPABILITY result, not an opinion result' in ' '.join(lines)
+    assert not any('PARTIAL' in l for l in lines)
+
+
+def test_an_anchor_sourced_arm_is_refused_too():
+    """`anchor` means no usable agent estimate at all, which is a worse version of
+    the same failure."""
+    from ph_economic_ai.tools.experiment_judge_model import _interpret
+    b = dict(_JUDGE_A, estimate_source='anchor', synthesis_model='other')
+    assert 'NOT A COMPARISON' in _interpret(_JUDGE_A, b)[0]
+
+
+def test_two_valid_judges_still_compare():
+    from ph_economic_ai.tools.experiment_judge_model import _interpret
+    b = dict(_JUDGE_A, estimate=1.90, synthesis_model='other-7b')
+    lines = _interpret(_JUDGE_A, b)
+    assert 'JUDGES' in lines[0]
+    assert 'NOT A COMPARISON' not in ' '.join(lines)
+
+
+def test_a_size_mismatch_between_judges_is_warned_before_calls_are_spent(monkeypatch):
+    """Family and capability are different variables. The first run of this
+    experiment swapped a 7.6B judge for a 3.2B one and measured size."""
+    from ph_economic_ai.tools import experiment_judge_model as ex
+
+    class _Resp:
+        @staticmethod
+        def json():
+            return {'models': [{'name': 'qwen2.5:7b', 'size': 4_680_000_000},
+                               {'name': 'llama3.2:latest', 'size': 2_020_000_000},
+                               {'name': 'mistral:7b', 'size': 4_400_000_000}]}
+
+    monkeypatch.setattr(ex.llm, 'ollama_host', lambda: 'http://x')
+    import requests
+    monkeypatch.setattr(requests, 'get', lambda *a, **k: _Resp())
+
+    warned = ex._size_mismatch_warning('qwen2.5:7b', 'llama3.2')
+    assert 'confounds model FAMILY with model CAPABILITY' in warned
+    assert '2.3x' in warned
+    # Comparable sizes must stay silent, or the warning becomes noise.
+    assert ex._size_mismatch_warning('qwen2.5:7b', 'mistral:7b') == ''
+
+
+def test_the_size_warning_is_silent_when_it_cannot_tell(monkeypatch):
+    """An unreachable daemon must not produce a warning about sizes it never saw."""
+    from ph_economic_ai.tools import experiment_judge_model as ex
+    import requests
+
+    def _boom(*a, **k):
+        raise OSError('no daemon')
+
+    monkeypatch.setattr(requests, 'get', _boom)
+    assert ex._size_mismatch_warning('qwen2.5:7b', 'llama3.2') == ''

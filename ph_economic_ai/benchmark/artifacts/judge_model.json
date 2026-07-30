@@ -1,0 +1,55 @@
+{
+  "question": "Q-ENG-011: is the published number the room or the judge?",
+  "measured_at": "2026-07-31 (fuel pricing week of 2026-07-28)",
+  "scenario": {
+    "oil_pct": 5.0,
+    "usd_pct": 2.0,
+    "bsp_rate": 6.5,
+    "demand_index": 72.0
+  },
+  "judge_model_b": "llama3.2",
+  "arms": {
+    "A_default_judge": {
+      "estimate": 1.5,
+      "estimate_source": "agent",
+      "agreement_pct": 62,
+      "agent_median": 1.5,
+      "agent_spread": 5.72,
+      "median_by_model": {
+        "llama3.2": 1.2,
+        "qwen2.5:3b": 1.8
+      },
+      "synthesis_model": "qwen2.5:7b",
+      "regional": [
+        1.5,
+        2.38
+      ],
+      "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:qwen2.5:7b",
+      "seconds": 243.7
+    },
+    "B_other_judge": {
+      "estimate": 0.21429565939353568,
+      "estimate_source": "clamped",
+      "agreement_pct": 77,
+      "agent_median": 1.2,
+      "agent_spread": 5.0,
+      "median_by_model": {
+        "llama3.2": 1.5,
+        "qwen2.5:3b": 1.05
+      },
+      "synthesis_model": "llama3.2",
+      "regional": [
+        -0.15,
+        -0.15
+      ],
+      "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:llama3.2",
+      "seconds": 222.8
+    }
+  },
+  "interpretation": [
+    "JUDGES: qwen2.5:7b published +1.50, llama3.2 published +0.21, 1.29 PHP/L apart against a 0.5 band.",
+    "AGENTS: medians 1.5 and 1.2, widest within-arm spread 5.72 PHP/L.",
+    "PARTIAL: the judges differ by 1.29 PHP/L, wider than the 0.5 band but inside the 5.72 the agents span. One run cannot separate that from the debate having moved between arms.",
+    "DEC-035: one run per arm is not a publishable cross-model verdict. Repeat before concluding."
+  ]
+}
