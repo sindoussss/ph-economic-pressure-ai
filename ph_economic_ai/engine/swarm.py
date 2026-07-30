@@ -925,6 +925,20 @@ ALL_REGIONS: list[dict] = [
 ]
 
 
+#: Freight multiplier of each swarm group's own region, keyed by group id. Used to
+#: express a region's premium RELATIVE to the group that supplied its estimate.
+_ANCHOR_MULTIPLIER: dict[int, float] = {}
+
+
+def _anchor_multiplier(anchor: int) -> float:
+    """The freight multiplier of the region whose survivor answers for `anchor`."""
+    if not _ANCHOR_MULTIPLIER:
+        for reg in ALL_REGIONS:
+            if reg['name'] in REGIONS:
+                _ANCHOR_MULTIPLIER[reg['anchor']] = reg['multiplier']
+    return _ANCHOR_MULTIPLIER.get(anchor, 1.00)
+
+
 def derive_regional_estimates(
     base_estimate: Optional[float],
     anchor_estimates: Optional[dict] = None,
@@ -933,7 +947,31 @@ def derive_regional_estimates(
 
     anchor_estimates maps group_id (0-3) → survivor price estimate.
     Falls back to base_estimate when an anchor is missing.
-    Multiplies the anchor change by the region's logistics freight factor.
+
+    The premium is applied RELATIVE to the region that produced the estimate,
+    which is the fix for a double count. `anchor_prompt_block` tells every agent
+    to adjust for "your region's freight premium", so a Davao survivor's number
+    already carries Davao freight. Multiplying it by Davao's 1.05 again charged
+    the same premium twice, and scaling Zamboanga's 1.08 off it charged 1.08 where
+    only 1.08/1.05 was outstanding.
+
+    It survived because the error is invisible exactly where anyone would look.
+    The regions anchored to NCR divide by 1.00 and were always right, and the bug
+    scales magnitude without touching sign, so `test_regional_scaling_preserves_
+    direction` passed throughout. At a +2.42 base it inflated thirteen of
+    seventeen regions by up to ₱0.13/L, always upward in magnitude, and the error
+    grows with the shock.
+
+    **Still unresolved, and deliberately not changed here.** These multipliers are
+    LEVEL premiums: Zamboanga's pump price sits about 8 percent above NCR's
+    because shipping fuel there costs a roughly fixed number of pesos per litre.
+    Applying a level ratio to a CHANGE claims the freight premium itself moves 8
+    percent when crude moves, and freight rates move on bunker prices and shipping
+    capacity rather than in lockstep with crude. The defensible model is that
+    regional CHANGES are nearly equal while regional LEVELS differ by freight,
+    which would remove this multiplication rather than correct it. That is a
+    modelling decision, not a bug fix, and `DEC-021` is the standing rule against
+    changing one half of a fitted pair on the way past. Recorded as a question.
     """
     anchors = anchor_estimates or {}
     result: dict[str, Optional[float]] = {}
@@ -941,9 +979,11 @@ def derive_regional_estimates(
         anchor_est = anchors.get(reg['anchor'], base_estimate)
         if anchor_est is None:
             anchor_est = base_estimate
-        result[reg['name']] = (
-            round(anchor_est * reg['multiplier'], 2) if anchor_est is not None else None
-        )
+        if anchor_est is None:
+            result[reg['name']] = None
+            continue
+        relative = reg['multiplier'] / _anchor_multiplier(reg['anchor'])
+        result[reg['name']] = round(anchor_est * relative, 2)
     return result
 
 

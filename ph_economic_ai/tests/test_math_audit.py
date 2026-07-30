@@ -361,3 +361,67 @@ def test_the_price_fetcher_reports_whether_its_value_is_real():
         assert price == swarm._FALLBACK_RETAIL_PRICE_PHP
         # The unchecked helper keeps its old shape for prompt callers.
         assert swarm.fetch_live_retail_price() == swarm._FALLBACK_RETAIL_PRICE_PHP
+
+
+# ── The freight premium was charged twice ─────────────────────────────────────
+
+def test_an_anchor_region_is_not_charged_its_own_freight_twice():
+    """`anchor_prompt_block` tells each agent to adjust for "your region's freight
+    premium", so a Davao survivor's estimate already carries Davao freight.
+    Multiplying it by Davao's 1.05 again billed the same premium twice."""
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    survivors = {0: 2.42, 1: 2.42, 2: 2.42, 3: 2.42}
+    derived = derive_regional_estimates(2.42, survivors)
+    for region in ('NCR', 'Central Luzon', 'Western Visayas', 'Davao Region'):
+        assert derived[region] == pytest.approx(2.42), (
+            f'{region} supplied the estimate, so it must be returned unscaled')
+
+
+def test_a_region_is_charged_only_the_premium_over_its_anchor():
+    """Zamboanga is 1.08 over NCR and its estimate comes from Davao at 1.05, so
+    only 1.08/1.05 is outstanding."""
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    derived = derive_regional_estimates(2.42, {3: 2.42})
+    assert derived['Zamboanga'] == pytest.approx(round(2.42 * (1.08 / 1.05), 2))
+
+
+def test_ncr_anchored_regions_are_unchanged_by_the_fix():
+    """These divide by 1.00 and were always correct, which is exactly why the bug
+    survived: the regions anyone would spot-check were the right ones."""
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    derived = derive_regional_estimates(2.42, {0: 2.42})
+    for region, multiplier in (('Ilocos Region', 1.05), ('Cagayan Valley', 1.06),
+                               ('CAR', 1.08)):
+        assert derived[region] == pytest.approx(round(2.42 * multiplier, 2))
+
+
+def test_a_relative_premium_below_one_is_legitimate():
+    """Written first as "no region is ever cheaper than the region that priced
+    it", which is false. Central Visayas carries 1.04 while its estimate comes
+    from Western Visayas at 1.05, so its relative premium is 0.990 and its number
+    lands BELOW the anchor's. Cebu being cheaper to serve than Iloilo is a fact
+    about the table, not a defect in the derivation, and an assertion of
+    monotonicity would have forced a wrong fix."""
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    derived = derive_regional_estimates(2.42, {2: 2.42})
+    assert derived['Central Visayas'] == pytest.approx(round(2.42 * (1.04 / 1.05), 2))
+    assert derived['Central Visayas'] < derived['Western Visayas']
+
+
+def test_every_region_is_scaled_by_its_premium_over_its_anchor():
+    """The invariant that actually holds, stated over all seventeen."""
+    from ph_economic_ai.engine.swarm import (
+        ALL_REGIONS, REGIONS, derive_regional_estimates)
+    anchor_mult = {r['anchor']: r['multiplier']
+                   for r in ALL_REGIONS if r['name'] in REGIONS}
+    derived = derive_regional_estimates(2.42, {g: 2.42 for g in anchor_mult})
+    for reg in ALL_REGIONS:
+        expected = round(2.42 * reg['multiplier'] / anchor_mult[reg['anchor']], 2)
+        assert derived[reg['name']] == pytest.approx(expected), reg['name']
+
+
+def test_the_fix_still_preserves_direction():
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    for base in (+2.42, -2.42):
+        derived = derive_regional_estimates(base, {0: base, 3: base})
+        assert all((v > 0) == (base > 0) for v in derived.values() if v is not None)
