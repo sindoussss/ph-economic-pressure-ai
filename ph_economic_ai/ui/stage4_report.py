@@ -206,6 +206,18 @@ class Stage4ReportPanel(QWidget):
         # Full-width regional map at the bottom
         self._map_widget = RegionalMapWidget()
         body_layout.addWidget(self._map_widget)
+        # How those seventeen numbers were produced. Four region groups debate;
+        # the other thirteen are those four scaled by a fixed freight premium,
+        # and the map presented all seventeen identically. Nothing per-region has
+        # ever been graded either: there is no regional price series in the
+        # project, so only the national figure is checked against reality.
+        # Visible without hovering, because a reader who never hovers is exactly
+        # the one who would take the map at face value.
+        self._map_basis_lbl = QLabel(_honesty.regional_basis())
+        self._map_basis_lbl.setWordWrap(True)
+        self._map_basis_lbl.setStyleSheet(
+            'font-size:8px;color:#9CA3AF;padding:2px 4px 8px 4px;')
+        body_layout.addWidget(self._map_basis_lbl)
 
         scroll.setWidget(body)
         root.addWidget(scroll, stretch=1)

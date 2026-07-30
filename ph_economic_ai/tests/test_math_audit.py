@@ -425,3 +425,42 @@ def test_the_fix_still_preserves_direction():
     for base in (+2.42, -2.42):
         derived = derive_regional_estimates(base, {0: base, 3: base})
         assert all((v > 0) == (base > 0) for v in derived.values() if v is not None)
+
+
+# ── Phase 0: the regional figures are labelled as derived ─────────────────────
+
+def test_only_four_regions_are_actually_debated():
+    """Seventeen figures, four debates. The map presented all seventeen the same
+    way, and no per-region number has ever been graded: there is no regional
+    price series in the project and `ground_truth` has no notion of region."""
+    from ph_economic_ai.engine.swarm import REGIONS
+    from ph_economic_ai.ui import honesty
+    assert set(honesty.DEBATED_REGIONS) == set(REGIONS)
+
+
+def test_the_map_caption_says_the_figures_are_derived():
+    from ph_economic_ai.ui import honesty
+    text = honesty.regional_basis()
+    assert '13' in text and '4 region groups' in text
+    assert 'derived rather than forecast' in text
+    assert 'Only the national figure is graded' in text
+
+
+def test_a_debated_region_is_distinguished_from_a_scaled_one():
+    from ph_economic_ai.engine.swarm import ALL_REGIONS
+    from ph_economic_ai.ui import honesty
+    assert honesty.regional_tooltip_note('Davao Region') == \
+        "debated by this region's agents"
+    assert 'scaled from a debated region' in honesty.regional_tooltip_note('Zamboanga')
+    # Every one of the seventeen gets one label or the other, never nothing.
+    for reg in ALL_REGIONS:
+        assert honesty.regional_tooltip_note(reg['name'])
+
+
+def test_labelling_did_not_change_a_single_number():
+    """Phase 0 is labelling, not recalibration. DEC-021 bars touching the
+    multiplication while doing this, so the arithmetic must be untouched."""
+    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    derived = derive_regional_estimates(2.42, {0: 2.42, 3: 2.42})
+    assert derived['NCR'] == pytest.approx(2.42)
+    assert derived['Zamboanga'] == pytest.approx(round(2.42 * (1.08 / 1.05), 2))
