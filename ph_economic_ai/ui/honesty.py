@@ -122,20 +122,40 @@ def cross_model_note(across: dict) -> str:
 
 
 RECALL_NOTE = (
-    'this run was not recomputed — the inputs have not moved since, so the '
+    'this run was not recomputed — nothing the run depends on has moved, so the '
     'stored answer is the current answer'
 )
 
+#: Used instead of RECALL_NOTE when something DID move but stayed inside its
+#: tolerance, which is the ordinary case and used to be described as "the inputs
+#: have not moved since".
+RECALL_NOTE_WITHIN_TOLERANCE = (
+    'this run was not recomputed — the market did move, but too little to be '
+    'worth re-answering, so a fresh run would differ slightly'
+)
 
-def recall_note(detail: str = '') -> str:
+
+def recall_note(detail: str = '', drift: str = '') -> str:
     """Label for a report rebuilt from a stored run rather than a fresh one.
 
     A recalled number must say so. Showing an hour-old answer as though it were
     just computed is exactly the kind of quiet claim this project refuses to
     make elsewhere, and it would be the easiest one to miss: the report looks
     identical either way.
+
+    `drift` is the honest half. This note read "the inputs have not moved since",
+    and the recall gate it describes is a TOLERANCE, not an equality test, so the
+    sentence was false on any run where a field moved inside its band. Brent
+    moving 74.20 to 74.69 passes the gate and changes three lines of the data
+    brief that prefixes every prompt in the run, and the local model reproduces a
+    call exactly given the same seed, so the stored answer is demonstrably not the
+    answer a fresh run would give. Reusing it is still right. Saying nothing moved
+    was not.
     """
-    return f'{detail} {RECALL_NOTE}'.strip() if detail else RECALL_NOTE
+    body = RECALL_NOTE_WITHIN_TOLERANCE if drift else RECALL_NOTE
+    parts = [p for p in (detail, body) if p]
+    text = ' '.join(parts)
+    return f'{text} ({drift})' if drift else text
 
 
 def interact_caption() -> str:

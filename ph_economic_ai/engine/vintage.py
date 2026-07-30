@@ -162,6 +162,42 @@ def inputs_unchanged(before: Optional[dict], now_: Optional[dict]) -> bool:
     return True
 
 
+def describe_drift(before: Optional[dict], now_: Optional[dict]) -> str:
+    """The largest tolerated movement between two snapshots, in words.
+
+    `inputs_unchanged` answers "close enough to reuse the answer?", which is the
+    right question and is NOT the same as "nothing moved". The recall note used to
+    tell the reader "the inputs have not moved since", and that is false whenever
+    any field moved inside its tolerance.
+
+    Demonstrated: Brent 74.20 to 74.69, WTI 70.10 to 70.59, USD/PHP 58.4000 to
+    58.4400 all pass, while three lines of the DATA BRIEF that prefixes every
+    agent, judge and master prompt are different. Ollama reproduces a call exactly
+    given the same seed, verified directly, so a fresh run on those inputs would
+    have returned a different number. Recall was right to reuse the answer and
+    wrong about why.
+
+    Empty string when nothing moved at all, so the caller can still say so
+    truthfully on the runs where it is true.
+    """
+    if not isinstance(before, dict) or not isinstance(now_, dict):
+        return ''
+    worst_key, worst_delta, worst_tol = '', 0.0, 0.0
+    for key, tol in {**_TOLERANCE, **_BRIEF_TOLERANCE}.items():
+        a, b = _f(before.get(key)), _f(now_.get(key))
+        if a is None or b is None:
+            continue
+        delta = abs(a - b)
+        # Ranked by share of tolerance used, not by raw size: 0.04 of a 0.05
+        # band is a bigger deal than 0.30 of a 0.50 one, and comparing pesos
+        # against index points against percents would rank them by unit.
+        if tol > 0 and delta / tol > (worst_delta / worst_tol if worst_tol else 0):
+            worst_key, worst_delta, worst_tol = key, delta, tol
+    if not worst_key or worst_delta <= 0:
+        return ''
+    return f'{worst_key} moved {worst_delta:.4g} of a tolerated {worst_tol:.4g}'
+
+
 def vintage_key(model_id: str = '', now: Optional[dt.datetime] = None) -> str:
     """The bucket a run belongs to: this day, this pricing week, these models.
 

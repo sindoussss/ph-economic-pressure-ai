@@ -283,3 +283,90 @@ def test_restoring_garbage_returns_none_rather_than_raising():
     assert recall.restore_master_verdict({'version': recall.SNAPSHOT_VERSION,
                                           'gas': 'not a dict'}) is None
     assert recall.restore_master_verdict(None) is None
+
+
+# ── Recall's gate is a tolerance, so it must not claim nothing moved ──────────
+
+def _brief(brent, wti, usd):
+    from ph_economic_ai.engine.live_data import LiveDataBrief
+    b = LiveDataBrief()
+    b.brent, b.wti, b.usd_php = brent, wti, usd
+    b._ok = True
+    return b
+
+
+_S = {'oil_pct': 5.0, 'usd_pct': 2.0, 'bsp_rate': 6.5,
+      'demand_index': 72.0, 'current_price': 98.82}
+
+
+def test_a_tolerated_move_still_changes_every_prompt_in_the_run():
+    """The bug this fixes. `inputs_unchanged` passes while three lines of the
+    DATA BRIEF that prefixes every agent, judge and master prompt differ, and the
+    local model reproduces a call exactly given the same seed, so the stored
+    answer is demonstrably not the answer a fresh run would give."""
+    from ph_economic_ai.engine import vintage
+    a, b = _brief(74.20, 70.10, 58.40), _brief(74.69, 70.59, 58.44)
+    assert vintage.inputs_unchanged(vintage.input_snapshot(_S, a),
+                                    vintage.input_snapshot(_S, b)) is True
+    assert a.as_prompt_block(_S) != b.as_prompt_block(_S)
+
+
+def test_the_drift_is_named_when_something_moved():
+    from ph_economic_ai.engine import vintage
+    drift = vintage.describe_drift(
+        vintage.input_snapshot(_S, _brief(74.20, 70.10, 58.40)),
+        vintage.input_snapshot(_S, _brief(74.69, 70.59, 58.44)))
+    assert drift
+    assert 'tolerated' in drift
+
+
+def test_nothing_moved_reports_no_drift():
+    """So the truthful version of the old sentence is still available on the runs
+    where it is actually true."""
+    from ph_economic_ai.engine import vintage
+    snap = vintage.input_snapshot(_S, _brief(74.20, 70.10, 58.40))
+    assert vintage.describe_drift(snap, snap) == ''
+
+
+def test_the_drift_is_ranked_by_share_of_tolerance_not_raw_size():
+    """0.04 of a 0.05 band matters more than 0.30 of a 0.50 one, and ranking by
+    raw size would compare pesos against index points against percents."""
+    from ph_economic_ai.engine import vintage
+    drift = vintage.describe_drift(
+        vintage.input_snapshot(_S, _brief(74.00, 70.00, 58.40)),
+        vintage.input_snapshot(_S, _brief(74.30, 70.00, 58.44)))
+    assert drift.startswith('usd_php'), drift
+
+
+def test_the_note_stops_claiming_the_inputs_have_not_moved():
+    from ph_economic_ai.ui import honesty
+    text = honesty.recall_note('Recalled from run #7.',
+                               'wti moved 0.49 of a tolerated 0.5')
+    assert 'have not moved' not in text
+    assert 'did move' in text
+    assert 'a fresh run would differ' in text
+    assert 'wti moved 0.49' in text
+
+
+def test_the_note_says_nothing_moved_only_when_nothing_moved():
+    from ph_economic_ai.ui import honesty
+    text = honesty.recall_note('Recalled from run #7.')
+    assert 'nothing the run depends on has moved' in text
+    assert 'would differ' not in text
+
+
+def test_the_recall_label_no_longer_asserts_unchanged_inputs():
+    """`describe()` is provenance. It used to end "Inputs unchanged since, so the
+    answer is unchanged", asserting something the gate does not check."""
+    from ph_economic_ai.engine.recall import RecalledRun
+    r = RecalledRun({'run_id': 7, 'timestamp': '2026-07-30T10:00:00'}, {}, object())
+    label = r.describe()
+    assert 'Recalled from run #7' in label
+    assert 'unchanged' not in label.lower()
+
+
+def test_a_recalled_run_carries_its_drift():
+    from ph_economic_ai.engine.recall import RecalledRun
+    r = RecalledRun({'run_id': 7}, {}, object(), drift='brent moved 0.4 of a tolerated 0.5')
+    assert 'brent moved 0.4' in r.drift
+    assert RecalledRun({'run_id': 7}, {}, object()).drift == ''

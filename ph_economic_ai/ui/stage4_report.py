@@ -100,7 +100,7 @@ class Stage4ReportPanel(QWidget):
         self._df = None
         self._build()
 
-    def set_recall_note(self, detail: str) -> None:
+    def set_recall_note(self, detail: str, drift: str = '') -> None:
         """Show or clear the "this was not recomputed" banner.
 
         An empty detail hides it, so a fresh run cannot inherit the banner from
@@ -110,7 +110,7 @@ class Stage4ReportPanel(QWidget):
             self._recall_lbl.setText('')
             self._recall_lbl.hide()
             return
-        self._recall_lbl.setText(_honesty.recall_note(detail))
+        self._recall_lbl.setText(_honesty.recall_note(detail, drift))
         self._recall_lbl.show()
 
     def _build(self):
