@@ -533,3 +533,47 @@ def test_installed_models_never_raises_and_caches(monkeypatch):
     assert llm.installed_models() == frozenset()
     assert len(calls) == 1, 'the failure must be cached, not retried per call'
     monkeypatch.setattr(llm, '_installed_cache', None, raising=False)
+
+
+# ── Q-ENG-011: the synthesis model is now testable ───────────────────────────
+
+def test_the_judge_model_is_overridable(monkeypatch):
+    """The synthesis is one model whatever the agent roster does, and the card
+    said so while nothing could CHECK whether that reading is model-dependent.
+    An override makes the question answerable without changing the default."""
+    from ph_economic_ai.engine.swarm import judge_model
+    monkeypatch.delenv('STRATA_SWARM_JUDGE_MODEL', raising=False)
+    assert judge_model() is None, 'the default must stay the tier default'
+    monkeypatch.setenv('STRATA_SWARM_JUDGE_MODEL', 'llama3.2')
+    assert judge_model() == 'llama3.2'
+    monkeypatch.setenv('STRATA_SWARM_JUDGE_MODEL', '   ')
+    assert judge_model() is None, 'blank must not become a model name'
+
+
+def test_every_judge_call_site_honours_the_override(monkeypatch):
+    """Four sites: the regional judge's three prompts share `_call`, plus its two
+    retries and the master. A site left on the tier default would splice two
+    models into one synthesis."""
+    import inspect
+    from ph_economic_ai.engine import swarm as sw
+    src = inspect.getsource(sw)
+    assert src.count('model=judge_model()') == 4
+
+
+def test_the_card_names_the_model_that_actually_synthesised(monkeypatch):
+    """Not the tier default. An overridden judge that still reported the default
+    would make the experiment's own artifact wrong about which model produced the
+    number it records."""
+    from ph_economic_ai.engine.swarm import judge_model
+    monkeypatch.setenv('STRATA_SWARM_JUDGE_MODEL', 'llama3.2')
+    assert (judge_model() or llm.describe_model(llm.DEEP)) == 'llama3.2'
+    monkeypatch.delenv('STRATA_SWARM_JUDGE_MODEL', raising=False)
+    assert (judge_model() or llm.describe_model(llm.DEEP)) == llm.describe_model(llm.DEEP)
+
+
+def test_the_judge_override_does_not_touch_the_agent_roster(monkeypatch):
+    """The whole point is holding the room fixed while the synthesis changes."""
+    monkeypatch.setenv('STRATA_SWARM_JUDGE_MODEL', 'llama3.2')
+    monkeypatch.setenv('STRATA_SWARM_AGENT_MODELS', 'model-a,model-b')
+    agents = build_swarm_agents(models=None)
+    assert {a.model for a in agents} == {'model-a', 'model-b'}
