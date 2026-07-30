@@ -1,0 +1,108 @@
+{
+  "question": "Q-ENG-011: is the published number the room, or the judge?",
+  "answer": "The room. Two 7B judges from different families land a median 0.24 PHP/L apart, inside the 0.50 band, on an essentially identical debate.",
+  "judges": [
+    "qwen2.5:7b",
+    "mistral:7b"
+  ],
+  "comparable_size": true,
+  "runs": [
+    {
+      "run": 1,
+      "judge_a": "qwen2.5:7b",
+      "estimate_a": 1.18,
+      "source_a": "agent",
+      "regional_a": [
+        0.95,
+        1.4
+      ],
+      "judge_b": "mistral:7b",
+      "estimate_b": 1.4375,
+      "source_b": "agent",
+      "regional_b": [
+        1.48,
+        1.38
+      ],
+      "judge_gap": 0.258,
+      "agent_median_a": 1.225,
+      "agent_median_b": 1.35,
+      "room_drift": 0.125,
+      "agent_spread": 3.3,
+      "seconds_a": 368.2,
+      "seconds_b": 455.5
+    },
+    {
+      "run": 2,
+      "judge_a": "qwen2.5:7b",
+      "estimate_a": 1.98,
+      "source_a": "agent",
+      "regional_a": [
+        1.93,
+        2.03
+      ],
+      "judge_b": "mistral:7b",
+      "estimate_b": 2.03,
+      "source_b": "agent",
+      "regional_b": [
+        1.94,
+        2.16
+      ],
+      "judge_gap": 0.05,
+      "agent_median_a": 1.67,
+      "agent_median_b": 1.67,
+      "room_drift": 0.0,
+      "agent_spread": 3.0,
+      "seconds_a": 320.3,
+      "seconds_b": 468.9
+    },
+    {
+      "run": 3,
+      "judge_a": "qwen2.5:7b",
+      "estimate_a": 1.98,
+      "source_a": "agent",
+      "regional_a": [
+        1.92,
+        2.03
+      ],
+      "judge_b": "mistral:7b",
+      "estimate_b": 1.74,
+      "source_b": "agent",
+      "regional_b": [
+        1.95,
+        1.63
+      ],
+      "judge_gap": 0.24,
+      "agent_median_a": 1.67,
+      "agent_median_b": 1.67,
+      "room_drift": 0.0,
+      "agent_spread": 3.0,
+      "seconds_a": 352.3,
+      "seconds_b": 578.7
+    }
+  ],
+  "summary": {
+    "judge_gap_median": 0.24,
+    "judge_gap_range": [
+      0.05,
+      0.258
+    ],
+    "band": 0.5,
+    "runs_inside_band": 3,
+    "runs_total": 3,
+    "room_drift_between_arms": [
+      0.125,
+      0.0,
+      0.0
+    ],
+    "seconds_median_a": 352.3,
+    "seconds_median_b": 468.9
+  },
+  "reading": [
+    "THE SYNTHESIS READS THE ROOM. All three gaps fall inside the band used to decide whether two AGENTS agree, so the single-model synthesis is a limitation on paper more than in practice.",
+    "The caveat this experiment previously could not rule out is ruled out: agent medians differed between arms by 0.125, 0.0 and 0.0, so the room was essentially identical and the gap is the judge rather than the debate drifting.",
+    "It also confirms the earlier llama3.2 attempt measured CAPABILITY, not family. Same code, same experiment, a comparable-size judge: llama3.2 at 3.2B clamped every run with regions undifferentiated and the sign inverted; mistral:7b at 7.2B was valid every run. See DEC-038.",
+    "mistral:7b is about a third slower, median 469s against 352s, which is the price if it were ever considered for the default judge.",
+    "Run 3 logged that one group had all combined scores equal at 0.50, so its elimination was arbitrary. Pre-existing and deliberately logged, but it means survivor selection is not always meaningful.",
+    "Three runs per arm. Enough to answer a yes/no about the band, not enough to size the gap."
+  ]
+}

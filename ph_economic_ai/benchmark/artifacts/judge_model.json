@@ -7,49 +7,49 @@
     "bsp_rate": 6.5,
     "demand_index": 72.0
   },
-  "judge_model_b": "llama3.2",
+  "judge_model_b": "mistral:7b",
   "arms": {
     "A_default_judge": {
-      "estimate": 1.5,
+      "estimate": 1.98,
       "estimate_source": "agent",
-      "agreement_pct": 62,
-      "agent_median": 1.5,
-      "agent_spread": 5.72,
+      "agreement_pct": 67,
+      "agent_median": 1.67,
+      "agent_spread": 3.0,
       "median_by_model": {
-        "llama3.2": 1.2,
-        "qwen2.5:3b": 1.8
+        "llama3.2": 1.5,
+        "qwen2.5:3b": 1.67
       },
       "synthesis_model": "qwen2.5:7b",
       "regional": [
-        1.5,
-        2.38
+        1.92,
+        2.03
       ],
       "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:qwen2.5:7b",
-      "seconds": 243.7
+      "seconds": 352.3
     },
     "B_other_judge": {
-      "estimate": 0.21429565939353568,
-      "estimate_source": "clamped",
-      "agreement_pct": 77,
-      "agent_median": 1.2,
-      "agent_spread": 5.0,
+      "estimate": 1.74,
+      "estimate_source": "agent",
+      "agreement_pct": 76,
+      "agent_median": 1.67,
+      "agent_spread": 3.0,
       "median_by_model": {
         "llama3.2": 1.5,
-        "qwen2.5:3b": 1.05
+        "qwen2.5:3b": 1.67
       },
-      "synthesis_model": "llama3.2",
+      "synthesis_model": "mistral:7b",
       "regional": [
-        -0.15,
-        -0.15
+        1.95,
+        1.63
       ],
-      "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:llama3.2",
-      "seconds": 222.8
+      "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:mistral:7b",
+      "seconds": 578.7
     }
   },
   "interpretation": [
-    "JUDGES: qwen2.5:7b published +1.50, llama3.2 published +0.21, 1.29 PHP/L apart against a 0.5 band.",
-    "AGENTS: medians 1.5 and 1.2, widest within-arm spread 5.72 PHP/L.",
-    "PARTIAL: the judges differ by 1.29 PHP/L, wider than the 0.5 band but inside the 5.72 the agents span. One run cannot separate that from the debate having moved between arms.",
+    "JUDGES: qwen2.5:7b published +1.98, mistral:7b published +1.74, 0.24 PHP/L apart against a 0.5 band.",
+    "AGENTS: medians 1.67 and 1.67, widest within-arm spread 3.0 PHP/L.",
+    "THE SYNTHESIS IS READING THE ROOM: the two judges land inside the band used to call two agents agreeing, so the single-model synthesis is a limitation on paper more than in practice. Bounded by one run per arm and by the agents being resampled between them.",
     "DEC-035: one run per arm is not a publishable cross-model verdict. Repeat before concluding."
   ]
 }
