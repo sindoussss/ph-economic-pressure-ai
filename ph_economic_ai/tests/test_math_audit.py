@@ -581,3 +581,65 @@ def test_the_prompt_no_longer_calls_the_baseline_a_median():
     assert 'RON 95 price listed by fuelprice.ph' in live
     stale = _make_system_prompt('Forecaster', 'NCR', 98.82, False)
     assert 'DIFFERENT GRADE' in stale, 'the fallback is unleaded 91, not RON 95'
+
+
+# ── Regions no source can check ───────────────────────────────────────────────
+
+def test_the_unvalidatable_set_matches_what_doe_does_not_publish():
+    """Established 2026-07-31 by enumerating DOE's price-monitoring archive, 2713
+    documents from 2017 to 2026. Zero files for Region III, Region I, Region II or
+    CAR, against controls of 1243 South Luzon, 470 NCR, 348 Visayas, 333 Mindanao.
+    DOE publishes nothing north of NCR."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS
+    from ph_economic_ai.ui import honesty
+    assert honesty.UNVALIDATABLE_REGIONS == {
+        'Central Luzon', 'Ilocos Region', 'Cagayan Valley', 'CAR'}
+    names = {r['name'] for r in ALL_REGIONS}
+    assert honesty.UNVALIDATABLE_REGIONS <= names, 'a name here must be a real region'
+
+
+def test_a_debated_region_with_no_source_says_both_things():
+    """Being argued over by agents is not the same as being checkable, and
+    Central Luzon is the case where the two come apart. It is one of the four
+    DEBATED groups, not one of the thirteen scaled from them."""
+    from ph_economic_ai.ui import honesty
+    note = honesty.regional_tooltip_note('Central Luzon')
+    assert 'debated by this region' in note
+    assert 'cannot be checked' in note
+
+
+def test_a_covered_debated_region_makes_no_such_claim():
+    from ph_economic_ai.ui import honesty
+    for region in ('NCR', 'Western Visayas', 'Davao Region'):
+        note = honesty.regional_tooltip_note(region)
+        assert 'cannot be checked' not in note, region
+        assert 'debated' in note, region
+
+
+def test_a_derived_region_with_no_source_says_both_things_too():
+    from ph_economic_ai.ui import honesty
+    note = honesty.regional_tooltip_note('Ilocos Region')
+    assert 'scaled from a debated region' in note
+    assert 'cannot be checked' in note
+
+
+def test_the_map_note_names_the_debated_region_specifically():
+    """A count alone would let a reader assume the four unfalsifiable regions are
+    all derived ones, which is the reassuring reading and the wrong one."""
+    from ph_economic_ai.ui import honesty
+    note = honesty.unvalidatable_note()
+    assert '4 of the 17' in note
+    assert 'Central Luzon' in note
+    assert 'debate rather than derive' in note
+    assert 'anchors the figures scaled from it' in note
+
+
+def test_the_two_map_lines_make_different_claims():
+    """`regional_basis` is about METHOD, derived versus forecast.
+    `unvalidatable_note` is about EVIDENCE, whether anything can ever grade it.
+    Collapsing them would lose the stronger claim."""
+    from ph_economic_ai.ui import honesty
+    basis, unval = honesty.regional_basis(), honesty.unvalidatable_note()
+    assert 'derived rather than forecast' in basis
+    assert 'no DOE price series' in unval
+    assert basis != unval
