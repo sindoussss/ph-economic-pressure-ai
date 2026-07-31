@@ -10,45 +10,45 @@
   "judge_model_b": "mistral:7b",
   "arms": {
     "A_default_judge": {
-      "estimate": 1.98,
+      "estimate": 1.75,
       "estimate_source": "agent",
       "agreement_pct": 67,
-      "agent_median": 1.67,
-      "agent_spread": 3.0,
+      "agent_median": 1.2,
+      "agent_spread": 6.21,
       "median_by_model": {
-        "llama3.2": 1.5,
-        "qwen2.5:3b": 1.67
+        "llama3.2": 2.355,
+        "qwen2.5:3b": 1.2
       },
       "synthesis_model": "qwen2.5:7b",
       "regional": [
-        1.92,
-        2.03
+        1.75,
+        2.43
       ],
       "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:qwen2.5:7b",
-      "seconds": 352.3
+      "seconds": 253.0
     },
     "B_other_judge": {
-      "estimate": 1.74,
+      "estimate": 1.63,
       "estimate_source": "agent",
-      "agreement_pct": 76,
-      "agent_median": 1.67,
-      "agent_spread": 3.0,
+      "agreement_pct": 71,
+      "agent_median": 1.6,
+      "agent_spread": 6.49,
       "median_by_model": {
-        "llama3.2": 1.5,
-        "qwen2.5:3b": 1.67
+        "llama3.2": 2.21,
+        "qwen2.5:3b": 1.6
       },
       "synthesis_model": "mistral:7b",
       "regional": [
-        1.95,
-        1.63
+        1.85,
+        1.35
       ],
       "provenance": "fast=ollama:llama3.2+ollama:qwen2.5:3b deep=ollama:mistral:7b",
-      "seconds": 578.7
+      "seconds": 246.5
     }
   },
   "interpretation": [
-    "JUDGES: qwen2.5:7b published +1.98, mistral:7b published +1.74, 0.24 PHP/L apart against a 0.5 band.",
-    "AGENTS: medians 1.67 and 1.67, widest within-arm spread 3.0 PHP/L.",
+    "JUDGES: qwen2.5:7b published +1.75, mistral:7b published +1.63, 0.12 PHP/L apart against a 0.5 band.",
+    "AGENTS: medians 1.2 and 1.6, widest within-arm spread 6.49 PHP/L.",
     "THE SYNTHESIS IS READING THE ROOM: the two judges land inside the band used to call two agents agreeing, so the single-model synthesis is a limitation on paper more than in practice. Bounded by one run per arm and by the agents being resampled between them.",
     "DEC-035: one run per arm is not a publishable cross-model verdict. Repeat before concluding."
   ]
