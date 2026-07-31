@@ -5,11 +5,17 @@ here before the run. These tests pin that the code executes THAT rule rather tha
 one adjusted afterwards, because the whole value of a pre-registration is that it
 cannot be quietly edited once the numbers exist.
 
-The first run returned `b` around 0.37 in both regions and its verdict is
-WITHDRAWN: the regional level tracks which document template DOE used, so the
-regression was partly comparing sheet layouts. Amendment 1 records that. The gate
-below can only ever withdraw a result, never manufacture one, which is what makes
-adding it after the fact legitimate.
+The run returned `b` near 0.6 in both regions and the verdict is
+`CANNOT DISTINGUISH`, which the pre-registration named in advance as the most
+likely outcome and gave its own action: change nothing.
+
+Two amendments sit on that document. Amendment 1 blamed implausible weekly moves
+on DOE changing document template; **Amendment 2 retracts it**, because only 1 of
+11 such moves coincides with a city-count change, every filename matches its
+document's own printed week, and the largest moves are coherent across all three
+regions at once. What is actually wrong is measurable: the reference series is
+only 0.685 reliable, which attenuates every slope and compresses the 0.05 gap to
+0.034 against intervals half a unit wide.
 """
 import datetime as dt
 
@@ -109,31 +115,68 @@ def test_a_duplicated_city_week_resolves_to_the_later_filename():
 # ── The gate that withdrew the result ────────────────────────────────────────
 
 def test_an_implausible_weekly_move_is_flagged():
-    """Philippine retail adjustments run about 0.20 to 3.00 PHP/L a week. An 18
-    PHP/L move is not a price change, it is a measurement change: the 2026 NCR
-    level sat at 56 to 61 on the 9-city 3-brand sheet and 72 to 96 on the 12-city
-    10-brand one, smooth within each and jumping at every switch."""
+    """Diagnostic only, and deliberately no longer a gate. Amendment 1 made it
+    one on the theory that such moves were a template artifact; Amendment 2
+    retracts that, because the largest are coherent across all three regions at
+    once and no per-document parsing artifact does that."""
     changes = {dt.date(2026, 1, 6): 1.2, dt.date(2026, 2, 3): 18.55,
                dt.date(2026, 2, 10): -18.44}
     flagged = bt.implausible_weeks(changes)
     assert [d for d, _c in flagged] == [dt.date(2026, 2, 3), dt.date(2026, 2, 10)]
 
 
-def test_a_quiet_series_passes_the_gate():
-    """The gate must not fire on ordinary weeks, or it withdraws everything."""
+def test_a_quiet_series_raises_no_flag():
     assert bt.implausible_weeks({dt.date(2026, 1, 6): 2.9,
                                  dt.date(2026, 1, 13): -1.4}) == []
 
 
-def test_the_gate_can_only_withdraw_a_result_never_create_one():
-    """Why adding it after the first run is legitimate. It has no branch that
-    turns a null into a finding, and it did not edit any branch of the decision
-    rule; `verdict` still returns exactly what it returned before."""
-    import inspect
-    source = inspect.getsource(bt.implausible_weeks)
-    for verdict_name in ('DELTA-EQUAL', 'CURRENT MODEL', 'CANNOT DISTINGUISH'):
-        assert verdict_name not in source
-    assert bt.verdict(_fit(0.90, 1.02), 1.05)[0] == 'DELTA-EQUAL'
+# ── Reliability, which is what was actually wrong ────────────────────────────
+
+def _week_series(n_weeks, cities, noise):
+    """Cities that all move by the same weekly step, plus per-city noise."""
+    import random
+    rng = random.Random(7)
+    out, level = {}, {c: 60.0 for c in cities}
+    day = dt.date(2026, 1, 6)
+    for _ in range(n_weeks):
+        step = rng.uniform(-2, 2)
+        for c in cities:
+            level[c] += step + rng.gauss(0, noise)
+        out[day] = dict(level)
+        day += dt.timedelta(days=7)
+    return out
+
+
+def test_a_clean_series_reports_high_reliability():
+    """All cities share one weekly step, so the two halves must agree."""
+    series = _week_series(80, [f'C{i}' for i in range(12)], noise=0.01)
+    assert bt.reliability(series)['reliability'] > 0.95
+
+
+def test_a_noisy_series_reports_low_reliability():
+    """Per-city noise swamping the shared step is exactly what makes two halves
+    of the SAME region disagree, and it is the thing that attenuates a slope."""
+    series = _week_series(80, [f'C{i}' for i in range(12)], noise=6.0)
+    assert bt.reliability(series)['reliability'] < 0.6
+
+
+def test_reliability_is_refused_rather_than_guessed_on_thin_input():
+    """Fewer than four cities cannot be split into two comparable halves."""
+    assert bt.reliability(_week_series(80, ['A', 'B', 'C'], noise=0.1)) is None
+    assert bt.reliability(_week_series(5, [f'C{i}' for i in range(12)], 0.1)) is None
+
+
+def test_attenuation_moves_the_reading_toward_cannot_distinguish():
+    """The substantive consequence. A reference that is only 0.685 reliable makes
+    a true 1.00 appear near 0.685 and a true 1.05 near 0.719, so the 0.05 gap
+    the test exists to resolve becomes 0.034. An interval that excludes both RAW
+    hypotheses can easily contain both attenuated ones, which is precisely what
+    happened."""
+    rel = 0.685
+    assert bt.verdict(_fit(0.378, 0.844), 1.05)[0] == 'NEITHER'
+    lo, hi = 0.378, 0.844
+    assert lo <= 1.00 * rel <= hi and lo <= 1.05 * rel <= hi
+    assert abs(1.05 * rel - 1.00 * rel) < 0.05
 
 
 def test_the_preregistered_invalidations_are_still_checked():

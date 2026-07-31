@@ -6,7 +6,27 @@
   "min_cities": 3,
   "implausible_weekly_move": 5.0,
   "family_size": 2,
-  "withdrawn": true,
+  "reference_reliability": 0.6845997527829433,
+  "reliability_by_region": {
+    "NCR": {
+      "half_correlation": 0.5204497674615202,
+      "reliability": 0.6845997527829433,
+      "cities": 13,
+      "n": 174
+    },
+    "Western Visayas": {
+      "half_correlation": 0.711566591239066,
+      "reliability": 0.8314798791719074,
+      "cities": 80,
+      "n": 131
+    },
+    "Davao Region": {
+      "half_correlation": 0.9012140595536422,
+      "reliability": 0.9480406007151292,
+      "cities": 42,
+      "n": 111
+    }
+  },
   "results": {
     "Western Visayas": {
       "n": 122,
@@ -21,10 +41,15 @@
       "largest_residual_share": 0.1774083718781498,
       "reference_zero_share": 0.02459016393442623,
       "multiplier": 1.05,
-      "verdict": "WITHDRAWN",
-      "verdict_under_rule": "NEITHER",
+      "verdict": "CANNOT DISTINGUISH",
+      "verdict_ignoring_attenuation": "NEITHER",
       "action": "Report a national change with a per-region uncertainty band, and open a new question.",
       "invalidations": [],
+      "reference_reliability": 0.6845997527829433,
+      "region_reliability": 0.8314798791719074,
+      "attenuated_delta_equal": 0.6845997527829433,
+      "attenuated_current_model": 0.7188297404220905,
+      "attenuated_gap": 0.0342299876391472,
       "implausible_weeks": {
         "reference": [
           [
@@ -97,10 +122,15 @@
       "largest_residual_share": 0.13001374508191807,
       "reference_zero_share": 0.033783783783783786,
       "multiplier": 1.05,
-      "verdict": "WITHDRAWN",
-      "verdict_under_rule": "NEITHER",
+      "verdict": "CANNOT DISTINGUISH",
+      "verdict_ignoring_attenuation": "NEITHER",
       "action": "Report a national change with a per-region uncertainty band, and open a new question.",
       "invalidations": [],
+      "reference_reliability": 0.6845997527829433,
+      "region_reliability": 0.9480406007151292,
+      "attenuated_delta_equal": 0.6845997527829433,
+      "attenuated_current_model": 0.7188297404220905,
+      "attenuated_gap": 0.0342299876391472,
       "implausible_weeks": {
         "reference": [
           [

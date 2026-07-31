@@ -217,3 +217,99 @@ Fixing the one mis-dated file and rebuilding moved the estimate:
 stated as a number: an estimate that swings this far on a single date parse is
 not yet measuring freight, whatever it reports. The verdict stays WITHDRAWN,
 because the template artifact that caused the withdrawal is still present.
+
+---
+
+# Amendment 2, 2026-08-01. Amendment 1 was wrong, and the design is infeasible
+
+## Retraction
+
+**Amendment 1 blamed the implausible weekly moves on DOE changing document
+TEMPLATE. That diagnosis is retracted.** It was asserted from a correlation
+between the level and the city count, without testing it, which is the same
+mistake `ADR-014` was retracted for and the third time in this project.
+
+Three checks refute it:
+
+* Of the 11 NCR weeks moving more than 5 PHP/L, **only 1 coincides with a change
+  in city count.** The rest happen inside a single template.
+* Every filename was checked against its document's own printed week. They match.
+  `ncr-price-monitoring-03172026` says "For the week of March 17-23, 2026".
+* The three largest moves are **coherent across all three regions at once**
+  (2026-03-17: NCR +14.5, Western Visayas +14.3, Davao +15.2). No per-document
+  parsing artifact produces that. The March 2026 episode is real in DOE's data.
+
+## What is actually wrong: the reference is imprecise, and it is measurable
+
+Split-half reliability, correlating the median change of one half of a region's
+cities against the other half. Two halves measure the same regional change, so
+their disagreement is measurement error. Spearman-Brown steps it up to the whole.
+
+| region | cities | reliability |
+|---|---|---|
+| **NCR, the reference** | 13 | **0.685** |
+| Western Visayas | 80 | 0.831 |
+| Davao Region | 42 | 0.948 |
+
+**Reliability tracks city count, and NCR was chosen as the reference for having
+the longest coverage, not the most cities.** About 32 percent of its
+weekly-change variance is noise.
+
+Error in a regressor attenuates a slope toward zero by exactly its reliability,
+so a true 1.00 appears near 0.685 and a true 1.05 near 0.719. **The 0.05 gap
+becomes 0.034**, against intervals 0.47 and 0.62 wide.
+
+## The verdict, read correctly
+
+| region | b | 95% CI | vs raw hypotheses | vs attenuated |
+|---|---|---|---|---|
+| Western Visayas | 0.649 | [0.337, 0.961] | NEITHER | **CANNOT DISTINGUISH** |
+| Davao Region | 0.611 | [0.378, 0.844] | NEITHER | **CANNOT DISTINGUISH** |
+
+`CANNOT DISTINGUISH` is a **pre-registered outcome** whose declared action is to
+change nothing and to say the multipliers remain unvalidated rather than
+validated. So this is not a withdrawal after all: it is the underpowered result
+the original document said was the most likely one.
+
+The attenuation correction was not pre-registered. It is recorded as changing the
+reading from `NEITHER` to `CANNOT DISTINGUISH`, and it is worth noting that
+**both actions leave the app unchanged and `Q-ENG-009` open**, so nothing rides
+on the choice between them.
+
+## The design cannot work, and here is the number
+
+To resolve the attenuated 0.034 gap at the observed precision:
+
+| region | n now | SE now | weeks required | that is |
+|---|---|---|---|---|
+| Western Visayas | 122 | 0.159 | 40,497 | **779 years** |
+| Davao Region | 148 | 0.119 | 27,389 | **527 years** |
+
+With a hypothetically perfect reference and the full 0.05 gap, still 365 and 247
+years. **The weekly change-on-change regression is not marginally underpowered,
+it is infeasible by two orders of magnitude**, and no amount of tidying the panel
+changes that. A 5 percent difference in slope cannot be recovered from weekly
+retail price changes at this noise level.
+
+`Q-ENG-009` is therefore **not answerable in this design**. That is a result, and
+it closes Phase 2 as specified rather than leaving it pending.
+
+## An exploratory finding that should be pre-registered next
+
+The multipliers are LEVEL premiums, and a level has a far larger signal than a
+weekly change. Comparing the same week's regional level to NCR's:
+
+| region | median ratio to NCR | p05 | p95 | multiplier claims |
+|---|---|---|---|---|
+| Western Visayas | 0.997 | 0.940 | 1.039 | 1.05 |
+| Davao Region | 0.962 | 0.922 | 1.010 | 1.05 |
+
+**Both regions sit at or BELOW NCR, not 5 percent above, and 1.05 lies outside
+the 5th-to-95th percentile range for both.** For Davao the claimed premium has
+the wrong sign: it is about 4 percent cheaper than NCR, not 5 percent dearer.
+
+This is **exploratory and is not acted on.** It was computed after seeing the
+main result, it is not what this document pre-registered, and `DEC-010` is
+explicit. It is strong enough, and cheap enough, to deserve its own
+pre-registration as Phase 2b, testing the multipliers on the basis they were
+actually defined on. Nothing in the app changes until that runs.

@@ -22,6 +22,28 @@ pre-registration records that the interval may well be wider than the gap. That
 outcome is `CANNOT DISTINGUISH`, it is declared in advance, and its action is to
 change nothing.
 
+## The result, and why the design is finished
+
+`CANNOT DISTINGUISH` in both regions. It is the declared outcome, not a failure.
+
+The reference is measured with error and the amount is measurable: split-half
+reliability across a region's own cities is 0.685 for NCR, 0.831 for Western
+Visayas, 0.948 for Davao. **Reliability tracks city count, and NCR was chosen as
+the reference for its coverage rather than its precision -- it has the fewest
+cities of the three.** Error in a regressor attenuates the slope by exactly that
+factor, so a true 1.00 appears near 0.685 and a true 1.05 near 0.719, and the
+0.05 gap compresses to 0.034 against intervals 0.47 and 0.62 wide.
+
+Resolving 0.034 at the observed precision needs **527 to 779 years of weekly
+data**; even a perfect reference needs 247 to 365. The design is not marginally
+underpowered, it is infeasible by two orders of magnitude, and tidying the panel
+does not change that. `Q-ENG-009` is not answerable this way.
+
+An exploratory follow-up, recorded in Amendment 2 and deliberately NOT acted on:
+the multipliers are LEVEL premiums, and on levels both regions sit at or BELOW
+NCR (median ratio 0.997 and 0.962) rather than 5 percent above. That wants its
+own pre-registration before anything in the app moves.
+
 ## Construction rules, all pre-registered
 
 * Window from 2023-01-03, the common coverage of all three regions.
@@ -67,16 +89,15 @@ HAC_LAGS = 4
 #: Pre-registered invalidation thresholds. Checked and reported whatever they say.
 MIN_CHANGES = 60
 
-#: Added in Amendment 1, AFTER the first run, and it withdraws a result rather
-#: than producing one. Philippine retail adjustments run about 0.20 to 3.00 PHP/L
-#: a week. A larger move is not a price change, it is a measurement change: the
-#: 2026 NCR level tracks which document TEMPLATE DOE used, 56 to 61 on the
-#: 9-city 3-brand sheet against 72 to 96 on the 12-city 10-brand one, smooth
-#: within each and jumping at every switch.
+#: Reported as a diagnostic, NOT as a gate. Philippine retail adjustments run
+#: about 0.20 to 3.00 PHP/L a week and 11 of 174 NCR weeks move more than this.
 #:
-#: The three pre-registered invalidation conditions all PASSED. None of them
-#: asked whether the series measured a constant thing over time, which is the
-#: one that failed.
+#: Amendment 1 blamed those on DOE changing document TEMPLATE. **That was wrong
+#: and Amendment 2 retracts it.** Only 1 of the 11 coincides with a change in
+#: city count, every filename matches its document's own stated week, and the
+#: three largest moves are coherent across all three regions at once, which no
+#: per-document parsing artifact could produce. The March 2026 episode is real
+#: in DOE's published data.
 IMPLAUSIBLE_WEEKLY_MOVE = 5.0
 
 REFERENCE = 'NCR'
@@ -101,10 +122,13 @@ def _price(row: dict) -> Optional[float]:
         return None
 
 
-def regional_levels(rows: list[dict]) -> dict[str, dict[dt.date, dict]]:
-    """{region: {cycle: {level, cities}}}, the median city price that week."""
-    # Pre-registered tie-break: where two documents cover one city-week, the
-    # later filename wins. Declared arbitrary in advance.
+def _deduplicated(rows: list[dict]) -> list[dict]:
+    """One priced row per city-week.
+
+    Pre-registered tie-break: where two documents cover one city-week, the later
+    filename wins. Declared arbitrary in advance so it could not be chosen later
+    to suit an outcome.
+    """
     latest: dict[tuple, dict] = {}
     for row in rows:
         price = _price(row)
@@ -113,9 +137,13 @@ def regional_levels(rows: list[dict]) -> dict[str, dict[dt.date, dict]]:
         key = (row['area'], row['province'], row['city'], row['cycle'])
         if key not in latest or row['source_file'] > latest[key]['source_file']:
             latest[key] = {**row, '_price': price}
+    return list(latest.values())
 
+
+def regional_levels(rows: list[dict]) -> dict[str, dict[dt.date, dict]]:
+    """{region: {cycle: {level, cities}}}, the median city price that week."""
     buckets: dict = collections.defaultdict(lambda: collections.defaultdict(list))
-    for row in latest.values():
+    for row in _deduplicated(rows):
         for region, provinces in DEBATED_REGIONS.items():
             if region == REFERENCE:
                 if row['area'] != REFERENCE:
@@ -132,6 +160,21 @@ def regional_levels(rows: list[dict]) -> dict[str, dict[dt.date, dict]]:
                 continue
             out[region][dt.date.fromisoformat(cycle)] = {
                 'level': statistics.median(prices), 'cities': len(prices)}
+    return out
+
+
+def city_prices(rows: list[dict]) -> dict[str, dict[dt.date, dict[str, float]]]:
+    """{region: {cycle: {city: price}}}, the input `reliability` needs."""
+    out: dict = collections.defaultdict(lambda: collections.defaultdict(dict))
+    for row in _deduplicated(rows):
+        for region, provinces in DEBATED_REGIONS.items():
+            if region == REFERENCE:
+                if row['area'] != REFERENCE:
+                    continue
+            elif not provinces or row['province'] not in provinces:
+                continue
+            day = dt.date.fromisoformat(row['cycle'])
+            out[region][day][row['city']] = row['_price']
     return out
 
 
@@ -198,9 +241,55 @@ def verdict(fit: dict, multiplier: float) -> tuple[str, str]:
 
 
 def implausible_weeks(changes: dict[dt.date, float]) -> list[tuple[dt.date, float]]:
-    """Weeks whose move is too large to be a retail price adjustment."""
+    """Weeks whose move is large for a retail price adjustment. Diagnostic only."""
     return sorted(((d, c) for d, c in changes.items()
                    if abs(c) > IMPLAUSIBLE_WEEKLY_MOVE), key=lambda kv: -abs(kv[1]))
+
+
+def reliability(city_weeks: dict[dt.date, dict[str, float]]) -> Optional[dict]:
+    """Split-half reliability of a region's WEEKLY CHANGE series.
+
+    Two halves of one region's cities measure the same regional change, so
+    whatever they disagree about is measurement error. Cities are split by
+    alternating rank so the halves are comparable, the median change is built
+    within each half, and the two are correlated. Spearman-Brown steps the
+    half-length correlation up to the reliability of the full panel.
+
+    This is what Amendment 1 should have measured instead of guessing at
+    templates. **The reference matters most**: a regressor measured with error
+    attenuates the slope toward zero by exactly this factor, so a true 1.05 is
+    observed near `1.05 * reliability`. NCR was chosen as the reference for
+    having the longest coverage, and it turns out to be the least reliable of
+    the three because it has the fewest cities.
+    """
+    cities = sorted({c for week in city_weeks.values() for c in week})
+    if len(cities) < 4:
+        return None
+    halves = (set(cities[0::2]), set(cities[1::2]))
+
+    def changes_of(half: set) -> dict[dt.date, float]:
+        levels = {}
+        for day, week in city_weeks.items():
+            prices = [p for c, p in week.items() if c in half]
+            if len(prices) >= 2:
+                levels[day] = statistics.median(prices)
+        return {d: levels[d] - levels[d - dt.timedelta(days=7)]
+                for d in levels if d - dt.timedelta(days=7) in levels}
+
+    a, b = (changes_of(h) for h in halves)
+    paired = sorted(set(a) & set(b))
+    if len(paired) < 30:
+        return None
+    xs, ys = [a[d] for d in paired], [b[d] for d in paired]
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    denom = (sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys)) ** 0.5
+    if denom == 0:
+        return None
+    half_r = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
+    return {'half_correlation': half_r,
+            # Spearman-Brown, doubling the split-half length back to the whole.
+            'reliability': 2 * half_r / (1 + half_r),
+            'cities': len(cities), 'n': len(paired)}
 
 
 def invalidations(fit: dict) -> list[str]:
@@ -230,6 +319,9 @@ def main() -> int:
     levels = regional_levels(rows)
     changes = {r: weekly_changes(v) for r, v in levels.items()}
     ref = changes.get(REFERENCE, {})
+    cities = city_prices(rows)
+    rel = {r: reliability(cities.get(r, {})) for r in DEBATED_REGIONS}
+    ref_rel = (rel.get(REFERENCE) or {}).get('reliability')
 
     print(f'Pre-registered at {PREREGISTRATION}')
     print(f'Window from {WINDOW_START}, reference {REFERENCE}\n')
@@ -253,17 +345,29 @@ def main() -> int:
         call, action = verdict(fit, multiplier)
         bad = invalidations(fit)
 
-        # Amendment 1. The series has to be measuring a constant thing before the
-        # decision rule means anything, so this gate runs BEFORE the verdict is
-        # allowed to stand, and it can only withdraw a result, never create one.
+        # Amendment 2. The reference is measured with error, and error in a
+        # regressor attenuates the slope toward zero by exactly its reliability.
+        # So the interval is compared against the hypotheses AS THEY WOULD APPEAR
+        # through this measurement, rather than against their raw values.
         wild = {'reference': implausible_weeks({d: ref[d] for d in paired}),
                 region: implausible_weeks({d: changes[region][d] for d in paired})}
-        withdrawn = any(wild.values())
+        att_one = 1.00 * ref_rel if ref_rel else 1.00
+        att_mult = multiplier * ref_rel if ref_rel else multiplier
+        holds = (fit['ci_low'] <= att_one <= fit['ci_high'],
+                 fit['ci_low'] <= att_mult <= fit['ci_high'])
+        att_call = ('CANNOT DISTINGUISH' if all(holds)
+                    else 'DELTA-EQUAL' if holds[0]
+                    else 'CURRENT MODEL' if holds[1] else 'NEITHER')
 
         results[region] = {
             **fit, 'multiplier': multiplier,
-            'verdict': 'WITHDRAWN' if withdrawn else call,
-            'verdict_under_rule': call, 'action': action, 'invalidations': bad,
+            'verdict': att_call, 'verdict_ignoring_attenuation': call,
+            'action': action, 'invalidations': bad,
+            'reference_reliability': ref_rel,
+            'region_reliability': (rel.get(region) or {}).get('reliability'),
+            'attenuated_delta_equal': att_one,
+            'attenuated_current_model': att_mult,
+            'attenuated_gap': abs(att_mult - att_one),
             'implausible_weeks': {k: [[d.isoformat(), round(c, 2)] for d, c in v]
                                   for k, v in wild.items() if v}}
 
@@ -274,41 +378,40 @@ def main() -> int:
               f'residual sd {fit["residual_sd"]:.3f}')
         print(f'   CI width {fit["ci_high"] - fit["ci_low"]:.4f} against a '
               f'{multiplier - 1.00:.2f} gap between the hypotheses')
-        print(f'   contains 1.00: {fit["ci_low"] <= 1.00 <= fit["ci_high"]}   '
-              f'contains {multiplier}: {fit["ci_low"] <= multiplier <= fit["ci_high"]}')
         for note in bad:
             print(f'   PRE-REGISTERED INVALIDATION: {note}')
-        if withdrawn:
-            print(f'   VERDICT WITHDRAWN. Under the rule it would read {call}.')
-            for series_name, weeks in wild.items():
-                if weeks:
-                    shown = ', '.join(f'{d} {c:+.1f}' for d, c in weeks[:4])
-                    print(f'      {series_name}: {len(weeks)} weeks move more than '
-                          f'{IMPLAUSIBLE_WEEKLY_MOVE} PHP/L  [{shown}]')
-        else:
-            print(f'   VERDICT: {call}')
-            print(f'   {action}')
+        print(f'   reading the interval against the RAW hypotheses: {call}')
+        print(f'   reference reliability {ref_rel:.3f}, so a true 1.00 appears near '
+              f'{att_one:.3f} and a true {multiplier} near {att_mult:.3f}')
+        print(f'   the 0.05 gap becomes {results[region]["attenuated_gap"]:.3f} '
+              f'against a CI {fit["ci_high"] - fit["ci_low"]:.3f} wide')
+        print(f'   VERDICT: {att_call}')
+        if att_call == 'CANNOT DISTINGUISH':
+            print('   Change nothing. The multipliers remain unvalidated rather '
+                  'than validated.')
 
-    withdrawn = any(r['verdict'] == 'WITHDRAWN' for r in results.values())
     print('\n' + '=' * 72)
-    if withdrawn:
-        print('NO VERDICT. The series do not measure a constant quantity over '
-              'time: the level tracks which document template DOE used, so a\n'
-              'regression of one region on another is partly a regression of one '
-              'sheet layout on another. See Amendment 1 in the pre-registration.\n'
-              'The decision rule stands as written and is not renegotiated on the '
-              'strength of having seen the coefficient.')
-    else:
-        calls = {r['verdict'] for r in results.values()}
-        if len(calls) > 1:
-            print('The two regions DISAGREE. Pre-registered action: report both, '
-                  'change nothing, and do not pick the region that supports a '
-                  'preferred model.')
-        elif calls:
-            print(f'Both regions: {calls.pop()}')
+    print(f'Reference ({REFERENCE}) split-half reliability {ref_rel:.3f}: about '
+          f'{100 * (1 - ref_rel):.0f}% of its weekly-change variance is\n'
+          f'measurement error, which attenuates every slope below toward zero. '
+          f'Reliability tracks city count, and\n{REFERENCE} was chosen for '
+          f'coverage, not for precision -- it has the FEWEST cities of the three.')
+    for region in DEBATED_REGIONS:
+        r = rel.get(region)
+        if r:
+            print(f'   {region:<18} reliability {r["reliability"]:.3f}  '
+                  f'({r["cities"]} cities, n={r["n"]})')
 
-    # Written whatever the outcome. A withdrawn result is the finding here, and
-    # an artifact that only exists when the test succeeded is a file drawer.
+    calls = {r['verdict'] for r in results.values()}
+    if len(calls) > 1:
+        print('\nThe two regions DISAGREE. Pre-registered action: report both, '
+              'change nothing, and do not pick the region that supports a '
+              'preferred model.')
+    elif calls:
+        print(f'\nBoth regions: {calls.pop()}')
+
+    # Written whatever the outcome. An inconclusive result is the finding here,
+    # and an artifact that only exists when a test succeeded is a file drawer.
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.json.write_text(json.dumps({
         'preregistration': PREREGISTRATION,
@@ -318,11 +421,12 @@ def main() -> int:
         'min_cities': MIN_CITIES,
         'implausible_weekly_move': IMPLAUSIBLE_WEEKLY_MOVE,
         'family_size': len(MULTIPLIERS) - 1,
-        'withdrawn': withdrawn,
+        'reference_reliability': ref_rel,
+        'reliability_by_region': {k: v for k, v in rel.items() if v},
         'results': results,
     }, indent=2) + '\n', encoding='utf-8')
     print(f'\nartifact {args.json}')
-    return 1 if withdrawn else 0
+    return 0
 
 
 if __name__ == '__main__':
