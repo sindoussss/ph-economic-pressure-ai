@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-07-29 (fuel pricing week of 2026-07-28)",
+  "measured_at": "2026-07-31 (fuel pricing week of 2026-07-28)",
   "provider": "ollama",
   "models": {
     "fast": "qwen2.5:3b",
@@ -13,26 +13,26 @@
   },
   "runs": [
     {
-      "estimate": 1.2,
+      "estimate": 0.36,
       "estimate_source": "agent",
-      "agreement_pct": 100,
+      "agreement_pct": 71,
       "agreement_n": 32,
       "agreement_regions": [
         4,
         4
       ],
-      "agreement_distinct": 1,
-      "agreement_diversity": 0.45,
+      "agreement_distinct": 16,
+      "agreement_diversity": 0.65,
       "regional": [
         {
           "pair": "NCR & Central Luzon",
-          "estimate": 2.36,
-          "agreement_pct": 100
+          "estimate": 2.57,
+          "agreement_pct": 67
         },
         {
           "pair": "Western Visayas & Davao Region",
-          "estimate": 1.2,
-          "agreement_pct": 100
+          "estimate": 2.23,
+          "agreement_pct": 61
         }
       ],
       "echo": {
@@ -40,53 +40,48 @@
         "anchor": 2.214,
         "echo_exact_n": 0,
         "echo_exact_pct": 0.0,
-        "within_0.25_n": 0,
-        "within_0.25_pct": 0.0,
-        "modal_value": 1.2,
-        "modal_n": 32,
+        "within_0.25_n": 14,
+        "within_0.25_pct": 43.8,
+        "modal_value": 2.5,
+        "modal_n": 8,
         "modal_is_anchor": false,
-        "mean_distance_from_anchor": 1.014,
-        "spread": 0.0
+        "mean_distance_from_anchor": 0.574,
+        "spread": 4.11
       },
       "openings": {
         "agents": 20,
-        "distinct_openings": 9,
-        "colliding_groups": 5,
+        "distinct_openings": 13,
+        "colliding_groups": 6,
         "max_roles_in_a_collision": 3,
-        "single_role_collisions": 1,
+        "single_role_collisions": 2,
         "cross_role_collisions": 4,
         "examples": [
           {
-            "opening": "DIRECTION: UP or DIRECTION: DOWN or DIRECTION: FLAT ESTIMATE: +\u20b11.20/L",
+            "opening": "CAUSAL CHAIN: Oil price increase (+5%) -> crude oil cost up -> DOE wee",
+            "agents": [
+              "NCR ConfidenceScorer",
+              "NCR Critic",
+              "NCR Forecaster"
+            ]
+          },
+          {
+            "opening": "CAUSAL CHAIN: Oil price increase (+5%) -> crude cost per litre revalue",
             "agents": [
               "Central Luzon DataExtractor",
-              "Central Luzon Synthesizer",
-              "Davao Region DataExtractor",
-              "Davao Region Synthesizer",
               "Western Visayas Synthesizer"
             ]
           },
           {
-            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price +5.0% -> crud",
+            "opening": "CAUSAL CHAIN: Oil price +5.0% -> import cost up -> DOE weekly pass-thr",
             "agents": [
-              "Central Luzon Forecaster",
-              "NCR Forecaster",
-              "Western Visayas Forecaster"
+              "Central Luzon Synthesizer",
+              "Davao Region Synthesizer"
             ]
           },
           {
-            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price increase (+5.",
+            "opening": "Analysis: The current market scenario is characterized by an oil price",
             "agents": [
-              "NCR Critic",
               "NCR DataExtractor",
-              "NCR Synthesizer"
-            ]
-          },
-          {
-            "opening": "DIRECTION: UP ESTIMATE: +\u20b11.20/L CAUSAL CHAIN: Oil price increase (+5%",
-            "agents": [
-              "Davao Region Critic",
-              "Western Visayas ConfidenceScorer",
               "Western Visayas DataExtractor"
             ]
           }
@@ -108,7 +103,7 @@
           "Synthesizer"
         ]
       },
-      "seconds": 217.1
+      "seconds": 235.6
     }
   ],
   "interpretation": [
