@@ -1029,6 +1029,30 @@ _ROLE_RAG: dict[str, list[str]] = {
 # ── All 17 PH administrative regions ─────────────────────────────────────────
 # anchor: index into swarm group survivors (0=NCR, 1=Central Luzon, 2=W.Visayas, 3=Davao)
 # multiplier: freight/logistics premium over NCR (applied to price change magnitude)
+#
+# NINE MULTIPLIERS WERE CORRECTED 2026-08-01 against DOE's published regional
+# prices, 2023 to 2026, per `docs/preregistration/2026-08-01-regional-level-premiums.md`.
+# The originals are recorded inline. They had never been fitted: `git log -S` puts
+# them in `830b2e0`, a bulk rebrand-and-UI commit, as assumed constants.
+#
+# Every one of the nine claimed a 3 to 8 percent premium over NCR that the price
+# data does not show; the observed ratios run 0.96 to 1.02. Davao was claimed 5
+# percent DEARER than NCR and measures 4 percent cheaper.
+#
+# MIMAROPA and Bicol were tested and LEFT ALONE, and they matter more than the
+# nine: claimed 1.08 and 1.06, measured 1.092 and 1.049. They are the positive
+# control. A method that flattened every region toward 1.00 would have flattened
+# those too, and it did not, so the nine corrections are not an artifact of the
+# estimator.
+#
+# Four regions have NO DOE series and are untouched: Ilocos, Cagayan Valley,
+# Central Luzon and CAR still carry their unfitted values (`DEC-044`). BARMM has
+# a series too thin to test. Those five are assumptions, not measurements, and
+# nine of eleven testable neighbours were wrong in the same direction.
+#
+# This does NOT settle whether a level premium should scale a price CHANGE at
+# all. That question is `Q-ENG-009`, and it closed as infeasible: resolving it
+# needs 527 to 779 years of weekly data. See ADR-016.
 ALL_REGIONS: list[dict] = [
     # Luzon
     {'name': 'NCR',               'code': 'NCR',   'multiplier': 1.00, 'anchor': 0,
@@ -1039,8 +1063,8 @@ ALL_REGIONS: list[dict] = [
      'nx': 0.72, 'ny': 0.09, 'isle': 'L'},
     {'name': 'Central Luzon',     'code': 'III',   'multiplier': 1.02, 'anchor': 1,
      'nx': 0.60, 'ny': 0.25, 'isle': 'L'},
-    {'name': 'CALABARZON',        'code': 'IVA',   'multiplier': 1.03, 'anchor': 1,
-     'nx': 0.70, 'ny': 0.40, 'isle': 'L'},
+    {'name': 'CALABARZON',        'code': 'IVA',   'multiplier': 0.98, 'anchor': 1,
+     'nx': 0.70, 'ny': 0.40, 'isle': 'L'},   # was 1.03, measured 0.979
     {'name': 'MIMAROPA',          'code': 'IVB',   'multiplier': 1.08, 'anchor': 1,
      'nx': 0.44, 'ny': 0.44, 'isle': 'L'},
     {'name': 'Bicol Region',      'code': 'V',     'multiplier': 1.06, 'anchor': 1,
@@ -1048,23 +1072,23 @@ ALL_REGIONS: list[dict] = [
     {'name': 'CAR',               'code': 'CAR',   'multiplier': 1.08, 'anchor': 0,
      'nx': 0.60, 'ny': 0.15, 'isle': 'L'},
     # Visayas
-    {'name': 'Western Visayas',   'code': 'VI',    'multiplier': 1.05, 'anchor': 2,
-     'nx': 0.36, 'ny': 0.56, 'isle': 'V'},
-    {'name': 'Central Visayas',   'code': 'VII',   'multiplier': 1.04, 'anchor': 2,
-     'nx': 0.62, 'ny': 0.57, 'isle': 'V'},
-    {'name': 'Eastern Visayas',   'code': 'VIII',  'multiplier': 1.07, 'anchor': 2,
-     'nx': 0.82, 'ny': 0.53, 'isle': 'V'},
+    {'name': 'Western Visayas',   'code': 'VI',    'multiplier': 1.00, 'anchor': 2,
+     'nx': 0.36, 'ny': 0.56, 'isle': 'V'},   # was 1.05, measured 0.997
+    {'name': 'Central Visayas',   'code': 'VII',   'multiplier': 1.00, 'anchor': 2,
+     'nx': 0.62, 'ny': 0.57, 'isle': 'V'},   # was 1.04, measured 1.002
+    {'name': 'Eastern Visayas',   'code': 'VIII',  'multiplier': 1.00, 'anchor': 2,
+     'nx': 0.82, 'ny': 0.53, 'isle': 'V'},   # was 1.07, measured 1.002
     # Mindanao
-    {'name': 'Zamboanga',         'code': 'IX',    'multiplier': 1.08, 'anchor': 3,
-     'nx': 0.26, 'ny': 0.70, 'isle': 'M'},
-    {'name': 'Northern Mindanao', 'code': 'X',     'multiplier': 1.06, 'anchor': 3,
-     'nx': 0.56, 'ny': 0.70, 'isle': 'M'},
-    {'name': 'Caraga',            'code': 'XIII',  'multiplier': 1.07, 'anchor': 3,
-     'nx': 0.82, 'ny': 0.74, 'isle': 'M'},
-    {'name': 'Davao Region',      'code': 'XI',    'multiplier': 1.05, 'anchor': 3,
-     'nx': 0.72, 'ny': 0.82, 'isle': 'M'},
-    {'name': 'SOCCSKSARGEN',      'code': 'XII',   'multiplier': 1.07, 'anchor': 3,
-     'nx': 0.56, 'ny': 0.87, 'isle': 'M'},
+    {'name': 'Zamboanga',         'code': 'IX',    'multiplier': 0.98, 'anchor': 3,
+     'nx': 0.26, 'ny': 0.70, 'isle': 'M'},   # was 1.08, measured 0.984
+    {'name': 'Northern Mindanao', 'code': 'X',     'multiplier': 0.99, 'anchor': 3,
+     'nx': 0.56, 'ny': 0.70, 'isle': 'M'},   # was 1.06, measured 0.990
+    {'name': 'Caraga',            'code': 'XIII',  'multiplier': 1.02, 'anchor': 3,
+     'nx': 0.82, 'ny': 0.74, 'isle': 'M'},   # was 1.07, measured 1.017
+    {'name': 'Davao Region',      'code': 'XI',    'multiplier': 0.96, 'anchor': 3,
+     'nx': 0.72, 'ny': 0.82, 'isle': 'M'},   # was 1.05, measured 0.962
+    {'name': 'SOCCSKSARGEN',      'code': 'XII',   'multiplier': 0.99, 'anchor': 3,
+     'nx': 0.56, 'ny': 0.87, 'isle': 'M'},   # was 1.07, measured 0.988
     {'name': 'BARMM',             'code': 'BARMM', 'multiplier': 1.10, 'anchor': 3,
      'nx': 0.38, 'ny': 0.84, 'isle': 'M'},
 ]

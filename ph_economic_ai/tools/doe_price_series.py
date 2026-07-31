@@ -168,6 +168,53 @@ DEBATED_REGIONS = {
 }
 
 
+#: Every PH region as its province set, for the regions DOE's panel can reach.
+#: Administrative fact, published by PSA, not a modelling choice. `DEBATED_REGIONS`
+#: is the swarm's four; this is the full table `swarm.ALL_REGIONS` assigns a
+#: freight multiplier to, so each multiplier can be checked against prices.
+#:
+#: The four with an EMPTY set are empty because DOE publishes nothing north of
+#: NCR. They are listed rather than omitted so a coverage table cannot read as
+#: complete (`DEC-044`).
+REGION_PROVINCES: dict[str, frozenset] = {
+    'NCR': frozenset(),                        # the area IS the region
+    'Ilocos Region': frozenset(),              # no DOE series
+    'Cagayan Valley': frozenset(),             # no DOE series
+    'Central Luzon': frozenset(),              # no DOE series
+    'CAR': frozenset(),                        # no DOE series
+    'CALABARZON': frozenset({
+        'Cavite', 'Laguna', 'Batangas', 'Rizal', 'Quezon'}),
+    'MIMAROPA': frozenset({
+        'Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Romblon',
+        'Palawan'}),
+    'Bicol Region': frozenset({
+        'Albay', 'Camarines Norte', 'Camarines Sur', 'Catanduanes', 'Masbate',
+        'Sorsogon'}),
+    'Western Visayas': frozenset({
+        'Aklan', 'Antique', 'Capiz', 'Guimaras', 'Iloilo', 'Negros Occidental'}),
+    'Central Visayas': frozenset({
+        'Bohol', 'Cebu', 'Negros Oriental', 'Siquijor'}),
+    'Eastern Visayas': frozenset({
+        'Biliran', 'Eastern Samar', 'Leyte', 'Northern Samar', 'Samar',
+        'Southern Leyte'}),
+    'Zamboanga': frozenset({
+        'Zamboanga del Norte', 'Zamboanga del Sur', 'Zamboanga Sibugay'}),
+    'Northern Mindanao': frozenset({
+        'Bukidnon', 'Camiguin', 'Lanao del Norte', 'Misamis Occidental',
+        'Misamis Oriental'}),
+    'Davao Region': frozenset({
+        'Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental',
+        'Davao Oriental'}),
+    'SOCCSKSARGEN': frozenset({
+        'Cotabato', 'Sarangani', 'South Cotabato', 'Sultan Kudarat'}),
+    'Caraga': frozenset({
+        'Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands',
+        'Surigao del Norte', 'Surigao del Sur'}),
+    'BARMM': frozenset({
+        'Basilan', 'Lanao del Sur', 'Maguindanao', 'Sulu', 'Tawi-Tawi'}),
+}
+
+
 def coverage(rows: list[dict]) -> dict:
     """Priced weeks per debated region per year.
 
