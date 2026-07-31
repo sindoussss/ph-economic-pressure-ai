@@ -33,11 +33,34 @@ _FALLBACK_PRICE_AS_OF: str = 'May 2026 (NCR unleaded 91)'
 _PRICE_FETCH_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
 
-def fetch_live_retail_price() -> float:
-    """Fetch current NCR retail gasoline price from fuelprice.ph (DOE-sourced).
+#: The grade this app forecasts, and the labels fuelprice.ph uses for it, in
+#: preference order. Selected BY NAME.
+#:
+#: It used to take the median of every "avg PXX.XX/L" on the page, which is a
+#: median across incomparable products. Measured 2026-07-31 the page listed
+#: Diesel 81.13, Diesel Plus 83.94, Unleaded 91 84.38, Premium 95 89.51 and
+#: KEROSENE 111.43, so the median landed on Unleaded 91 while the app forecasts
+#: RON 95, and kerosene, which is not a motor fuel, sat in the pool deciding it.
+#:
+#: The 60 to 150 filter was doing nothing useful either: DOE's own published
+#: RON 95 for the same period ranges 51.30 to 65.85 by region, so the floor sits
+#: above much of the real range and would discard it.
+_PRICE_GRADE_PREFERENCE: tuple[tuple[str, str], ...] = (
+    ('RON 95', r'(?:(?:premium|unleaded)\s*95|RON\s*95)'),
+    ('RON 91', r'(?:(?:unleaded|regular)\s*91|RON\s*91)'),
+)
 
-    Parses brand-average prices for all fuel types, takes the median of values
-    in the 60–150 range. Falls back to _FALLBACK_RETAIL_PRICE_PHP on any error.
+
+def fetch_live_retail_price() -> float:
+    """Fetch the current NCR retail gasoline price from fuelprice.ph.
+
+    NOT DOE-sourced, whatever this docstring used to say: fuelprice.ph is a
+    third-party aggregator. DOE publishes its own per-region series and the two
+    disagree by roughly 40 percent on RON 95, which is unresolved and tracked as
+    `Q-ENG-009`.
+
+    Selects the grade BY NAME rather than medianing across products. Falls back to
+    _FALLBACK_RETAIL_PRICE_PHP on any error.
 
     A caller that needs to know whether the number is REAL must use
     `fetch_live_retail_price_checked`. Silently returning a constant is fine for
@@ -70,16 +93,24 @@ def fetch_live_retail_price_checked() -> tuple[float, bool]:
         for tag in soup(['script', 'style']):
             tag.decompose()
         text = soup.get_text(separator=' ', strip=True)
-        # Matches "avg ₱98.82/L" or "avg P98.82/L" — fuelprice.ph brand averages
-        hits = [
-            float(m) for m in re.findall(
-                r'avg\s*[^\d]*(\d{2,3}(?:\.\d{1,2})?)\s*/[Ll]', text
-            )
-            if 60.0 <= float(m) <= 150.0
-        ]
-        if hits:
-            hits.sort()
-            return hits[len(hits) // 2], True   # median across fuel types
+        # Grade by NAME, in preference order, so the baseline is the product the
+        # app actually forecasts rather than whatever sits in the middle of a
+        # list that includes kerosene.
+        for label, pattern in _PRICE_GRADE_PREFERENCE:
+            m = re.search(
+                pattern + r'\s*[-–:]?\s*avg\s*[^\d]*(\d{2,3}(?:\.\d{1,2})?)\s*/[Ll]',
+                text, re.IGNORECASE)
+            if m:
+                value = float(m.group(1))
+                # A sanity bound only, not a selection rule. Wide on purpose:
+                # DOE's published RON 95 spans 51 to 66 by region while this
+                # aggregator reads near 90, and a narrow band here would silently
+                # discard whichever of the two turns out to be right.
+                if 20.0 <= value <= 200.0:
+                    logging.info('swarm: retail baseline %s = %.2f from fuelprice.ph',
+                                 label, value)
+                    return value, True
+        logging.info('swarm: no named fuel grade found on fuelprice.ph')
     except Exception:
         logging.info('swarm: retail price fetch failed; using the fallback',
                      exc_info=True)
@@ -1123,11 +1154,12 @@ def _make_system_prompt(role: str, region: str,
     already existed on the orchestrator and simply never reached here.
     """
     if price_is_live:
-        provenance = ("a median across the fuel grades listed by fuelprice.ph "
-                      "rather than a DOE bulletin figure for a single grade")
+        provenance = ("the RON 95 price listed by fuelprice.ph, a third-party "
+                      "aggregator rather than a DOE figure")
     else:
-        provenance = (f"a STORED REFERENCE from {_FALLBACK_PRICE_AS_OF} and may "
-                      f"be months out of date, no live price having been "
+        provenance = (f"a STORED REFERENCE from {_FALLBACK_PRICE_AS_OF}, a "
+                      f"DIFFERENT GRADE from the RON 95 you are forecasting, and "
+                      f"possibly months out of date, no live price having been "
                       f"available this run")
     price_anchor = (
         f"IMPORTANT: Treat approximately ₱{current_price:.2f}/L as the pump price "

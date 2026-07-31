@@ -473,13 +473,20 @@ def test_the_prompt_no_longer_claims_the_price_is_doe_published():
     and was wrong three times: the source is a fuelprice.ph regex scrape, the
     value is a MEDIAN across every listed grade rather than unleaded 95, and on a
     failed scrape it is a stored constant from May 2026 still called current. The
-    same value is grading's baseline."""
+    same value is grading's baseline.
+
+    ADR-011 corrected the LABEL and left the SELECTION alone, so the prompt then
+    truthfully described a median across grades. That median was itself the
+    defect: it landed on Unleaded 91 out of a pool containing kerosene. The grade
+    is now chosen by name, so the honest description changed with it.
+    """
     from ph_economic_ai.engine.swarm import _make_system_prompt
-    prompt = _make_system_prompt('Forecaster', 'NCR', 98.82, True)
+    prompt = _make_system_prompt('Forecaster', 'NCR', 89.51, True)
     assert 'DOE-published' not in prompt
     assert 'unleaded 95' not in prompt
     assert 'fuelprice.ph' in prompt
-    assert 'median across the fuel grades' in prompt
+    assert 'RON 95 price listed by fuelprice.ph' in prompt
+    assert 'median across the fuel grades' not in prompt
 
 
 def test_a_stale_fallback_price_says_so_and_names_its_date():
@@ -509,3 +516,68 @@ def test_the_baseline_is_described_as_a_scale_not_a_level():
     prompt = _make_system_prompt('Forecaster', 'NCR', 98.82, True)
     assert 'as a SCALE' in prompt
     assert 'not output the absolute price' in prompt.replace('Do NOT', 'not')
+
+
+# ── The baseline grade is selected by name, not by median ────────────────────
+
+def test_the_baseline_grade_is_chosen_by_name():
+    """It took the median of every "avg PXX.XX/L" on the page. Measured
+    2026-07-31 that page listed Diesel 81.13, Diesel Plus 83.94, Unleaded 91
+    84.38, Premium 95 89.51 and KEROSENE 111.43, so the median landed on Unleaded
+    91 while the app forecasts RON 95, and kerosene sat in the pool deciding it."""
+    import re
+    from ph_economic_ai.engine.swarm import _PRICE_GRADE_PREFERENCE
+    page = ('Unleaded 91 - avg P84.38/L Premium 95 - avg P89.51/L '
+            'Diesel - avg P81.13/L Diesel Plus - avg P83.94/L '
+            'Kerosene - avg P111.43/L')
+    label, pattern = _PRICE_GRADE_PREFERENCE[0]
+    assert label == 'RON 95', 'the forecast grade must be preferred'
+    m = re.search(pattern + r'\s*[-–:]?\s*avg\s*[^\d]*(\d{2,3}(?:\.\d{1,2})?)\s*/[Ll]',
+                  page, re.IGNORECASE)
+    assert m and float(m.group(1)) == pytest.approx(89.51)
+
+
+def test_kerosene_can_never_become_the_gasoline_baseline():
+    """It is not a motor fuel. Under the median it was one of five values
+    deciding the number."""
+    import re
+    from ph_economic_ai.engine.swarm import _PRICE_GRADE_PREFERENCE
+    page = 'Kerosene - avg P111.43/L Diesel - avg P81.13/L'
+    for _, pattern in _PRICE_GRADE_PREFERENCE:
+        assert not re.search(pattern, page, re.IGNORECASE)
+
+
+def test_each_grade_pattern_binds_its_own_price():
+    """The first version wrote the alternation unwrapped, so `|` bound looser
+    than the concatenation and the pattern matched the LABEL alone without ever
+    reaching the price. The live scrape silently fell back."""
+    import re
+    from ph_economic_ai.engine.swarm import _PRICE_GRADE_PREFERENCE
+    page = 'Unleaded 91 - avg P84.38/L Premium 95 - avg P89.51/L'
+    got = {}
+    for label, pattern in _PRICE_GRADE_PREFERENCE:
+        m = re.search(pattern + r'\s*[-–:]?\s*avg\s*[^\d]*(\d{2,3}(?:\.\d{1,2})?)\s*/[Ll]',
+                      page, re.IGNORECASE)
+        got[label] = float(m.group(1)) if m else None
+    assert got == {'RON 95': 89.51, 'RON 91': 84.38}
+
+
+def test_the_sanity_bound_does_not_discard_doe_prices():
+    """The old 60 to 150 filter sat above much of the real range: DOE's published
+    RON 95 for the same week spans 51.30 to 65.85 by region. A bound that
+    discards the primary source's own numbers is a selection rule pretending to
+    be a guard."""
+    import inspect
+    from ph_economic_ai.engine import swarm
+    src = inspect.getsource(swarm.fetch_live_retail_price_checked)
+    assert '60.0 <= float(m) <= 150.0' not in src
+    assert '20.0 <= value <= 200.0' in src
+
+
+def test_the_prompt_no_longer_calls_the_baseline_a_median():
+    from ph_economic_ai.engine.swarm import _make_system_prompt
+    live = _make_system_prompt('Forecaster', 'NCR', 89.51, True)
+    assert 'median across the fuel grades' not in live
+    assert 'RON 95 price listed by fuelprice.ph' in live
+    stale = _make_system_prompt('Forecaster', 'NCR', 98.82, False)
+    assert 'DIFFERENT GRADE' in stale, 'the fallback is unleaded 91, not RON 95'
