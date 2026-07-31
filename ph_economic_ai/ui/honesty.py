@@ -221,20 +221,28 @@ def regional_basis() -> str:
     reader comparing Zamboanga to NCR is comparing an estimate to arithmetic
     performed on a different region's estimate.
 
-    Worth stating because nothing here has ever been checked. There is no
-    regional price series in the project: every stored file is national or
-    national CPI, and `engine.ground_truth` has no notion of region, so grading
-    has only ever scored the national number. The multipliers were not fitted
-    either, having arrived in a rebrand commit as assumed constants.
+    **Updated 2026-08-01, and the update is narrower than it looks.** The premiums
+    were assumed constants that arrived in a rebrand commit; eleven of them have
+    now been measured against DOE's published regional prices, 2023 to 2026, and
+    nine were wrong and were corrected. So "unfitted" is no longer true of the
+    premium.
 
-    Scoped in the vault as the regional multiplier backtest. Until a DOE regional
-    series exists, "derived, not forecast, and never validated" is the accurate
-    description and this is where it belongs.
+    What has NOT changed is the thing this note exists for. Only the national
+    figure is graded against a real price, `engine.ground_truth` still has no
+    notion of region, and whether a level premium should scale a price CHANGE at
+    all remains unsettled: `Q-ENG-009` closed as infeasible, needing centuries of
+    weekly data to resolve. A measured premium applied to a change is still
+    arithmetic performed on another region's estimate.
+
+    So the wording keeps "derived rather than forecast" and stops calling the
+    premium unfitted, because overstating the correction would be the same
+    failure in the opposite direction.
     """
     return ('4 region groups debated; the other 13 figures are scaled from them '
-            'by a fixed freight premium. Only the national figure is graded '
-            'against a real price, so treat the per-region numbers as derived '
-            'rather than forecast.')
+            'by a regional price premium measured against DOE prices for 11 of '
+            '17 regions. Only the national figure is graded against a real '
+            'price, so treat the per-region numbers as derived rather than '
+            'forecast.')
 
 
 #: Regions for which DOE publishes no retail price series, so their figures cannot

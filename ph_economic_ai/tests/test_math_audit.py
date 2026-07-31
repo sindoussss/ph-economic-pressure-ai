@@ -378,11 +378,18 @@ def test_an_anchor_region_is_not_charged_its_own_freight_twice():
 
 
 def test_a_region_is_charged_only_the_premium_over_its_anchor():
-    """Zamboanga is 1.08 over NCR and its estimate comes from Davao at 1.05, so
-    only 1.08/1.05 is outstanding."""
-    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    """Zamboanga's estimate comes from Davao, so only the premium OVER Davao is
+    outstanding rather than the whole premium over NCR.
+
+    The multipliers are read from the table rather than written in. Nine of them
+    were corrected on 2026-08-01 against DOE prices, and this test failed on the
+    literals it used to carry -- which is `DEC-040` exactly: it was asserting an
+    instance of the rule instead of the rule."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, derive_regional_estimates
+    mult = {g['name']: g['multiplier'] for g in ALL_REGIONS}
     derived = derive_regional_estimates(2.42, {3: 2.42})
-    assert derived['Zamboanga'] == pytest.approx(round(2.42 * (1.08 / 1.05), 2))
+    expected = round(2.42 * (mult['Zamboanga'] / mult['Davao Region']), 2)
+    assert derived['Zamboanga'] == pytest.approx(expected)
 
 
 def test_ncr_anchored_regions_are_unchanged_by_the_fix():
@@ -397,15 +404,29 @@ def test_ncr_anchored_regions_are_unchanged_by_the_fix():
 
 def test_a_relative_premium_below_one_is_legitimate():
     """Written first as "no region is ever cheaper than the region that priced
-    it", which is false. Central Visayas carries 1.04 while its estimate comes
-    from Western Visayas at 1.05, so its relative premium is 0.990 and its number
-    lands BELOW the anchor's. Cebu being cheaper to serve than Iloilo is a fact
-    about the table, not a defect in the derivation, and an assertion of
-    monotonicity would have forced a wrong fix."""
-    from ph_economic_ai.engine.swarm import derive_regional_estimates
-    derived = derive_regional_estimates(2.42, {2: 2.42})
-    assert derived['Central Visayas'] == pytest.approx(round(2.42 * (1.04 / 1.05), 2))
-    assert derived['Central Visayas'] < derived['Western Visayas']
+    it", which is false. A region whose multiplier sits below its anchor's lands
+    BELOW the anchor's number, and that is a fact about the table rather than a
+    defect in the derivation; an assertion of monotonicity would have forced a
+    wrong fix.
+
+    Stated over whatever region currently has that shape instead of naming one.
+    The original example was Central Visayas under Western Visayas at 1.04
+    against 1.05; both are now 1.00 and the example moved to CALABARZON under
+    Central Luzon. The PROPERTY did not move."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, derive_regional_estimates
+    mult = {g['name']: g['multiplier'] for g in ALL_REGIONS}
+    anchor_mult = {g['anchor']: mult[g['name']] for g in ALL_REGIONS
+                   if g['multiplier'] == mult[g['name']] and g['anchor'] is not None
+                   and g['name'] in ('NCR', 'Central Luzon', 'Western Visayas',
+                                     'Davao Region')}
+    cheaper = [g for g in ALL_REGIONS
+               if mult[g['name']] < anchor_mult.get(g['anchor'], 1.0)]
+    assert cheaper, 'no region is currently below its anchor; pick another invariant'
+    for g in cheaper:
+        derived = derive_regional_estimates(2.42, {g['anchor']: 2.42})
+        ratio = mult[g['name']] / anchor_mult[g['anchor']]
+        assert ratio < 1.0
+        assert derived[g['name']] == pytest.approx(round(2.42 * ratio, 2))
 
 
 def test_every_region_is_scaled_by_its_premium_over_its_anchor():
@@ -460,10 +481,12 @@ def test_a_debated_region_is_distinguished_from_a_scaled_one():
 def test_labelling_did_not_change_a_single_number():
     """Phase 0 is labelling, not recalibration. DEC-021 bars touching the
     multiplication while doing this, so the arithmetic must be untouched."""
-    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, derive_regional_estimates
+    mult = {g['name']: g['multiplier'] for g in ALL_REGIONS}
     derived = derive_regional_estimates(2.42, {0: 2.42, 3: 2.42})
     assert derived['NCR'] == pytest.approx(2.42)
-    assert derived['Zamboanga'] == pytest.approx(round(2.42 * (1.08 / 1.05), 2))
+    assert derived['Zamboanga'] == pytest.approx(
+        round(2.42 * (mult['Zamboanga'] / mult['Davao Region']), 2))
 
 
 # ── The price baseline's provenance, as told to the agents ────────────────────

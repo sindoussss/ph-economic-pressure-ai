@@ -50,12 +50,24 @@ def test_covering_both_hypotheses_is_a_declared_outcome_not_a_failure():
     assert 'unvalidated' in action
 
 
-def test_the_multipliers_match_the_engine():
-    """The test is only about the app if it tests the app's own numbers."""
+def test_the_tested_multipliers_are_pinned_not_read_live():
+    """This module records what was TESTED. Both regions were corrected the same
+    day by Phase 2b -- Western Visayas 1.05 to 1.00, Davao 1.05 to 0.96 -- and
+    re-pointing this at the live table would silently restate the hypothesis and
+    make the run unreproducible. The verdict is unaffected: it was CANNOT
+    DISTINGUISH and stays so."""
+    assert bt.MULTIPLIERS == {'NCR': 1.00, 'Western Visayas': 1.05,
+                              'Davao Region': 1.05}
+
+
+def test_the_engine_table_has_since_moved_away_from_what_was_tested():
+    """Pins the divergence deliberately, so nobody reads this module's constants
+    as the app's current values."""
     from ph_economic_ai.engine import swarm
-    table = {g['name']: g['multiplier'] for g in swarm.ALL_REGIONS}
-    for region, value in bt.MULTIPLIERS.items():
-        assert table[region] == value
+    live = {g['name']: g['multiplier'] for g in swarm.ALL_REGIONS}
+    assert live['Western Visayas'] == 1.00
+    assert live['Davao Region'] == 0.96
+    assert live['NCR'] == 1.00, 'the base is 1.00 by construction'
 
 
 # ── Changes never span a gap ─────────────────────────────────────────────────

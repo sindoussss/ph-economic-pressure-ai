@@ -102,8 +102,14 @@ IMPLAUSIBLE_WEEKLY_MOVE = 5.0
 
 REFERENCE = 'NCR'
 
-#: From `swarm.REGION_GROUPS`. Read here rather than imported so the test does not
-#: depend on the engine importing cleanly, and asserted against it in the tests.
+#: The table AS IT STOOD WHEN THIS TEST RAN, on 2026-08-01. Both regions were
+#: corrected the same day by Phase 2b, Western Visayas to 1.00 and Davao to 0.96,
+#: after their level premiums were measured against DOE prices.
+#:
+#: Pinned rather than read from the engine on purpose. This module records what
+#: was tested; re-pointing it at the live table would silently restate the
+#: hypothesis and make the run unreproducible. The correction does not change the
+#: result, which was CANNOT DISTINGUISH and remains so.
 MULTIPLIERS = {'NCR': 1.00, 'Western Visayas': 1.05, 'Davao Region': 1.05}
 
 
