@@ -394,12 +394,21 @@ def test_a_region_is_charged_only_the_premium_over_its_anchor():
 
 def test_ncr_anchored_regions_are_unchanged_by_the_fix():
     """These divide by 1.00 and were always correct, which is exactly why the bug
-    survived: the regions anyone would spot-check were the right ones."""
-    from ph_economic_ai.engine.swarm import derive_regional_estimates
+    survived: the regions anyone would spot-check were the right ones.
+
+    The multipliers are read from the table. The three named here happen to be
+    among the five DOE cannot measure, so they still carry their original values
+    and this test would have passed on literals -- which is precisely why it is
+    worth not using them. A test that only breaks when it is already too late is
+    not a guard."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, derive_regional_estimates
+    mult = {g['name']: g['multiplier'] for g in ALL_REGIONS}
     derived = derive_regional_estimates(2.42, {0: 2.42})
-    for region, multiplier in (('Ilocos Region', 1.05), ('Cagayan Valley', 1.06),
-                               ('CAR', 1.08)):
-        assert derived[region] == pytest.approx(round(2.42 * multiplier, 2))
+    ncr_anchored = [g['name'] for g in ALL_REGIONS
+                    if g['anchor'] == 0 and g['name'] != 'NCR']
+    assert ncr_anchored, 'no region anchors to NCR; the invariant has moved'
+    for region in ncr_anchored:
+        assert derived[region] == pytest.approx(round(2.42 * mult[region], 2))
 
 
 def test_a_relative_premium_below_one_is_legitimate():

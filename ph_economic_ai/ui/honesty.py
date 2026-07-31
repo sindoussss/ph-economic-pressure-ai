@@ -237,12 +237,17 @@ def regional_basis() -> str:
     So the wording keeps "derived rather than forecast" and stops calling the
     premium unfitted, because overstating the correction would be the same
     failure in the opposite direction.
+
+    The count is read from `swarm.MEASURED_MULTIPLIERS` rather than written in,
+    because a number in prose drifts from the table it describes and this note
+    exists to stop exactly that kind of drift.
     """
-    return ('4 region groups debated; the other 13 figures are scaled from them '
-            'by a regional price premium measured against DOE prices for 11 of '
-            '17 regions. Only the national figure is graded against a real '
-            'price, so treat the per-region numbers as derived rather than '
-            'forecast.')
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, MEASURED_MULTIPLIERS
+    return (f'4 region groups debated; the other 13 figures are scaled from them '
+            f'by a regional price premium measured against DOE prices for '
+            f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. Only the '
+            f'national figure is graded against a real price, so treat the '
+            f'per-region numbers as derived rather than forecast.')
 
 
 #: Regions for which DOE publishes no retail price series, so their figures cannot
