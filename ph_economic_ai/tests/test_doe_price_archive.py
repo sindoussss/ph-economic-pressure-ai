@@ -9,9 +9,10 @@ Filenames drifted over seven years across ten date conventions. A file whose dat
 cannot be read is useless for a backtest; a file whose date is read WRONG is
 worse, because it silently lands in another week.
 
-The PDFs are a positional table with no ruling lines in the text layer, so every
-column boundary is inferred from x coordinates. Three separate defects came out
-of that and each produced plausible-looking output.
+The PDFs are a positional table. The TEXT layer has no ruling lines, so column
+boundaries come from x coordinates, and four separate defects came out of that,
+each producing plausible-looking output. The DRAWING layer does have rules, which
+is what finally settled province cells after proximity could not.
 
 Network-free. The listing enumeration and the PDF fetch are exercised by running
 the tool; these cover the parsing that decides whether the data is right.
@@ -158,3 +159,39 @@ def test_products_are_ordered_so_diesel_plus_wins_over_diesel():
     """`DIESEL PLUS` contains `DIESEL`, so a substring test in the wrong order
     labels every DIESEL PLUS row as DIESEL and overwrites a real product."""
     assert PRODUCTS.index('DIESEL PLUS') < PRODUCTS.index('DIESEL')
+
+
+# ── Province cells come from the ruling lines ────────────────────────────────
+
+def test_a_block_belongs_to_the_province_cell_it_sits_in():
+    """The table HAS ruling lines; only the text layer lacks them. Nearest-centre
+    assignment could only approximate, because a province label is centred against
+    every city block it contains, so at a boundary the nearest label belongs to
+    the NEIGHBOURING province. That put Ligao, which is in Albay, under
+    Catanduanes."""
+    from ph_economic_ai.tools.doe_price_archive import _band_of
+
+    bands = [168.0, 295.0, 358.0, 420.0, 485.0]
+    assert _band_of(226.0, bands) == 0      # Camarines Sur label
+    assert _band_of(321.0, bands) == 1      # Masbate
+    assert _band_of(384.0, bands) == 2      # Sorsogon
+    assert _band_of(441.0, bands) == 3      # Camarines, wrapped
+    assert _band_of(453.0, bands) == 3      # ...Norte, same cell
+
+
+def test_a_position_outside_every_cell_is_refused():
+    """So the caller falls back to proximity rather than inventing a province."""
+    from ph_economic_ai.tools.doe_price_archive import _band_of
+    bands = [168.0, 295.0]
+    assert _band_of(100.0, bands) is None
+    assert _band_of(400.0, bands) is None
+    assert _band_of(200.0, []) is None
+
+
+def test_a_cell_boundary_belongs_to_the_cell_below_it():
+    """Half-open intervals, so a block starting exactly on a rule cannot land in
+    two provinces or in neither."""
+    from ph_economic_ai.tools.doe_price_archive import _band_of
+    bands = [100.0, 200.0, 300.0]
+    assert _band_of(200.0, bands) == 1
+    assert _band_of(199.9, bands) == 0
