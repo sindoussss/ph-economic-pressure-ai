@@ -237,11 +237,55 @@ def regional_basis() -> str:
             'rather than forecast.')
 
 
+#: Regions for which DOE publishes no retail price series, so their figures cannot
+#: be checked against an observed price at all.
+#:
+#: Established 2026-07-31 by enumerating DOE's price-monitoring archive, 2713
+#: documents spanning 2017 to 2026. DOE publishes nothing north of NCR: zero files
+#: for Region III, Region I, Region II or CAR, against controls of 1243 South
+#: Luzon, 470 NCR, 348 Visayas and 333 Mindanao.
+#:
+#: **Central Luzon is the consequential one.** It is one of the four groups the
+#: swarm actually DEBATES, not one of the thirteen scaled from them, so a quarter
+#: of the debating capacity produces a number no source can contradict. Phase 0
+#: labelled the derived figures and left this case unlabelled, because at the time
+#: nobody knew it existed.
+UNVALIDATABLE_REGIONS = frozenset({
+    'Central Luzon', 'Ilocos Region', 'Cagayan Valley', 'CAR',
+})
+
+
 def regional_tooltip_note(region: str) -> str:
     """One line inside a region's tooltip, naming which kind of number it is."""
-    if region in DEBATED_REGIONS:
+    debated = region in DEBATED_REGIONS
+    if region in UNVALIDATABLE_REGIONS:
+        # Worth saying even for a debated region, and especially for one: being
+        # argued over by agents is not the same as being checkable.
+        how = ('debated by this region\'s agents' if debated
+               else 'scaled from a debated region')
+        return f'{how}, and DOE publishes no price series here, so it cannot be checked'
+    if debated:
         return 'debated by this region\'s agents'
     return 'scaled from a debated region, not separately forecast'
+
+
+def unvalidatable_note() -> str:
+    """The line under the map naming what no source can check.
+
+    Separate from `regional_basis`, which explains how the figures were PRODUCED.
+    This is about whether they can ever be graded, which is a different claim and
+    a stronger one: derived is a statement about method, unfalsifiable is a
+    statement about evidence.
+    """
+    debated = sorted(UNVALIDATABLE_REGIONS & set(DEBATED_REGIONS))
+    n = len(UNVALIDATABLE_REGIONS)
+    base = (f'{n} of the 17 have no DOE price series at all, so nothing published '
+            f'can confirm or contradict them')
+    if not debated:
+        return base
+    return (f'{base} — including {", ".join(debated)}, which the agents actually '
+            f'debate rather than derive, and which anchors the figures scaled '
+            f'from it')
 
 
 RECALL_NOTE = (

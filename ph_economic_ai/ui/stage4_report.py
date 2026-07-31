@@ -216,8 +216,16 @@ class Stage4ReportPanel(QWidget):
         self._map_basis_lbl = QLabel(_honesty.regional_basis())
         self._map_basis_lbl.setWordWrap(True)
         self._map_basis_lbl.setStyleSheet(
-            'font-size:8px;color:#9CA3AF;padding:2px 4px 8px 4px;')
+            'font-size:8px;color:#9CA3AF;padding:2px 4px 2px 4px;')
         body_layout.addWidget(self._map_basis_lbl)
+        # Which regions no source can check. Amber rather than grey, because
+        # "derived" is a statement about method and "unfalsifiable" is a statement
+        # about evidence, and the second is the stronger claim.
+        self._map_unvalidatable_lbl = QLabel(_honesty.unvalidatable_note())
+        self._map_unvalidatable_lbl.setWordWrap(True)
+        self._map_unvalidatable_lbl.setStyleSheet(
+            'font-size:8px;font-weight:600;color:#B45309;padding:0 4px 8px 4px;')
+        body_layout.addWidget(self._map_unvalidatable_lbl)
 
         scroll.setWidget(body)
         root.addWidget(scroll, stretch=1)
