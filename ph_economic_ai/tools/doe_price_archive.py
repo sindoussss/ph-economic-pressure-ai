@@ -55,7 +55,7 @@ import datetime as dt
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import requests
 
@@ -77,7 +77,14 @@ SERIES = (
     ('petro_vis', 'Visayas'),
     ('petro-vis', 'Visayas'),
     ('petro_min', 'Mindanao'),
-    ('lfro-price-monitoring', 'Luzon field office'),
+    # `lfro` reads as Luzon and is not. These 62 files are listed under the
+    # MINDANAO field office, and their PROVINCE column is 22 Mindanao provinces
+    # with no Luzon province on any page: Agusan, Bukidnon, Davao, Lanao,
+    # Misamis, Surigao, Zamboanga, Cotabato, Sarangani. Two independent
+    # confirmations, because the earlier `Luzon field office` label was inferred
+    # from the letter L and would have filed the live 2025-2026 series under the
+    # wrong island group.
+    ('lfro-price-monitoring', 'Mindanao'),
     ('vfo-lf-price-monitoring', 'Visayas'),
     ('vfo-price-monitoring', 'Visayas'),
     ('mfo-price-monitoring', 'Mindanao'),
@@ -225,13 +232,137 @@ def _rows_from_words(words) -> list[list]:
     return [sorted(r, key=lambda w: w[0]) for r in out]
 
 
-#: Column boundaries in PDF points, read off the header row: PROVINCE at x=22,
-#: CITY/MUNICIPALITY at x=84, PRODUCT at x=144, the first brand at x=214.
-_X_CITY, _X_PRODUCT, _X_PRICES = 82.0, 140.0, 212.0
-
 #: Where the table stops. DOE closes each sheet with monitoring metadata printed
-#: in the province and city columns.
-_FOOTER_RE = re.compile(r'DATE\s+MONITOR|PRICES?\s+AS\s+OF|PREPARED\s+BY|NOTE\s*:')
+#: in the province and city columns, and NCR sheets then print a SECOND table:
+#: a region-wide summary whose `Diesel` and `Kerosene` rows match as products and
+#: attached themselves to the last city on the page. `DATE OF MONITORING` needs
+#: the optional `OF`: without it the pattern missed, and the words landed in the
+#: city column as `Date Pasay of City`.
+_FOOTER_RE = re.compile(
+    r'DATE\s+(?:OF\s+)?MONITOR|PRICES?\s+AS\s+OF|PREPARED\s+BY|NOTE\s*:'
+    r'|PREVAILING\s+RETAIL\s+PRICES')
+
+
+def _header_parts(token: str) -> set:
+    """The label words inside one header token.
+
+    `CITY / MUNICIPALITY` is three tokens on some sheets and the single token
+    `CITY/MUNICIPALITY` on others. An exact-match lookup found the first and not
+    the second, so 116 documents from 2024 to 2026 -- the most recent Visayas
+    weeks, the ones a backtest most wants -- reported no label column and were
+    dropped whole.
+    """
+    return {p for p in token.upper().replace('.', '').split('/') if p}
+
+
+class Columns(NamedTuple):
+    """x boundaries of the PROVINCE, CITY and PRODUCT columns, for one page.
+
+    These were three module constants, calibrated against one document's page
+    geometry: `_X_CITY, _X_PRODUCT, _X_PRICES = 82.0, 140.0, 212.0`. DOE scales
+    the sheet per issue. On a January 2026 file the PROVINCE header sits at x=29
+    and cities at x=63, so every city name fell left of the hard-coded 82.0 and
+    was read as a PROVINCE. The output was a province list of real place names,
+    which is why it survived review: `Jimenez`, `Titay` and `Lala` are cities in
+    Misamis Occidental, Zamboanga Sibugay and Lanao del Norte.
+
+    Same lesson as the ruling lines, one axis over: take the structure from the
+    document, never from a constant measured off one sample of it.
+    """
+    left: float          #: left edge of the PROVINCE column
+    city: float          #: PROVINCE | CITY boundary
+    product: float       #: CITY | PRODUCT boundary
+    prices: float        #: PRODUCT | first brand boundary
+
+
+def _vertical_rules(page) -> list[float]:
+    """x positions of the table's vertical rules, near-duplicates merged."""
+    xs: list[float] = []
+    for item in page.get_drawings():
+        for op in item['items']:
+            if op[0] == 'l':
+                a, b = op[1], op[2]
+                if abs(a.x - b.x) < 0.6 and abs(b.y - a.y) > 10:
+                    xs.append(a.x)
+            elif op[0] == 're':
+                xs.extend((op[1].x0, op[1].x1))
+    out: list[float] = []
+    for x in sorted(xs):
+        if not out or x - out[-1] > 1.5:
+            out.append(x)
+    return out
+
+
+def _columns(header_words, page) -> Optional[Columns]:
+    """Column boundaries for one page, from its own header and ruling lines.
+
+    The vertical rules give the exact boundary. Where they are missing or do not
+    bracket a header, the midpoint between two adjacent headers is used instead,
+    which lands within a few points of the rule on every sampled document.
+
+    `header_words` spans the header BLOCK rather than one visual row. `CITY /`
+    and `MUNICIPALITY` are printed on their own lines above and below `PROVINCE`,
+    and at one document's line spacing they fall outside the row tolerance, so a
+    single-row lookup found no city header and abandoned the page.
+
+    Two layouts exist. Regional sheets carry PROVINCE, CITY/MUNICIPALITY and
+    PRODUCT. **NCR sheets have no province at all** -- the city IS the region, so
+    the label column is headed `AREA` or `Cities` and there are two columns where
+    the others have three. Requiring PROVINCE returned no columns for every NCR
+    document, which is the one region Phase 2 cannot do without.
+    """
+    def span(*words) -> Optional[tuple[float, float]]:
+        hits = [w for w in header_words if _header_parts(w[4]) & set(words)]
+        return (min(h[0] for h in hits), max(h[2] for h in hits)) if hits else None
+
+    prov = span('PROVINCE')
+    city = span('CITY', 'MUNICIPALITY', 'AREA', 'CITIES')
+    prod = span('PRODUCT')
+    if not (city and prod):
+        return None
+
+    rules = _vertical_rules(page)
+
+    def boundary(left_edge: float, right_edge: float) -> float:
+        between = [x for x in rules if left_edge < x < right_edge]
+        return between[-1] if between else (left_edge + right_edge) / 2
+
+    left = max((x for x in rules if x < (prov or city)[0]),
+               default=(prov or city)[0] - 4.0)
+    # The first brand column starts right of PRODUCT; its own header word varies
+    # by issue (PETRON, UNIOIL), so the rule after PRODUCT is what bounds it.
+    after = [x for x in rules if x > prod[1]]
+    return Columns(
+        left=left,
+        # No province column means an EMPTY province column, not a missing page.
+        # Collapsing it onto the left edge is what keeps a city out of it.
+        city=boundary(prov[1], city[0]) if prov else left,
+        product=boundary(city[1], prod[0]),
+        prices=after[0] if after else prod[1] + (prod[1] - prod[0]),
+    )
+
+
+#: Words that head a label column. Some sheets print `Province  Cities` three
+#: rows BELOW the PRODUCT row, so the header block cannot be found at a fixed
+#: offset from it.
+_LABEL_HEADERS = ('PROVINCE', 'CITY', 'MUNICIPALITY', 'AREA', 'CITIES', 'PRODUCT')
+
+
+def _is_header_row(row) -> bool:
+    """Whether a row heads columns rather than carrying data.
+
+    Matching the header WORDS alone is not safe enough to widen the search
+    window: `Davao City RON 100 54.00 ...` offers the token `City`, and treating
+    it as a header would skip the first city on the page. A header row is one
+    that names a column and carries neither a product nor a price, which no data
+    row can satisfy.
+    """
+    text = ' '.join(w[4] for w in row).upper()
+    if any(p in text for p in PRODUCTS):
+        return False
+    if any(_num(w[4]) is not None for w in row):
+        return False
+    return any(_header_parts(w[4]) & set(_LABEL_HEADERS) for w in row)
 
 
 def _num(token: str):
@@ -243,7 +374,7 @@ def _num(token: str):
     return v if 0.0 < v < 500.0 else None
 
 
-def _row_prices(row) -> tuple:
+def _row_prices(row, x_prices: float = 212.0) -> tuple:
     """(low, high, common) for one product row, located by layout not by order.
 
     The published range is written `58.45 - 66.60`, so the widest-right hyphen
@@ -253,12 +384,16 @@ def _row_prices(row) -> tuple:
     Located this way rather than by taking the last few numbers because the
     PRODUCT label is itself numeric: an earlier version read the 95 of `RON 95`
     as a price and reported a common price of 95.00.
+
+    `x_prices` is where the brand columns begin, read from the page by
+    `_columns`. Its default is the geometry of the first document sampled and is
+    a fallback only.
     """
-    dashes = [w for w in row if w[4] == '-' and w[0] > _X_PRICES]
+    dashes = [w for w in row if w[4] == '-' and w[0] > x_prices]
     if not dashes:
         return None, None, None
     dash_x = max(d[0] for d in dashes)
-    nums = [(w[0], _num(w[4])) for w in row if w[0] > _X_PRICES]
+    nums = [(w[0], _num(w[4])) for w in row if w[0] > x_prices]
     nums = [(x, v) for x, v in nums if v is not None]
     left = [v for x, v in nums if x < dash_x]
     right = [(x, v) for x, v in nums if x > dash_x]
@@ -268,7 +403,7 @@ def _row_prices(row) -> tuple:
     return low, high, common
 
 
-def _province_bands(page) -> list[float]:
+def _province_bands(page, cols: Optional[Columns] = None) -> list[float]:
     """Y positions of the horizontal rules bounding the PROVINCE column cells.
 
     The table HAS ruling lines; only the text layer lacks them. Reading the
@@ -277,9 +412,18 @@ def _province_bands(page) -> list[float]:
     city block it contains, so at a boundary the nearest label can belong to the
     neighbouring province. One city in the sample landed in the wrong one.
 
+    A rule counts when it spans the province column, which is why `cols` is
+    needed: the window was once the literal `x < 40 and x > 60` of one document,
+    and on a page whose province column ends at x=59 no rule qualified. That
+    silently returned no bands at all and dropped the page back to proximity, so
+    the fix for the wrong-province bug quietly stopped applying to the documents
+    with a different scale.
+
     Returns an empty list when a document has no usable rules, and the caller
     falls back to proximity rather than dropping the page.
     """
+    lo_max = (cols.left + 4.0) if cols else 40.0
+    hi_min = (cols.city - 4.0) if cols else 60.0
     ys: list[float] = []
     for item in page.get_drawings():
         for op in item['items']:
@@ -287,17 +431,44 @@ def _province_bands(page) -> list[float]:
                 a, b = op[1], op[2]
                 if abs(a.y - b.y) < 0.6 and abs(b.x - a.x) > 10:
                     lo, hi = min(a.x, b.x), max(a.x, b.x)
-                    if lo < 40 and hi > 60:
+                    if lo < lo_max and hi > hi_min:
                         ys.append(a.y)
             elif op[0] == 're':
                 r = op[1]
-                if r.x0 < 40 and r.x1 > 60:
+                if r.x0 < lo_max and r.x1 > hi_min:
                     ys.extend((r.y0, r.y1))
     # Rules are drawn as near-duplicate pairs a fraction of a point apart.
     out: list[float] = []
     for y in sorted(ys):
         if not out or y - out[-1] > 1.5:
             out.append(y)
+    return out
+
+
+def _assemble_labels(pending: list[tuple[float, float, str]]) -> list[tuple[float, str]]:
+    """(y, x, word) fragments into (y, label), joined in READING order.
+
+    A province name wraps onto two lines, `Camarines` then `Norte`, with a city
+    printed between them, so fragments within a few points of each other are one
+    label.
+
+    Sorted by (y, x). The fragments used to be (y, word) pairs, so a sort broke
+    its tie on the WORD and two fragments on one line came back alphabetically:
+    `Agusan del Sur` as `Agusan Sur del`, `Santa Maria` as `Maria Santa`, because
+    uppercase sorts before lowercase. Every result was a real province with its
+    words rearranged, which reads as a rendering quirk rather than as the join
+    order being wrong.
+
+    Carrying x in the fragment is what fixes it; the explicit key states the
+    intent but is not itself the mechanism, so a mutation that drops the key
+    still passes. The test that has teeth here is the one on the OUTPUT string.
+    """
+    out: list[tuple[float, str]] = []
+    for y, _x, word in sorted(pending, key=lambda t: (t[0], t[1])):
+        if out and y - out[-1][0] <= 14.0:
+            out[-1] = (out[-1][0], out[-1][1] + ' ' + word)
+        else:
+            out.append((y, word))
     return out
 
 
@@ -326,7 +497,8 @@ def parse_price_pdf(content: bytes) -> list[dict]:
 
     Province cells come from the DRAWING layer. The text layer has no rules, but
     the table is drawn with them, and reading them is what settled an assignment
-    that proximity could only approximate.
+    that proximity could only approximate. The same layer gives the COLUMN
+    boundaries, which vary by issue and were briefly constants.
     """
     import fitz
 
@@ -339,17 +511,30 @@ def parse_price_pdf(content: bytes) -> list[dict]:
         # the same x range as the province and city columns, so parsing from the
         # top made "Republic DEPARTMENT" a province.
         first = next((i for i, r in enumerate(rows)
-                      if 'PROVINCE' in ' '.join(w[4] for w in r).upper()
-                      and 'PRODUCT' in ' '.join(w[4] for w in r).upper()), None)
+                      if 'PRODUCT' in (w[4].upper() for w in r)), None)
         if first is None:
             continue
+
+        # The header block spans a few visual rows and its labels sit on either
+        # side of the PRODUCT row depending on the layout: `Province  Cities`
+        # is three rows BELOW it on the 2020-2022 Mindanao sheets, where reading
+        # it as absent collapsed the province column onto the left edge and let
+        # the city column swallow every province name on the page.
+        lo, hi = max(0, first - 2), min(len(rows), first + 5)
+        header = [(lo + i, r) for i, r in enumerate(rows[lo:hi])
+                  if _is_header_row(r)]
+        cols = _columns([w for _i, r in header for w in r], page)
+        if cols is None:
+            continue
+        header_end = max((i for i, _r in header), default=first)
 
         provinces: list[tuple[float, str]] = []   # (y centre, label)
         blocks: list[dict] = []
         block = None
-        pending_prov: list[tuple[float, str]] = []
+        last_rank = len(PRODUCTS)
+        pending_prov: list[tuple[float, float, str]] = []   # (y, x, word)
 
-        for row in rows[first + 1:]:
+        for row in rows[header_end + 1:]:
             text = ' '.join(w[4] for w in row).upper()
             if 'MUNICIPALITY' in text or text.startswith('CITY/'):
                 continue
@@ -357,35 +542,37 @@ def parse_price_pdf(content: bytes) -> list[dict]:
                 break
             product = next((p for p in PRODUCTS if p in text), None)
 
-            if product == PRODUCTS[0]:
-                block = {'y0': row[0][1], 'y1': row[0][1], 'city': [], 'rows': []}
-                blocks.append(block)
+            # A city's rows run down PRODUCTS in order, so a new block starts
+            # wherever that order RESTARTS. Keyed on `PRODUCTS[0]` instead, a
+            # sheet that lists no RON 100 opened no block at all and yielded
+            # nothing: `petro_min_2020_february_11` has zero RON 100 rows and 18
+            # RON 95 ones, and lost every one of them without an error.
+            if product is not None:
+                rank = PRODUCTS.index(product)
+                if block is None or rank <= last_rank:
+                    block = {'y0': row[0][1], 'y1': row[0][1],
+                             'city': [], 'rows': []}
+                    blocks.append(block)
+                last_rank = rank
 
             for w in row:
                 if _num(w[4]) is not None or ':' in w[4]:
                     continue
-                if w[0] < _X_CITY:
-                    pending_prov.append((w[1], w[4]))
-                elif w[0] < _X_PRODUCT and block is not None:
-                    block['city'].append(w[4])
+                if w[0] < cols.city:
+                    pending_prov.append((w[1], w[0], w[4]))
+                elif w[0] < cols.product and block is not None:
+                    block['city'].append((w[0], w[4]))
 
             if product and block is not None:
-                block['rows'].append((product, *_row_prices(row)))
+                block['rows'].append((product, *_row_prices(row, cols.prices)))
                 block['y1'] = row[0][1]
 
-        # A province name may WRAP onto two lines, `Camarines` then `Norte` with a
-        # city printed between them, so words within a few points of each other
-        # are one label.
-        for y, word in sorted(pending_prov):
-            if provinces and y - provinces[-1][0] <= 14.0:
-                provinces[-1] = (provinces[-1][0], provinces[-1][1] + ' ' + word)
-            else:
-                provinces.append((y, word))
+        provinces = _assemble_labels(pending_prov)
 
         # A province is printed ONCE, vertically centred against however many city
         # blocks it contains, so it can appear below the first city it covers.
         # Nearest-centre assignment handles that; carrying forward does not.
-        bands = _province_bands(page)
+        bands = _province_bands(page, cols)
         # Label per province CELL, from the ruling lines. Falls back to nearest
         # centre only when a document has no usable rules.
         by_band: dict = {}
@@ -400,7 +587,7 @@ def parse_price_pdf(content: bytes) -> list[dict]:
             if prov is None:
                 prov = (min(provinces, key=lambda pv: abs(pv[0] - centre))[1]
                         if provinces else None)
-            city = ' '.join(b['city']).strip() or None
+            city = ' '.join(w for _x, w in sorted(b['city'])).strip() or None
             for product, low, high, common in b['rows']:
                 out.append({'province': prov, 'city': city, 'product': product,
                             'low': low, 'high': high, 'common': common})
