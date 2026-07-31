@@ -78,3 +78,6 @@ jarvis/jarvis-lora-adapter/
 # A missing directory is handled: load_social_snapshot returns zero posts.
 ph_economic_ai/assets/corpus/social/reddit_*.jsonl
 ph_economic_ai/assets/corpus/social/trends_*.jsonl
+
+# DOE source PDFs: ~250MB, rebuildable from artifacts/doe_price_cache.json
+ph_economic_ai/benchmark/data/doe_cache/
