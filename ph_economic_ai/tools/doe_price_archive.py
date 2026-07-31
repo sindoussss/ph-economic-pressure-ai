@@ -268,6 +268,47 @@ def _row_prices(row) -> tuple:
     return low, high, common
 
 
+def _province_bands(page) -> list[float]:
+    """Y positions of the horizontal rules bounding the PROVINCE column cells.
+
+    The table HAS ruling lines; only the text layer lacks them. Reading the
+    drawings gives the exact cell a province owns, which nearest-centre
+    assignment could only approximate: a province label is centred against every
+    city block it contains, so at a boundary the nearest label can belong to the
+    neighbouring province. One city in the sample landed in the wrong one.
+
+    Returns an empty list when a document has no usable rules, and the caller
+    falls back to proximity rather than dropping the page.
+    """
+    ys: list[float] = []
+    for item in page.get_drawings():
+        for op in item['items']:
+            if op[0] == 'l':
+                a, b = op[1], op[2]
+                if abs(a.y - b.y) < 0.6 and abs(b.x - a.x) > 10:
+                    lo, hi = min(a.x, b.x), max(a.x, b.x)
+                    if lo < 40 and hi > 60:
+                        ys.append(a.y)
+            elif op[0] == 're':
+                r = op[1]
+                if r.x0 < 40 and r.x1 > 60:
+                    ys.extend((r.y0, r.y1))
+    # Rules are drawn as near-duplicate pairs a fraction of a point apart.
+    out: list[float] = []
+    for y in sorted(ys):
+        if not out or y - out[-1] > 1.5:
+            out.append(y)
+    return out
+
+
+def _band_of(y: float, bands: list[float]) -> Optional[int]:
+    """Index of the province cell containing `y`, or None."""
+    for i in range(len(bands) - 1):
+        if bands[i] <= y < bands[i + 1]:
+            return i
+    return None
+
+
 def parse_price_pdf(content: bytes) -> list[dict]:
     """Rows of {province, city, product, low, high, common} from one DOE PDF.
 
@@ -282,6 +323,10 @@ def parse_price_pdf(content: bytes) -> list[dict]:
     against the block rather than on its first row. Carrying a label forward
     row-by-row therefore attaches it to the wrong city, which is what an earlier
     version did.
+
+    Province cells come from the DRAWING layer. The text layer has no rules, but
+    the table is drawn with them, and reading them is what settled an assignment
+    that proximity could only approximate.
     """
     import fitz
 
@@ -340,10 +385,21 @@ def parse_price_pdf(content: bytes) -> list[dict]:
         # A province is printed ONCE, vertically centred against however many city
         # blocks it contains, so it can appear below the first city it covers.
         # Nearest-centre assignment handles that; carrying forward does not.
+        bands = _province_bands(page)
+        # Label per province CELL, from the ruling lines. Falls back to nearest
+        # centre only when a document has no usable rules.
+        by_band: dict = {}
+        for y, label in provinces:
+            idx = _band_of(y, bands)
+            if idx is not None:
+                by_band[idx] = label
+
         for b in blocks:
             centre = (b['y0'] + b['y1']) / 2
-            prov = (min(provinces, key=lambda pv: abs(pv[0] - centre))[1]
-                    if provinces else None)
+            prov = by_band.get(_band_of(centre, bands))
+            if prov is None:
+                prov = (min(provinces, key=lambda pv: abs(pv[0] - centre))[1]
+                        if provinces else None)
             city = ' '.join(b['city']).strip() or None
             for product, low, high, common in b['rows']:
                 out.append({'province': prov, 'city': city, 'product': product,
