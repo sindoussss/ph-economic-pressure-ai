@@ -58,6 +58,31 @@ def test_a_date_range_yields_its_start():
         == dt.date(2025, 4, 15)
 
 
+def test_a_month_name_beats_a_numeric_shape():
+    """`june` is a month and can be nothing else; `2-8-2026` is a month and a day
+    only by convention. Tried the other way round,
+    `ncr-price-monitoring-for-june-2-8-2026` read as 8 February 2026 -- a June
+    sheet in a February pricing week, carrying June prices. It then won the
+    panel's later-filename tie-break, overwrote the correct February data, and
+    moved that week's regional level by 18 PHP/L on its own.
+
+    Second instance of one rule, after the range pattern read `november-25-2025`
+    as November 2: an ambiguous pattern must never pre-empt an unambiguous one.
+    Both produced a real date, in the right year, for the wrong week."""
+    assert date_of('ncr-price-monitoring-for-june-2-8-2026-pdf-1') \
+        == dt.date(2026, 6, 2)
+    assert date_of('petro_min_2019_april_02_04102019') == dt.date(2019, 4, 2)
+
+
+def test_a_numeric_date_still_parses_when_no_month_is_named():
+    """The reordering must not cost the numeric conventions, which are the only
+    thing most of the corpus has."""
+    assert date_of('ncr-price-monitoring-07-01-2025-pdf') == dt.date(2025, 7, 1)
+    assert date_of('petro_ncr_2022-06-23') == dt.date(2022, 6, 23)
+    assert date_of('ncr-price-monitoring-05192026-pdf') == dt.date(2026, 5, 19)
+    assert date_of('vfo-lf-price-monitoring-102825') == dt.date(2025, 10, 28)
+
+
 def test_an_unambiguous_date_is_never_pre_empted_by_the_range_pattern():
     """The regression this ordering exists for. Placed before the simple shape,
     the range pattern read `november-25-2025` as November 2, splitting the 25

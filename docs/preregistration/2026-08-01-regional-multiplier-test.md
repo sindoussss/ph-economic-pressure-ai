@@ -133,3 +133,87 @@ It compares two regions against NCR. It says nothing about the other 14
 multipliers, and **nothing at all about Central Luzon**, which is both a DEBATED
 region and one with no source. A result here does not license repairing the whole
 table; it licenses a statement about Western Visayas and Davao.
+
+---
+
+# Amendment 1, 2026-08-01, written AFTER the first run
+
+**The test was run, and its result is WITHDRAWN as invalid.** This section is
+appended rather than folded into the text above, so the original decision rule
+stays readable exactly as it was committed.
+
+## What the run returned
+
+| region | b | 95% CI | verdict under the rule above |
+|---|---|---|---|
+| Western Visayas | 0.371 | [0.013, 0.729] | NEITHER |
+| Davao Region | 0.391 | [0.029, 0.752] | NEITHER |
+
+Under the pre-registered rule that is `NEITHER`, whose action is to report a
+national change with a per-region band and open a new question. **That is not
+being done, because the coefficient does not measure what the rule assumed it
+measured.**
+
+## Why it is withdrawn
+
+The pre-registration predicted a residual spread near 0.3 PHP/L. The run gave
+2.0, and the reference series contains week-over-week moves of 10 to 20 PHP/L.
+Philippine retail adjustments are roughly 0.20 to 3.00 per week; an 18 PHP/L
+weekly move is not a price change, it is a measurement change.
+
+Tracing it: **the NCR level tracks which document TEMPLATE DOE used that week.**
+
+| template | cities | brand columns | level range, 2026 |
+|---|---|---|---|
+| older | 9 | 3, `TOTAL FLYING V UNIOIL` | 56 to 61 |
+| newer | 12 | 10, `PETRON SHELL CALTEX PHOENIX ... PTT INDEPENDENT` | 72 to 96 |
+
+Within each template the series moves smoothly. Every large jump sits on a
+template switch. A regression of one region's change on another's is therefore
+partly a regression of one sheet layout on another, and `b` around 0.37 is
+consistent with two series whose common signal is swamped by template noise:
+error in the regressor attenuates the slope toward zero.
+
+Separately, one file was mis-dated. `ncr-price-monitoring-for-june-2-8-2026`
+parsed as 8 February 2026, because a numeric shape was tried before the month
+NAME. A June sheet landed in a February pricing week, won the later-filename
+tie-break, and moved that week's level by 18 PHP/L on its own. Fixed, with the
+month-name patterns now tried first; it changed the date of 2 files in 2520.
+
+## The rule this exposes
+
+The pre-registration listed three conditions that would invalidate the test:
+too few changes, a mostly-flat reference, and one dominant week. **All three
+passed.** None of them asked whether the series was measuring a constant thing
+over time, and that is the condition that failed.
+
+A pre-registered invalidation list is only as good as the failure modes it
+imagined. Adding this one after the fact is legitimate precisely because it
+withdraws a result rather than producing one: nothing here converts a null into
+a finding, and no branch of the decision rule was edited to fit what came back.
+
+## What has to happen before this test is rerun
+
+1. Establish whether the two templates report the same quantity. The newer sheet
+   lists more brands, so its overall range and common price are drawn from a
+   wider pool. That alone could shift a level without any price moving.
+2. If they do not, the panel needs a per-template basis before any differencing,
+   and a change that spans a template switch has to be dropped the way a change
+   spanning a calendar gap already is.
+3. Re-run unchanged in every other respect. The decision rule above stands as
+   written and is not to be renegotiated on the strength of having seen 0.37.
+
+## How fragile the coefficient was, measured
+
+Fixing the one mis-dated file and rebuilding moved the estimate:
+
+| region | b before | b after | R2 before | R2 after |
+|---|---|---|---|---|
+| Western Visayas | 0.371 | 0.649 | 0.307 | 0.547 |
+| Davao Region | 0.391 | 0.611 | 0.379 | 0.599 |
+
+**One file in 2520 moved the coefficient by 0.22 to 0.28**, more than four times the
+0.05 gap the test is trying to resolve. That is the argument for withdrawal
+stated as a number: an estimate that swings this far on a single date parse is
+not yet measuring freight, whatever it reports. The verdict stays WITHDRAWN,
+because the template artifact that caused the withdrawal is still present.

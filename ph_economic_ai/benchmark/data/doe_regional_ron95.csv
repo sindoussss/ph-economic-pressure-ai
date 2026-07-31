@@ -24568,26 +24568,14 @@ cycle,file_date,area,province,province_raw,city,low,high,common,source_file
 2026-02-03,2026-02-03,Mindanao,Zamboanga del Sur,Zamboanga del Sur,Tukuran,57.7,57.7,,05-lfro-price-monitoring-february-3-2026-pdf
 2026-02-03,2026-02-03,Mindanao,Zamboanga del Sur,Zamboanga del Sur,Zamboanga City,57.9,62.3,58.4,05-lfro-price-monitoring-february-3-2026-pdf
 2026-02-03,2026-02-03,NCR,,,Caloocan City,50.0,66.48,,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Caloocan City,67.71,92.7,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Makati City,54.7,71.89,55.8,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Makati City,77.8,91.1,78.1,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Manila City,52.3,75.89,65.77,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Manila City,74.04,91.2,90.6,ncr-price-monitoring-for-june-2-8-2026-pdf-1
-2026-02-03,2026-02-08,NCR,,,Marikina City,73.74,89.9,74.9,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Muntinlupa City,51.8,71.43,62.05,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Muntinlupa City,75.3,96.1,82.7,ncr-price-monitoring-for-june-2-8-2026-pdf-1
-2026-02-03,2026-02-08,NCR,,,Navotas City,80.24,89.6,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Parañaque City,54.7,71.83,56.9,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Parañaque City,77.84,94.3,79.4,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Pasay City,53.6,71.63,63.25,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Pasay City,76.9,95.55,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Pasig City,52.55,71.28,53.65,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Pasig City,74.74,94.7,75.9,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Quezon City,50.2,69.05,66.95,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Quezon City,67.61,93.8,74.74,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,NCR,,,Taguig Cty,52.95,67.0,65.78,ncr-price-monitoring-02032026-pdf
-2026-02-03,2026-02-08,NCR,,,Taguig Cty,74.84,96.98,76.64,ncr-price-monitoring-for-june-2-8-2026-pdf-1
-2026-02-03,2026-02-08,NCR,,,Valenzuela City,74.74,91.0,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-02-03,2026-02-03,Visayas,Aklan,Aklan,Boracay,56.9,61.3,,vfo-lf-price-monitoring-020326-pdf
 2026-02-03,2026-02-03,Visayas,Aklan,Aklan,Caticlan,56.95,,,vfo-lf-price-monitoring-020326-pdf
 2026-02-03,2026-02-03,Visayas,Aklan,Aklan,Kalibo,53.75,62.14,,vfo-lf-price-monitoring-020326-pdf
@@ -28574,6 +28562,18 @@ cycle,file_date,area,province,province_raw,city,low,high,common,source_file
 2026-06-02,2026-06-02,Mindanao,Zamboanga del Sur,Zamboanga del Sur,Pagadian City,76.5,78.6,76.5,22-lfro-price-monitoring-june-2-2026-pdf
 2026-06-02,2026-06-02,Mindanao,Zamboanga del Sur,Zamboanga del Sur,Sominot,80.3,80.3,,22-lfro-price-monitoring-june-2-2026-pdf
 2026-06-02,2026-06-02,Mindanao,Zamboanga del Sur,Zamboanga del Sur,Zamboanga City,83.25,88.4,83.3,22-lfro-price-monitoring-june-2-2026-pdf
+2026-06-02,2026-06-02,NCR,,,Caloocan City,67.71,92.7,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Makati City,77.8,91.1,78.1,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Manila City,74.04,91.2,90.6,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Marikina City,73.74,89.9,74.9,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Muntinlupa City,75.3,96.1,82.7,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Navotas City,80.24,89.6,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Parañaque City,77.84,94.3,79.4,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Pasay City,76.9,95.55,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Pasig City,74.74,94.7,75.9,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Quezon City,67.61,93.8,74.74,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Taguig Cty,74.84,96.98,76.64,ncr-price-monitoring-for-june-2-8-2026-pdf-1
+2026-06-02,2026-06-02,NCR,,,Valenzuela City,74.74,91.0,,ncr-price-monitoring-for-june-2-8-2026-pdf-1
 2026-06-09,2026-06-09,Mindanao,Agusan del Norte,Agusan del Norte,Buenavista,76.4,80.63,80.63,23-lfro-price-monitoring-june-9-2026-pdf
 2026-06-09,2026-06-09,Mindanao,Agusan del Norte,Agusan del Norte,Butuan City,76.3,85.6,85.6,23-lfro-price-monitoring-june-9-2026-pdf
 2026-06-09,2026-06-09,Mindanao,Agusan del Norte,Agusan del Norte,Cabadbaran City,77.84,89.4,77.84,23-lfro-price-monitoring-june-9-2026-pdf
