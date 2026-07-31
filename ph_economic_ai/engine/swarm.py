@@ -1053,6 +1053,10 @@ _ROLE_RAG: dict[str, list[str]] = {
 # This does NOT settle whether a level premium should scale a price CHANGE at
 # all. That question is `Q-ENG-009`, and it closed as infeasible: resolving it
 # needs 527 to 779 years of weekly data. See ADR-016.
+#
+# `MEASURED_MULTIPLIERS` below records which of these are evidence and which are
+# still assumptions, because the table gives no sign of the difference and a
+# reader would have none either.
 ALL_REGIONS: list[dict] = [
     # Luzon
     {'name': 'NCR',               'code': 'NCR',   'multiplier': 1.00, 'anchor': 0,
@@ -1093,6 +1097,39 @@ ALL_REGIONS: list[dict] = [
      'nx': 0.38, 'ny': 0.84, 'isle': 'M'},
 ]
 
+#: Regions whose multiplier is a MEASURED price ratio rather than an assumption.
+#:
+#: Established 2026-08-01 against DOE's published regional prices, 2023 to 2026,
+#: pre-registered at `docs/preregistration/2026-08-01-regional-level-premiums.md`.
+#: Nine of these were corrected and two, MIMAROPA and Bicol, were tested and left
+#: at their original values.
+#:
+#: The table itself gives no sign of which figures are evidence, so without this
+#: a reader has none either, and `regional_basis` would be counting from nothing.
+MEASURED_MULTIPLIERS = frozenset({
+    'CALABARZON', 'MIMAROPA', 'Bicol Region',
+    'Western Visayas', 'Central Visayas', 'Eastern Visayas',
+    'Zamboanga', 'Northern Mindanao', 'Davao Region', 'SOCCSKSARGEN', 'Caraga',
+})
+
+#: Still assumptions, and for two different reasons worth keeping apart.
+#:
+#: Ilocos, Cagayan Valley, Central Luzon and CAR have NO DOE series at all, so
+#: nothing can ever refute them (`DEC-044`). BARMM is different: DOE covers
+#: Basilan and Maguindanao but publishes nothing for Lanao del Sur, Sulu or
+#: Tawi-Tawi, so its weeks rarely reach a three-city minimum and it fell below
+#: the pre-registered 52-week floor. Partial coverage, not absent coverage.
+#:
+#: Nine of the eleven testable regions turned out to be wrong in the same
+#: direction. That is a strong hint about these five and it is deliberately NOT
+#: acted on: `DEC-055` allows recording the hint and forbids inferring a
+#: correction from a neighbour.
+ASSUMED_MULTIPLIERS = frozenset({
+    'Ilocos Region', 'Cagayan Valley', 'Central Luzon', 'CAR',   # no series
+    'BARMM',                                                     # series too thin
+})
+
+
 
 #: Freight multiplier of each swarm group's own region, keyed by group id. Used to
 #: express a region's premium RELATIVE to the group that supplied its estimate.
@@ -1120,9 +1157,14 @@ def derive_regional_estimates(
     The premium is applied RELATIVE to the region that produced the estimate,
     which is the fix for a double count. `anchor_prompt_block` tells every agent
     to adjust for "your region's freight premium", so a Davao survivor's number
-    already carries Davao freight. Multiplying it by Davao's 1.05 again charged
-    the same premium twice, and scaling Zamboanga's 1.08 off it charged 1.08 where
-    only 1.08/1.05 was outstanding.
+    already carries Davao freight. Multiplying it by Davao's own multiplier again
+    charged the same premium twice, and scaling Zamboanga off it charged the whole
+    Zamboanga premium where only the part over Davao was outstanding.
+
+    The figures this paragraph originally quoted, Davao 1.05 and Zamboanga 1.08,
+    were the values at the time and are not the values now: both were corrected
+    on 2026-08-01 against DOE prices, to 0.96 and 0.98. The arithmetic described
+    is unchanged; only the constants moved.
 
     It survived because the error is invisible exactly where anyone would look.
     The regions anchored to NCR divide by 1.00 and were always right, and the bug

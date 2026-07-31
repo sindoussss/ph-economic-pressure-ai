@@ -148,6 +148,43 @@ def test_the_corrected_multipliers_are_what_the_rule_proposed():
         assert live[region] == value, region
 
 
+def test_every_region_is_recorded_as_measured_or_assumed():
+    """The table gives no sign of which figures are evidence, so without this a
+    reader has none either. NCR is neither: it is the base at 1.00 by
+    construction, so it is deliberately in no set."""
+    from ph_economic_ai.engine import swarm
+    names = {g['name'] for g in swarm.ALL_REGIONS}
+    assert swarm.MEASURED_MULTIPLIERS & swarm.ASSUMED_MULTIPLIERS == frozenset()
+    assert names - swarm.MEASURED_MULTIPLIERS - swarm.ASSUMED_MULTIPLIERS == {'NCR'}
+    assert len(swarm.MEASURED_MULTIPLIERS) == 11
+    assert len(swarm.ASSUMED_MULTIPLIERS) == 5
+
+
+def test_barmm_is_assumed_for_a_different_reason_than_the_other_four():
+    """Worth keeping apart. Ilocos, Cagayan Valley, Central Luzon and CAR have NO
+    DOE series. BARMM has a partial one -- Basilan and Maguindanao appear,
+    Lanao del Sur, Sulu and Tawi-Tawi do not -- so its weeks rarely reach the
+    three-city minimum and it fell below the 52-week floor. Absent coverage and
+    thin coverage are different claims and should not be collapsed."""
+    from ph_economic_ai.engine import swarm
+    from ph_economic_ai.ui.honesty import UNVALIDATABLE_REGIONS
+    assert 'BARMM' in swarm.ASSUMED_MULTIPLIERS
+    assert 'BARMM' not in UNVALIDATABLE_REGIONS, (
+        'BARMM has a partial DOE series; saying it has none would be false')
+    assert UNVALIDATABLE_REGIONS < swarm.ASSUMED_MULTIPLIERS
+
+
+def test_the_basis_note_counts_from_the_table_not_from_prose():
+    """A number written into a sentence drifts from the table it describes, which
+    is the failure this whole note exists to prevent."""
+    from ph_economic_ai.engine import swarm
+    from ph_economic_ai.ui.honesty import regional_basis
+    note = regional_basis()
+    assert f'{len(swarm.MEASURED_MULTIPLIERS)} of {len(swarm.ALL_REGIONS)}' in note
+    assert 'derived rather than forecast' in note
+    assert 'unfitted' not in note
+
+
 def test_the_positive_control_regions_were_left_at_their_original_values():
     """The single most important assertion here. MIMAROPA and Bicol were tested
     on the same data by the same estimator and came back CONSISTENT, at 1.092 and
