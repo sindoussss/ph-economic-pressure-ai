@@ -1,0 +1,180 @@
+{
+  "preregistration": "docs/preregistration/2026-08-01-regional-multiplier-test.md",
+  "window_start": "2023-01-03",
+  "reference": "NCR",
+  "hac_lags": 4,
+  "min_cities": 3,
+  "implausible_weekly_move": 5.0,
+  "family_size": 2,
+  "withdrawn": true,
+  "results": {
+    "Western Visayas": {
+      "n": 122,
+      "intercept": 0.12805591380474052,
+      "b": 0.6491138281475577,
+      "se": 0.15909301170729506,
+      "ci_low": 0.3372972550092502,
+      "ci_high": 0.9609304012858653,
+      "r_squared": 0.5471030242145839,
+      "reference_sd": 2.795368181695742,
+      "residual_sd": 1.6509162076824744,
+      "largest_residual_share": 0.1774083718781498,
+      "reference_zero_share": 0.02459016393442623,
+      "multiplier": 1.05,
+      "verdict": "WITHDRAWN",
+      "verdict_under_rule": "NEITHER",
+      "action": "Report a national change with a per-region uncertainty band, and open a new question.",
+      "invalidations": [],
+      "implausible_weeks": {
+        "reference": [
+          [
+            "2026-03-17",
+            14.53
+          ],
+          [
+            "2026-03-10",
+            11.08
+          ],
+          [
+            "2026-03-24",
+            9.38
+          ],
+          [
+            "2026-04-21",
+            -7.9
+          ],
+          [
+            "2024-07-16",
+            -6.35
+          ],
+          [
+            "2026-05-19",
+            5.28
+          ],
+          [
+            "2025-07-01",
+            -5.06
+          ],
+          [
+            "2025-11-04",
+            5.05
+          ]
+        ],
+        "Western Visayas": [
+          [
+            "2026-03-17",
+            14.29
+          ],
+          [
+            "2026-03-24",
+            13.86
+          ],
+          [
+            "2026-03-10",
+            8.15
+          ],
+          [
+            "2026-04-14",
+            -6.05
+          ],
+          [
+            "2025-01-14",
+            5.57
+          ]
+        ]
+      }
+    },
+    "Davao Region": {
+      "n": 148,
+      "intercept": 0.004789580377106362,
+      "b": 0.6111857932247083,
+      "se": 0.11879049370724684,
+      "ci_low": 0.3783607038527726,
+      "ci_high": 0.8440108825966441,
+      "r_squared": 0.5988741611772004,
+      "reference_sd": 2.8890991302607194,
+      "residual_sd": 1.4451343549697022,
+      "largest_residual_share": 0.13001374508191807,
+      "reference_zero_share": 0.033783783783783786,
+      "multiplier": 1.05,
+      "verdict": "WITHDRAWN",
+      "verdict_under_rule": "NEITHER",
+      "action": "Report a national change with a per-region uncertainty band, and open a new question.",
+      "invalidations": [],
+      "implausible_weeks": {
+        "reference": [
+          [
+            "2026-03-17",
+            14.53
+          ],
+          [
+            "2026-03-10",
+            11.08
+          ],
+          [
+            "2026-06-23",
+            -10.02
+          ],
+          [
+            "2026-03-24",
+            9.38
+          ],
+          [
+            "2026-04-21",
+            -7.9
+          ],
+          [
+            "2026-06-02",
+            -6.9
+          ],
+          [
+            "2024-07-16",
+            -6.35
+          ],
+          [
+            "2026-05-19",
+            5.28
+          ],
+          [
+            "2026-02-17",
+            -5.16
+          ],
+          [
+            "2025-07-01",
+            -5.06
+          ],
+          [
+            "2025-11-04",
+            5.05
+          ]
+        ],
+        "Davao Region": [
+          [
+            "2026-03-17",
+            15.2
+          ],
+          [
+            "2026-03-10",
+            10.91
+          ],
+          [
+            "2026-04-14",
+            -7.5
+          ],
+          [
+            "2026-03-24",
+            6.86
+          ],
+          [
+            "2026-04-21",
+            -5.54
+          ],
+          [
+            "2026-06-23",
+            -5.37
+          ]
+        ]
+      }
+    }
+  }
+}

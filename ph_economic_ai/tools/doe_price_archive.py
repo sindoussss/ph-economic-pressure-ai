@@ -114,8 +114,53 @@ def date_of(name: str) -> Optional[dt.date]:
 
     A RANGE like `2024-apr-16-22` yields its START, because that is the week the
     prices took effect and it is what `vintage.fuel_cycle_start` aligns to.
+
+    **A month NAME beats any numeric shape.** `june` is a month and cannot be
+    anything else, whereas `2-8-2026` is a month and a day only by convention.
+    Tried the other way round, `ncr-price-monitoring-for-june-2-8-2026` read as
+    8 February 2026: a June sheet filed into a February pricing week, four months
+    off, carrying June prices. It then WON the panel's later-filename tie-break
+    and overwrote the correct February data, which is how one file moved a
+    regional level by 18 PHP/L.
+
+    This is the second instance of one rule: an ambiguous pattern must never
+    pre-empt an unambiguous one. The first was the range shape reading
+    `november-25-2025` as November 2. Both produced a real date, in the right
+    year, for the wrong week.
     """
     n = name.lower()
+
+    # ── Month named. Unambiguous, so tried before anything numeric. ──────────
+
+    # year first: 2020_february_18, 2023-jun-01, 2017_mar31, 2017_june6
+    m = re.search(rf'(20\d\d)[_\-\s]*({_MONTH_RE})[_\-\s]*(\d{{1,2}})(?!\d)', n)
+    if m:
+        try:
+            return dt.date(int(m.group(1)), _MONTHS[m.group(2)], int(m.group(3)))
+        except ValueError:
+            pass
+
+    # month first: november-25-2025
+    m = re.search(rf'({_MONTH_RE})[_\-\s]*(\d{{1,2}})[_\-\s]+(20\d\d)', n)
+    if m:
+        try:
+            return dt.date(int(m.group(3)), _MONTHS[m.group(1)], int(m.group(2)))
+        except ValueError:
+            pass
+
+    # Month first with a RANGE, e.g. april-15-21-2025, june-2-8-2026. Tried after
+    # the simple shape and deliberately so: placed before it, this read
+    # `november-25-2025` as November 2, splitting the 25 across the range and the
+    # year. The start of the range is the effective week.
+    m = re.search(rf'({_MONTH_RE})[_\-\s]*(\d{{1,2}})[_\-\s]*(?:to[_\-\s]*)?'
+                  rf'\d{{1,2}}[_\-\s]*(20\d\d)', n)
+    if m:
+        try:
+            return dt.date(int(m.group(3)), _MONTHS[m.group(1)], int(m.group(2)))
+        except ValueError:
+            pass
+
+    # ── No month name. Numeric conventions, most explicit first. ─────────────
 
     # YYYY-MM-DD all numeric, e.g. petro_ncr_2022-06-23
     m = re.search(r'(20\d\d)[-_](\d{1,2})[-_](\d{1,2})(?!\d)', n)
@@ -153,35 +198,6 @@ def date_of(name: str) -> Optional[dt.date]:
                 return dt.date(yy, mm, dd)
             except ValueError:
                 pass
-
-    # year first: 2020_february_18, 2023-jun-01, 2017_mar31, 2017_june6
-    m = re.search(rf'(20\d\d)[_\-\s]*({_MONTH_RE})[_\-\s]*(\d{{1,2}})(?!\d)', n)
-    if m:
-        try:
-            return dt.date(int(m.group(1)), _MONTHS[m.group(2)], int(m.group(3)))
-        except ValueError:
-            return None
-
-    # month first: november-25-2025, august-9-to-15 has no year and fails here
-    m = re.search(rf'({_MONTH_RE})[_\-\s]*(\d{{1,2}})[_\-\s]+(20\d\d)', n)
-    if m:
-        try:
-            return dt.date(int(m.group(3)), _MONTHS[m.group(1)], int(m.group(2)))
-        except ValueError:
-            return None
-
-    # Month first with a RANGE, e.g. april-15-21-2025. Tried LAST and deliberately
-    # so: placed before the simple shape it read `november-25-2025` as November 2,
-    # splitting the 25 across the range and the year. An ambiguous pattern must
-    # never pre-empt an unambiguous one.
-    # august-9-to-15-2025. The start of the range is the effective week.
-    m = re.search(rf'({_MONTH_RE})[_\-\s]*(\d{{1,2}})[_\-\s]*(?:to[_\-\s]*)?'
-                  rf'\d{{1,2}}[_\-\s]*(20\d\d)', n)
-    if m:
-        try:
-            return dt.date(int(m.group(3)), _MONTHS[m.group(1)], int(m.group(2)))
-        except ValueError:
-            pass
     return None
 
 
