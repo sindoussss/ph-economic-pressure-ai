@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "file": "fredmd_snapshot.csv",
+  "source": "FRED-MD monthly database (McCracken and Ng 2016)",
+  "request_params": {
+    "vintage": "current"
+  },
+  "transformations": [
+    "keep the tcode header row",
+    "no transform applied at snapshot time; the recommended tcode transform is applied by vulnerability_survey at analysis time"
+  ],
+  "units": "mixed, per series; see the tcode row",
+  "notes": "Frozen snapshot backing the exposure census.",
+  "retrieved_at": "2026-08-01T03:21:37+00:00",
+  "sha256": "6cfc68234af672f359163d805deed59a041f15924cd23e333123ea0a90f8d49f",
+  "rows": 802
+}
