@@ -226,6 +226,20 @@ def test_a_garbled_province_is_refused_rather_than_matched_to_its_nearest():
         assert series.canonical_province(garbled) is None
 
 
+def test_the_canonical_province_list_cannot_diverge_from_the_region_map():
+    """It was written out a second time, covering Visayas and Mindanao only
+    because those were the areas fetched at the time. When South Luzon arrived,
+    its sixteen provinces were silently refused and 2847 rows naming Cavite,
+    Palawan, Batangas and Albay were treated as unreadable cells.
+
+    Two lists that must agree do not stay in agreement, so there is now one and
+    this pins it."""
+    derived = set().union(*series.REGION_PROVINCES.values())
+    assert set(series.PROVINCES) == derived
+    for province in ('Cavite', 'Palawan', 'Albay', 'Batangas', 'Camarines Sur'):
+        assert series.canonical_province(province) == province
+
+
 def test_a_wrap_fragment_is_not_a_province():
     """`Sur` and `Norte` alone are half a name, not a place."""
     for fragment in ('Sur', 'Norte', 'Misamis', 'Province', ''):
