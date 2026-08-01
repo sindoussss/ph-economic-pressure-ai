@@ -91,9 +91,62 @@ PANEL = data('doe_regional_ron95.csv')
 
 PRODUCT = 'RON 95'
 
-#: The provinces DOE's Visayas and Mindanao sheets can legitimately name.
-#: Reference data, not a correction table: a province either IS one of these or
-#: the cell was not read.
+#: Every PH region as its province set, for the regions DOE's panel can reach.
+#: Administrative fact, published by PSA, not a modelling choice. `DEBATED_REGIONS`
+#: is the swarm's four; this is the full table `swarm.ALL_REGIONS` assigns a
+#: freight multiplier to, so each multiplier can be checked against prices.
+#:
+#: The four with an EMPTY set are empty because DOE publishes nothing north of
+#: NCR. They are listed rather than omitted so a coverage table cannot read as
+#: complete (`DEC-044`).
+REGION_PROVINCES: dict[str, frozenset] = {
+    'NCR': frozenset(),                        # the area IS the region
+    'Ilocos Region': frozenset(),              # no DOE series
+    'Cagayan Valley': frozenset(),             # no DOE series
+    'Central Luzon': frozenset(),              # no DOE series
+    'CAR': frozenset(),                        # no DOE series
+    'CALABARZON': frozenset({
+        'Cavite', 'Laguna', 'Batangas', 'Rizal', 'Quezon'}),
+    'MIMAROPA': frozenset({
+        'Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Romblon',
+        'Palawan'}),
+    'Bicol Region': frozenset({
+        'Albay', 'Camarines Norte', 'Camarines Sur', 'Catanduanes', 'Masbate',
+        'Sorsogon'}),
+    'Western Visayas': frozenset({
+        'Aklan', 'Antique', 'Capiz', 'Guimaras', 'Iloilo', 'Negros Occidental'}),
+    'Central Visayas': frozenset({
+        'Bohol', 'Cebu', 'Negros Oriental', 'Siquijor'}),
+    'Eastern Visayas': frozenset({
+        'Biliran', 'Eastern Samar', 'Leyte', 'Northern Samar', 'Samar',
+        'Southern Leyte'}),
+    'Zamboanga': frozenset({
+        'Zamboanga del Norte', 'Zamboanga del Sur', 'Zamboanga Sibugay'}),
+    'Northern Mindanao': frozenset({
+        'Bukidnon', 'Camiguin', 'Lanao del Norte', 'Misamis Occidental',
+        'Misamis Oriental'}),
+    'Davao Region': frozenset({
+        'Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental',
+        'Davao Oriental'}),
+    'SOCCSKSARGEN': frozenset({
+        'Cotabato', 'Sarangani', 'South Cotabato', 'Sultan Kudarat'}),
+    'Caraga': frozenset({
+        'Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands',
+        'Surigao del Norte', 'Surigao del Sur'}),
+    'BARMM': frozenset({
+        'Basilan', 'Lanao del Sur', 'Maguindanao', 'Sulu', 'Tawi-Tawi'}),
+}
+
+
+#: The provinces DOE's sheets can legitimately name. Reference data, not a
+#: correction table: a province either IS one of these or the cell was not read.
+#:
+#: **Derived from `REGION_PROVINCES` rather than written out a second time.** It
+#: was written out separately, covering Visayas and Mindanao only because those
+#: were the areas fetched at the time, and when South Luzon arrived its sixteen
+#: provinces were silently refused: 2847 rows naming Cavite, Palawan, Batangas,
+#: Laguna, Albay and Quezon were treated as unreadable cells. Two lists that must
+#: agree do not stay in agreement, so now there is one.
 #:
 #: Some documents carry an OCR'd text layer rather than a typeset one, and it
 #: produces province names that are wrong in a way no schema catches --
@@ -101,24 +154,7 @@ PRODUCT = 'RON 95'
 #: once or twice against thousands of clean rows, so they never move an
 #: aggregate enough to be noticed, and they silently split one province's series
 #: into several.
-_VISAYAS = (
-    'Aklan', 'Antique', 'Capiz', 'Guimaras', 'Iloilo', 'Negros Occidental',
-    'Bohol', 'Cebu', 'Negros Oriental', 'Siquijor',
-    'Biliran', 'Eastern Samar', 'Leyte', 'Northern Samar', 'Samar',
-    'Southern Leyte',
-)
-_MINDANAO = (
-    'Zamboanga del Norte', 'Zamboanga del Sur', 'Zamboanga Sibugay',
-    'Bukidnon', 'Camiguin', 'Lanao del Norte', 'Misamis Occidental',
-    'Misamis Oriental',
-    'Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental',
-    'Davao Oriental',
-    'Cotabato', 'Sarangani', 'South Cotabato', 'Sultan Kudarat',
-    'Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands',
-    'Surigao del Norte', 'Surigao del Sur',
-    'Basilan', 'Lanao del Sur', 'Maguindanao', 'Sulu', 'Tawi-Tawi',
-)
-PROVINCES = _VISAYAS + _MINDANAO
+PROVINCES = tuple(sorted(set().union(*REGION_PROVINCES.values())))
 
 #: Names DOE uses for a province listed above under a different one. Both are
 #: the province's own names, not near-misses: `Compostela Valley` was renamed
@@ -165,53 +201,6 @@ DEBATED_REGIONS = {
     'Davao Region': frozenset({
         'Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental',
         'Davao Oriental'}),
-}
-
-
-#: Every PH region as its province set, for the regions DOE's panel can reach.
-#: Administrative fact, published by PSA, not a modelling choice. `DEBATED_REGIONS`
-#: is the swarm's four; this is the full table `swarm.ALL_REGIONS` assigns a
-#: freight multiplier to, so each multiplier can be checked against prices.
-#:
-#: The four with an EMPTY set are empty because DOE publishes nothing north of
-#: NCR. They are listed rather than omitted so a coverage table cannot read as
-#: complete (`DEC-044`).
-REGION_PROVINCES: dict[str, frozenset] = {
-    'NCR': frozenset(),                        # the area IS the region
-    'Ilocos Region': frozenset(),              # no DOE series
-    'Cagayan Valley': frozenset(),             # no DOE series
-    'Central Luzon': frozenset(),              # no DOE series
-    'CAR': frozenset(),                        # no DOE series
-    'CALABARZON': frozenset({
-        'Cavite', 'Laguna', 'Batangas', 'Rizal', 'Quezon'}),
-    'MIMAROPA': frozenset({
-        'Occidental Mindoro', 'Oriental Mindoro', 'Marinduque', 'Romblon',
-        'Palawan'}),
-    'Bicol Region': frozenset({
-        'Albay', 'Camarines Norte', 'Camarines Sur', 'Catanduanes', 'Masbate',
-        'Sorsogon'}),
-    'Western Visayas': frozenset({
-        'Aklan', 'Antique', 'Capiz', 'Guimaras', 'Iloilo', 'Negros Occidental'}),
-    'Central Visayas': frozenset({
-        'Bohol', 'Cebu', 'Negros Oriental', 'Siquijor'}),
-    'Eastern Visayas': frozenset({
-        'Biliran', 'Eastern Samar', 'Leyte', 'Northern Samar', 'Samar',
-        'Southern Leyte'}),
-    'Zamboanga': frozenset({
-        'Zamboanga del Norte', 'Zamboanga del Sur', 'Zamboanga Sibugay'}),
-    'Northern Mindanao': frozenset({
-        'Bukidnon', 'Camiguin', 'Lanao del Norte', 'Misamis Occidental',
-        'Misamis Oriental'}),
-    'Davao Region': frozenset({
-        'Davao de Oro', 'Davao del Norte', 'Davao del Sur', 'Davao Occidental',
-        'Davao Oriental'}),
-    'SOCCSKSARGEN': frozenset({
-        'Cotabato', 'Sarangani', 'South Cotabato', 'Sultan Kudarat'}),
-    'Caraga': frozenset({
-        'Agusan del Norte', 'Agusan del Sur', 'Dinagat Islands',
-        'Surigao del Norte', 'Surigao del Sur'}),
-    'BARMM': frozenset({
-        'Basilan', 'Lanao del Sur', 'Maguindanao', 'Sulu', 'Tawi-Tawi'}),
 }
 
 
