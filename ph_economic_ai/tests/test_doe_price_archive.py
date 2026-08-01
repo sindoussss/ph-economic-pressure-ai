@@ -396,6 +396,49 @@ def test_a_wrapped_province_reassembles_in_reading_order():
         == [(300.0, 'Santa Maria')]
 
 
+def test_the_wrap_join_scales_with_the_page_not_a_constant():
+    """It was a flat 14.0 points, measured off one document. On sheets with wider
+    leading the wrap it has to bridge is 19.5 points against a 14.3 pitch, so the
+    constant sat just BELOW it and split `Zamboanga del Sur` into `Zamboanga del`
+    and `Sur` -- two strings that are not places.
+
+    The factor is not delicate. A wrap measures about 1.36 pitches while the gap
+    to the NEXT province measures 142 to 225 on the same sheet, an order of
+    magnitude away, which is why 1.6 works on pages whose pitch is 7 and on pages
+    whose pitch is 14."""
+    from ph_economic_ai.tools.doe_price_archive import _assemble_labels
+
+    wide = [(310.0, 40.0, 'Zamboanga'), (310.0, 60.0, 'del'),
+            (329.5, 40.0, 'Sur'), (547.3, 40.0, 'Basilan')]
+    assert _assemble_labels(wide, pitch=14.3) == [
+        (310.0, 'Zamboanga del Sur'), (547.3, 'Basilan')]
+
+    # The same sheet under the old constant produced the fragments.
+    assert _assemble_labels(wide, pitch=None) == [
+        (310.0, 'Zamboanga del'), (329.5, 'Sur'), (547.3, 'Basilan')]
+
+    tight = [(162.8, 40.0, 'Zamboanga'), (171.9, 40.0, 'del'),
+             (171.9, 60.0, 'Sur'), (259.3, 40.0, 'Bukidnon')]
+    assert _assemble_labels(tight, pitch=7.16) == [
+        (162.8, 'Zamboanga del Sur'), (259.3, 'Bukidnon')]
+
+
+def test_two_provinces_are_never_merged_by_the_scaled_join():
+    """The risk the factor has to avoid. A boundary gap is an order of magnitude
+    larger than a wrap, so no plausible pitch brings them together."""
+    from ph_economic_ai.tools.doe_price_archive import _assemble_labels
+    pair = [(310.0, 40.0, 'Basilan'), (452.0, 40.0, 'Bukidnon')]
+    for pitch in (7.0, 14.3, 20.0):
+        assert len(_assemble_labels(pair, pitch=pitch)) == 2, pitch
+
+
+def test_a_page_with_too_few_rows_falls_back_to_the_constant():
+    """A pitch measured from three rows is not a pitch."""
+    from ph_economic_ai.tools.doe_price_archive import _line_pitch
+    assert _line_pitch([[_w(40, y, 'x')] for y in (100, 112, 124)]) is None
+    assert _line_pitch([[_w(40, y, 'x')] for y in range(100, 200, 12)]) == 12
+
+
 def test_a_province_wrapped_across_lines_is_still_one_label():
     """`Camarines` and `Norte` print on separate lines with a city between."""
     from ph_economic_ai.tools.doe_price_archive import _assemble_labels

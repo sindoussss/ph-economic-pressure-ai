@@ -54,6 +54,7 @@ import collections
 import datetime as dt
 import json
 import re
+import statistics
 from pathlib import Path
 from typing import NamedTuple, Optional
 
@@ -461,7 +462,15 @@ def _province_bands(page, cols: Optional[Columns] = None) -> list[float]:
     return out
 
 
-def _assemble_labels(pending: list[tuple[float, float, str]]) -> list[tuple[float, str]]:
+def _line_pitch(rows) -> Optional[float]:
+    """Median vertical gap between visual rows on a page."""
+    ys = sorted({r[0][1] for r in rows if r})
+    gaps = [b - a for a, b in zip(ys, ys[1:]) if 0 < b - a < 60]
+    return statistics.median(gaps) if len(gaps) >= 5 else None
+
+
+def _assemble_labels(pending: list[tuple[float, float, str]],
+                     pitch: Optional[float] = None) -> list[tuple[float, str]]:
     """(y, x, word) fragments into (y, label), joined in READING order.
 
     A province name wraps onto two lines, `Camarines` then `Norte`, with a city
@@ -479,9 +488,17 @@ def _assemble_labels(pending: list[tuple[float, float, str]]) -> list[tuple[floa
     intent but is not itself the mechanism, so a mutation that drops the key
     still passes. The test that has teeth here is the one on the OUTPUT string.
     """
+    # 1.6 line pitches. The wrap it has to bridge measures 1.36 pitches on the
+    # sampled sheets, 19.5 points against a 14.3 pitch, while the gap between one
+    # province and the NEXT measures 142 to 225. An order of magnitude separates
+    # the two, so the exact factor is not delicate; what mattered was that 14.0
+    # was a constant measured off one document and sat just BELOW the wrap on
+    # every sheet with wider leading, splitting `Zamboanga del Sur` into
+    # `Zamboanga del` and `Sur`.
+    join = 1.6 * pitch if pitch else 14.0
     out: list[tuple[float, str]] = []
     for y, _x, word in sorted(pending, key=lambda t: (t[0], t[1])):
-        if out and y - out[-1][0] <= 14.0:
+        if out and y - out[-1][0] <= join:
             out[-1] = (out[-1][0], out[-1][1] + ' ' + word)
         else:
             out.append((y, word))
@@ -588,7 +605,7 @@ def parse_price_pdf(content: bytes) -> list[dict]:
                 block['rows'].append((product, *_row_prices(row, cols.prices)))
                 block['y1'] = row[0][1]
 
-        provinces = _assemble_labels(pending_prov)
+        provinces = _assemble_labels(pending_prov, _line_pitch(rows))
 
         # A province is printed ONCE, vertically centred against however many city
         # blocks it contains, so it can appear below the first city it covers.
