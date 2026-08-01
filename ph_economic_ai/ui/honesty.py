@@ -268,6 +268,41 @@ UNVALIDATABLE_REGIONS = frozenset({
 })
 
 
+def regions_resting_on_an_assumption() -> frozenset:
+    """Regions whose displayed figure depends on a multiplier nobody measured.
+
+    Wider than `UNVALIDATABLE_REGIONS`, and the difference is the point.
+
+    `derive_regional_estimates` scales a region by its premium **relative to its
+    anchor**, which is correct (`DEC-030`): the anchor's survivor estimate already
+    carries the anchor's own freight, so only the increment is outstanding. But it
+    means a figure inherits its anchor's provenance as well as its own. A measured
+    region divided by an assumed anchor is not a measured figure.
+
+    Two things made this visible only after nine multipliers were corrected:
+
+    * **CALABARZON, MIMAROPA and Bicol are measured and anchored to Central
+      Luzon**, whose 1.02 is a guess DOE can never check. CALABARZON measures
+      0.979 against NCR and displays 0.98/1.02 = 0.961.
+    * **BARMM is assumed at 1.10 and anchored to Davao**, which was corrected
+      downward to 0.96. Lowering an anchor RAISES everything scaled off it, so
+      BARMM rose 0.24 to become the largest figure on the map without anything
+      about BARMM being measured.
+
+    So the count here is 8 of 17, not 4. Saying 4 understates it.
+    """
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, ASSUMED_MULTIPLIERS
+
+    anchors = {g['anchor']: g['name'] for g in ALL_REGIONS
+               if g['name'] == g.get('name') and g['anchor'] is not None
+               and g['name'] in ('NCR', 'Central Luzon', 'Western Visayas',
+                                 'Davao Region')}
+    return frozenset(
+        g['name'] for g in ALL_REGIONS
+        if g['name'] in ASSUMED_MULTIPLIERS
+        or anchors.get(g['anchor']) in ASSUMED_MULTIPLIERS)
+
+
 def regional_tooltip_note(region: str) -> str:
     """One line inside a region's tooltip, naming which kind of number it is."""
     debated = region in DEBATED_REGIONS
@@ -289,11 +324,21 @@ def unvalidatable_note() -> str:
     This is about whether they can ever be graded, which is a different claim and
     a stronger one: derived is a statement about method, unfalsifiable is a
     statement about evidence.
+
+    **Two counts, because they are two facts.** Four regions have no DOE series
+    at all. EIGHT displayed figures rest on a multiplier nobody measured, because
+    a figure inherits its anchor's provenance: CALABARZON, MIMAROPA and Bicol are
+    measured but divide by Central Luzon's unmeasurable 1.02, and BARMM is itself
+    assumed. Reporting only the four understates it, which is why the wider count
+    is stated first and the narrower one qualifies it.
     """
+    resting = regions_resting_on_an_assumption()
     debated = sorted(UNVALIDATABLE_REGIONS & set(DEBATED_REGIONS))
     n = len(UNVALIDATABLE_REGIONS)
-    base = (f'{n} of the 17 have no DOE price series at all, so nothing published '
-            f'can confirm or contradict them')
+    base = (f'{len(resting)} of the 17 rest on a freight premium nobody has '
+            f'measured, {n} of them because DOE publishes no price series for '
+            f'the region at all and the rest because they are scaled from one '
+            f'that has none, so nothing published can confirm or contradict them')
     if not debated:
         return base
     return (f'{base} — including {", ".join(debated)}, which the agents actually '
