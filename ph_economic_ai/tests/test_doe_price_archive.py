@@ -328,6 +328,23 @@ def test_a_header_written_as_one_token_is_still_found():
     assert cols is not None and cols.city == 145.0 and cols.product == 210.0
 
 
+def test_a_city_keeps_the_word_city_in_its_own_name():
+    """A REGRESSION THAT SHIPPED. The reprinted-header filter matched header
+    WORDS and dropped them from every row, so `Caloocan City` became `Caloocan`
+    and every `X City` in the panel lost its suffix. It also risked collapsing
+    Quezon City, in NCR, toward Quezon province in CALABARZON.
+
+    A header is a ROW, not a word. `_is_header_row` already distinguishes them,
+    because it also requires the absence of a product and a price -- which no
+    real city row can satisfy."""
+    from ph_economic_ai.tools.doe_price_archive import _is_header_row
+
+    city_row = [_w(40, 300, 'Caloocan'), _w(80, 300, 'City'),
+                _w(209, 300, 'RON'), _w(242, 300, '100'), _w(328, 300, '64.06')]
+    assert not _is_header_row(city_row), 'a city named X City is not a header'
+    assert _is_header_row([_w(42, 200, 'Province'), _w(115, 200, 'Cities')])
+
+
 def test_the_repeated_column_header_is_not_read_as_a_province():
     """DOE reprints the header partway down a long sheet, and the word
     `Province` sits in the province column, so 112 rows carried it as a place
@@ -489,3 +506,62 @@ def test_no_area_label_names_a_region_it_cannot_evidence():
     SERIES has to be one the content supports."""
     from ph_economic_ai.tools.doe_price_archive import SERIES
     assert {a for _f, a in SERIES} == {'NCR', 'South Luzon', 'Visayas', 'Mindanao'}
+
+
+# ── The 2017-2019 Metro Manila layout, a different GRAIN ─────────────────────
+
+class _Doc(list):
+    """A stand-in for a fitz document: a list of pages."""
+
+
+class _TextPage:
+    def __init__(self, words):
+        self._words = words
+
+    def get_text(self, kind='words'):
+        return self._words
+
+    def get_drawings(self):
+        return []
+
+
+def test_the_legacy_metro_sheet_is_read_as_one_metro_wide_row():
+    """105 documents produced nothing because this sheet has no city column and
+    no PROVINCE: brands run across, products run down, and the whole page is one
+    Metro Manila observation. They are the predecessor of the `petro_ncr` series
+    and extend NCR about two and a half years further back."""
+    from ph_economic_ai.tools.doe_price_archive import parse_metro_summary
+
+    page = _TextPage([
+        _w(324, 40, 'PREVAILING'), _w(380, 40, 'RETAIL'), _w(413, 40, 'PRICES'),
+        _w(584, 40, 'METRO'), _w(620, 40, 'MANILA'),
+        _w(77, 90, '(RON95)'), _w(176, 90, '39.55'), _w(230, 90, '49.36'),
+        _w(284, 90, '40.55'), _w(338, 90, '47.35'),
+    ])
+    rows = parse_metro_summary(_Doc([page]))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row['product'] == 'RON 95'
+    assert row['city'] == 'Metro Manila' and row['province'] is None
+    assert (row['low'], row['high']) == (39.55, 49.36)
+    assert row['grain'] == 'metro', 'a metro aggregate is not a city'
+
+
+def test_the_legacy_sheets_title_is_not_read_as_its_footer():
+    """`_FOOTER_RE` matches `PREVAILING RETAIL PRICES`, added to stop the NCR
+    summary block on the MODERN sheet. That string is this sheet's TITLE, so the
+    document ended at row 0 and every one of the 105 stayed empty."""
+    from ph_economic_ai.tools.doe_price_archive import (
+        _FOOTER_RE, _LEGACY_FOOTER_RE)
+    title = 'PREVAILING RETAIL PRICES OF PETROLEUM PRODUCTS IN METRO MANILA'
+    assert _FOOTER_RE.search(title), 'the modern guard still stops the summary'
+    assert not _LEGACY_FOOTER_RE.search(title), 'but it must not stop the title'
+    assert _LEGACY_FOOTER_RE.search('DATE OF MONITORING: APRIL 27, 2017')
+
+
+def test_a_sheet_without_the_metro_title_yields_nothing():
+    """The fallback must not claim a document it cannot place."""
+    from ph_economic_ai.tools.doe_price_archive import parse_metro_summary
+    page = _TextPage([_w(77, 90, '(RON95)'), _w(176, 90, '39.55'),
+                      _w(230, 90, '49.36')])
+    assert parse_metro_summary(_Doc([page])) == []

@@ -413,6 +413,10 @@ def panel_rows(manifest: dict) -> tuple[list[dict], dict]:
                 # The cell as printed, kept whatever happens to it above, so a
                 # refused name can be inspected rather than only counted.
                 'province_raw': r['province'] or '',
+                # `city` or `metro`. The 2017-2019 NCR sheets are a Metro Manila
+                # AGGREGATE across brands, not a city within it, and a median
+                # over cities must not average a whole market with its parts.
+                'grain': r.get('grain', 'city'),
                 'city': r['city'] or '',
                 'low': r['low'], 'high': r['high'], 'common': r['common'],
                 'source_file': name,
@@ -420,8 +424,8 @@ def panel_rows(manifest: dict) -> tuple[list[dict], dict]:
     return out, problems
 
 
-_FIELDS = ('cycle', 'file_date', 'area', 'province', 'province_raw', 'city',
-           'low', 'high', 'common', 'source_file')
+_FIELDS = ('cycle', 'file_date', 'area', 'grain', 'province', 'province_raw',
+           'city', 'low', 'high', 'common', 'source_file')
 
 
 def write_panel(rows: list[dict], path: Path = PANEL) -> Path:

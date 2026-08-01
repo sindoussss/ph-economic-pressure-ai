@@ -140,6 +140,10 @@ def _deduplicated(rows: list[dict]) -> list[dict]:
         price = _price(row)
         if price is None or not row['city']:
             continue
+        # A metro-wide aggregate is not a city. Including it would put a whole
+        # market's range into a median taken over that market's own components.
+        if row.get('grain', 'city') != 'city':
+            continue
         key = (row['area'], row['province'], row['city'], row['cycle'])
         if key not in latest or row['source_file'] > latest[key]['source_file']:
             latest[key] = {**row, '_price': price}
