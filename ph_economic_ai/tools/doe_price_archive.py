@@ -513,6 +513,66 @@ def _band_of(y: float, bands: list[float]) -> Optional[int]:
     return None
 
 
+#: The 2017-2019 Metro Manila sheet writes its products in prose, `Gasoline
+#: (RON95)`, where the modern table writes `RON 95`.
+#: The legacy sheet's own end matter. Deliberately narrower than `_FOOTER_RE`,
+#: which would match this document's title.
+_LEGACY_FOOTER_RE = re.compile(r'DATE\s+(?:OF\s+)?MONITOR|PREPARED\s+BY|SOURCE\s*:')
+
+_LEGACY_PRODUCT = (
+    ('RON100', 'RON 100'), ('RON 100', 'RON 100'),
+    ('RON97', 'RON 97'), ('RON 97', 'RON 97'),
+    ('RON95', 'RON 95'), ('RON 95', 'RON 95'),
+    ('RON91', 'RON 91'), ('RON 91', 'RON 91'),
+    ('DIESEL PLUS', 'DIESEL PLUS'), ('DIESEL', 'DIESEL'),
+    ('KEROSENE', 'KEROSENE'),
+)
+
+
+def parse_metro_summary(doc) -> list[dict]:
+    """The 2017-2019 Metro Manila layout: brands across, products down.
+
+    A different GRAIN from every other sheet, and that is why it is parsed
+    separately rather than bent into the same path. There is no city column and
+    no province: the whole document is one metro-wide observation, with a low and
+    a high column per brand. `PREVAILING RETAIL PRICES OF PETROLEUM PRODUCTS IN
+    METRO MANILA`, one row per product.
+
+    105 of the 106 documents that produced nothing are this shape, all NCR, all
+    2017 to 2019. They are the predecessor of the `petro_ncr` series and they
+    extend it about two and a half years backwards.
+
+    Rows are marked `grain='metro'`. A metro aggregate is NOT a city, and mixing
+    it into a median over cities would silently average a whole-market figure
+    with its own components.
+    """
+    out: list[dict] = []
+    for page in doc:
+        rows = _rows_from_words(page.get_text('words'))
+        if not any('METRO MANILA' in ' '.join(w[4] for w in r).upper()
+                   for r in rows[:6]):
+            continue
+        for row in rows:
+            text = ' '.join(w[4] for w in row).upper()
+            # NOT `_FOOTER_RE`. It matches `PREVAILING RETAIL PRICES`, added to
+            # stop the NCR summary block on the modern sheet -- and that string
+            # is this sheet's TITLE, so the whole document ended at row 0.
+            if _LEGACY_FOOTER_RE.search(text):
+                break
+            product = next((canon for token, canon in _LEGACY_PRODUCT
+                            if token in text.replace('(', ' ').replace(')', ' ')
+                            or token in text), None)
+            if product is None:
+                continue
+            prices = sorted(v for v in (_num(w[4]) for w in row) if v is not None)
+            if len(prices) < 2:
+                continue
+            out.append({'province': None, 'city': 'Metro Manila',
+                        'product': product, 'low': prices[0], 'high': prices[-1],
+                        'common': None, 'grain': 'metro'})
+    return out
+
+
 def parse_price_pdf(content: bytes) -> list[dict]:
     """Rows of {province, city, product, low, high, common} from one DOE PDF.
 
@@ -569,7 +629,12 @@ def parse_price_pdf(content: bytes) -> list[dict]:
 
         for row in rows[header_end + 1:]:
             text = ' '.join(w[4] for w in row).upper()
-            if 'MUNICIPALITY' in text or text.startswith('CITY/'):
+            # DOE reprints the column header partway down a long sheet. Skip the
+            # whole ROW, never individual words: filtering on the header WORDS
+            # stripped `City` out of `Caloocan City`, because a city's own name
+            # contains one. Every `X City` in the panel became `X`, which is
+            # wrong data and risks colliding Quezon City with Quezon province.
+            if _is_header_row(row):
                 continue
             if _FOOTER_RE.search(text):
                 break
@@ -590,11 +655,6 @@ def parse_price_pdf(content: bytes) -> list[dict]:
 
             for w in row:
                 if _num(w[4]) is not None or ':' in w[4]:
-                    continue
-                # The column HEADER repeats partway down a long sheet, and the
-                # word `Province` sitting in the province column reads as one.
-                # 112 rows carried it as a place name.
-                if w[4].upper().strip('/ ') in _LABEL_HEADERS:
                     continue
                 if w[0] < cols.city:
                     pending_prov.append((w[1], w[0], w[4]))
@@ -627,8 +687,15 @@ def parse_price_pdf(content: bytes) -> list[dict]:
                         if provinces else None)
             city = ' '.join(w for _x, w in sorted(b['city'])).strip() or None
             for product, low, high, common in b['rows']:
-                out.append({'province': prov, 'city': city, 'product': product,
+                out.append({'province': prov, 'city': city,
+                            'grain': 'city', 'product': product,
                             'low': low, 'high': high, 'common': common})
+    # The 2017-2019 Metro Manila sheet has no city column and no PROVINCE, so
+    # the loop above finds no label column and returns nothing. 105 documents
+    # were dropped whole for that reason, all NCR, extending its series about
+    # two and a half years further back.
+    if not out:
+        return parse_metro_summary(doc)
     return out
 
 
