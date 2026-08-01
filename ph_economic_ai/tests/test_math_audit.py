@@ -656,11 +656,20 @@ def test_a_derived_region_with_no_source_says_both_things_too():
 
 
 def test_the_map_note_names_the_debated_region_specifically():
-    """A count alone would let a reader assume the four unfalsifiable regions are
-    all derived ones, which is the reassuring reading and the wrong one."""
+    """A count alone would let a reader assume the unfalsifiable regions are all
+    derived ones, which is the reassuring reading and the wrong one.
+
+    Asserted on the COUNTS the note must carry rather than on one literal string.
+    It used to require `4 of the 17`, and that broke when the note learned to
+    report both numbers: 8 figures rest on an unmeasured premium, 4 of them
+    because DOE publishes nothing for the region. Pinning the phrasing would have
+    made the honest widening look like a regression."""
     from ph_economic_ai.ui import honesty
     note = honesty.unvalidatable_note()
-    assert '4 of the 17' in note
+    resting = len(honesty.regions_resting_on_an_assumption())
+    assert f'{resting} of the 17' in note, 'the wider count leads'
+    assert f'{len(honesty.UNVALIDATABLE_REGIONS)} of them' in note, (
+        'the narrower count qualifies it; both are facts')
     assert 'Central Luzon' in note
     assert 'debate rather than derive' in note
     assert 'anchors the figures scaled from it' in note
@@ -673,5 +682,5 @@ def test_the_two_map_lines_make_different_claims():
     from ph_economic_ai.ui import honesty
     basis, unval = honesty.regional_basis(), honesty.unvalidatable_note()
     assert 'derived rather than forecast' in basis
-    assert 'no DOE price series' in unval
+    assert 'no price series' in unval and 'confirm or contradict' in unval
     assert basis != unval

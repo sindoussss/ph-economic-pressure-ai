@@ -174,6 +174,50 @@ def test_barmm_is_assumed_for_a_different_reason_than_the_other_four():
     assert UNVALIDATABLE_REGIONS < swarm.ASSUMED_MULTIPLIERS
 
 
+def test_a_figure_inherits_its_anchors_provenance():
+    """The side effect of correcting nine multipliers, and it was invisible until
+    someone looked at what MOVED rather than at whether the output was sane.
+
+    `derive_regional_estimates` scales a region by its premium relative to its
+    ANCHOR, which is right (`DEC-030`). It also means a measured region divided by
+    an assumed anchor is not a measured figure, and an assumed region divided by a
+    corrected anchor moves without anything about it being measured."""
+    from ph_economic_ai.ui.honesty import (
+        UNVALIDATABLE_REGIONS, regions_resting_on_an_assumption)
+    resting = regions_resting_on_an_assumption()
+
+    assert UNVALIDATABLE_REGIONS < resting, 'the wider count must include the four'
+    assert len(resting) == 8
+    # Measured, but anchored to Central Luzon's unmeasurable 1.02.
+    for region in ('CALABARZON', 'MIMAROPA', 'Bicol Region'):
+        assert region in resting
+    # Assumed at 1.10 and anchored to Davao, which was corrected DOWN to 0.96.
+    # Lowering an anchor raises everything scaled off it: BARMM rose 0.24 and
+    # became the largest figure on the map without being measured.
+    assert 'BARMM' in resting
+
+
+def test_a_region_measured_and_anchored_to_a_measured_region_is_not_flagged():
+    """The flag has to discriminate, or it says nothing. Zamboanga is measured and
+    anchored to Davao, which is measured, so its figure rests on measurement
+    throughout."""
+    from ph_economic_ai.ui.honesty import regions_resting_on_an_assumption
+    resting = regions_resting_on_an_assumption()
+    for region in ('Zamboanga', 'Northern Mindanao', 'SOCCSKSARGEN', 'Caraga',
+                   'Western Visayas', 'Central Visayas', 'Eastern Visayas'):
+        assert region not in resting, region
+
+
+def test_the_amber_note_reports_the_wider_count_first():
+    """Saying 4 understates it: 8 figures rest on an unmeasured premium. Both
+    numbers appear, because they are two different facts."""
+    from ph_economic_ai.ui.honesty import unvalidatable_note
+    note = unvalidatable_note()
+    assert note.startswith('8 of the 17')
+    assert '4 of them' in note
+    assert 'Central Luzon' in note
+
+
 def test_the_basis_note_counts_from_the_table_not_from_prose():
     """A number written into a sentence drifts from the table it describes, which
     is the failure this whole note exists to prevent."""
