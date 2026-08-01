@@ -33,6 +33,12 @@ _SOCIAL_DIR = _ROOT / 'assets' / 'corpus' / 'social'
 # Tagalog + English so the search-interest signal spans both how Filipinos and
 # the English-language press phrase price pressure.
 _TRENDS_TERMS = ['presyo ng gas', 'diesel price', 'Meralco bill', 'bigas presyo']
+#: Google rate-limits bursts with a 429. One term per request means four
+#: requests, so they are spaced and retried with exponential backoff.
+_TRENDS_ATTEMPTS = 4
+_TRENDS_BACKOFF = 20.0
+_TRENDS_SPACING = 12.0
+
 _REDDIT_SUBS = ['Philippines', 'phinvest']
 _REDDIT_QUERIES = ['gas price', 'fuel price', 'meralco', 'rice price', 'inflation']
 
@@ -46,20 +52,48 @@ def refresh_trends(terms=_TRENDS_TERMS, geo: str = 'PH', out: Path = _TRENDS_CSV
     except ImportError:
         print('trends: pytrends not installed (pip install pytrends) — skipped')
         return 0
-    try:
-        import pandas as pd
-        py = TrendReq(hl='en-US', tz=480)
-        py.build_payload(terms, geo=geo,
-                         timeframe=f'2016-01-01 {date.today().isoformat()}')
-        df = py.interest_over_time()
-    except Exception as e:
-        print(f'trends: fetch failed ({type(e).__name__}: {e}) — nothing written')
+    # ONE TERM PER REQUEST. A shared payload rescales every term against the most
+    # popular one, so a low-volume term is reported as a fraction of `diesel
+    # price` rather than against its own history, and sparse terms flatten to
+    # zero. The provenance record has always said this is how the file is built
+    # and the committed file matches it -- every column reaches 100, which only
+    # happens when each term is scaled on its own -- but the CODE had drifted to
+    # a single shared `build_payload(terms, ...)`. Running it would have degraded
+    # the data AND written a record claiming a method it did not use.
+    #
+    # Requests are spaced, because four in a row is what earns a 429.
+    import time
+
+    import pandas as pd
+    frames, failed = [], []
+    for i, term in enumerate(terms):
+        for attempt in range(_TRENDS_ATTEMPTS):
+            try:
+                py = TrendReq(hl='en-US', tz=480)
+                py.build_payload([term], geo=geo,
+                                 timeframe=f'2016-01-01 {date.today().isoformat()}')
+                one = py.interest_over_time()
+                if one is not None and not one.empty:
+                    frames.append(one[[term]])
+                break
+            except Exception as e:
+                if attempt == _TRENDS_ATTEMPTS - 1:
+                    failed.append(f'{term} ({type(e).__name__})')
+                else:
+                    time.sleep(_TRENDS_BACKOFF * (2 ** attempt))
+        if i < len(terms) - 1:
+            time.sleep(_TRENDS_SPACING)
+
+    if failed:
+        # Partial coverage is a different series, not a shorter one: the nowcast
+        # would silently lose a driver. All or nothing.
+        print(f'trends: {len(failed)} of {len(terms)} terms failed '
+              f'({"; ".join(failed)}) — nothing written')
         return 0
-    if df is None or df.empty:
+    if not frames:
         print('trends: empty response — nothing written')
         return 0
-    if 'isPartial' in df.columns:
-        df = df.drop(columns=['isPartial'])
+    df = pd.concat(frames, axis=1)
     monthly = df.resample('MS').mean().round(2)
     monthly.index = monthly.index.strftime('%Y-%m')
     monthly.index.name = 'date'

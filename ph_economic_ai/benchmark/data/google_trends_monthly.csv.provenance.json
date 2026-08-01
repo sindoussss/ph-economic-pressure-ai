@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "file": "google_trends_monthly.csv",
+  "source": "Google Trends via pytrends",
+  "request_params": {
+    "geo": "PH",
+    "granularity": "monthly",
+    "payload": "one term per request"
+  },
+  "transformations": [
+    "request each term separately, because a shared payload rescales all terms to the most popular one and flattened low-volume terms to zero",
+    "monthly interest index per term"
+  ],
+  "units": "Google Trends interest index (0-100 per term)",
+  "notes": "Sentiment nowcast input. Never pass retries= to TrendReq: urllib3 v2 removed Retry(method_whitelist=).",
+  "retrieved_at": "2026-08-01T06:08:51+00:00",
+  "sha256": "705835bc6d65155596f99db0ad14a6b0a74cf1cc0e7daad4f9185b3aa947c6a6",
+  "rows": 128,
+  "first_month": "2016-01",
+  "last_month": "2026-08",
+  "missing_months": []
+}
