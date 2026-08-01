@@ -67,6 +67,7 @@ import collections
 import csv
 import datetime as dt
 import json
+import re
 import time
 from pathlib import Path
 from typing import Iterable, Optional
@@ -362,6 +363,46 @@ def verify_cache(manifest: dict) -> dict:
 
 # ── Building the panel ───────────────────────────────────────────────────────
 
+#: Why a cached document contributes no rows. Reporting one undifferentiated pile
+#: invites the reading that 413 documents are all a parser bug waiting to be
+#: fixed. Three of the four causes are properties of the SOURCE and no amount of
+#: parser work touches them, which is a different fact and belongs on the report.
+UNPARSED_REASONS = {
+    'no text layer': 'published as a scan; needs OCR, not a parser',
+    'no RON grade published': 'brand columns only (BLAZE/PREM 98, ULG/VORTEX-S), '
+                              'each pooling several companies at once, so no '
+                              'column is RON 95 by name (DEC-043)',
+    'layout not read': 'a table shape the parser does not handle',
+}
+
+
+def unparsed_reason(name: str) -> str:
+    """Classify one document that yielded nothing."""
+    import fitz
+
+    from ph_economic_ai.tools.doe_price_archive import _rows_from_words
+
+    try:
+        doc = fitz.open(stream=cache_path(name).read_bytes(), filetype='pdf')
+    except Exception:
+        return 'layout not read'
+    for page in doc:
+        rows = _rows_from_words(page.get_text('words'))
+        if not rows or sum(len(r) for r in rows) < 10:
+            continue
+        text = ' '.join(w[4] for p in doc for w in p.get_text('words')).upper()
+        # The 2018 Mindanao sheet names no RON grade anywhere: its columns are
+        # `BLAZE/PREM 98`, `SUPER-P/XCS/VOR-G`, `ULG/VORTEX-S`, each pooling a
+        # different company's product. Calling one of them RON 95 would make the
+        # dependent variable mean a different thing on every row.
+        # A GRADE, not the letters. `PETRON` contains `RON`, so a substring test
+        # said every 2018 Mindanao sheet named a grade when none of them does.
+        if not re.search(r'RON\s*(?:100|97|95|91)\b', text):
+            return 'no RON grade published'
+        return 'layout not read'
+    return 'no text layer'
+
+
 def panel_rows(manifest: dict) -> tuple[list[dict], dict]:
     """RON 95 rows from every cached document, plus what went wrong.
 
@@ -512,8 +553,18 @@ def _build(args) -> int:
     if dupes:
         print(f'\n{len(dupes)} city-weeks appear in more than one document. '
               f'Phase 2 declares a rule; this layer does not pick one.')
-    for label, items in (('could not parse', problems['unparsed']),
-                         ('no RON 95 row', problems['no_ron95']),
+    if problems['unparsed']:
+        # Grouped by CAUSE. One pile of 413 invites the reading that they are all
+        # a parser bug waiting to be fixed, when most are properties of the
+        # SOURCE that no parser work touches. `DEC-042`: detection is not
+        # reporting, and a count without a cause is barely detection.
+        by_reason = collections.Counter(
+            unparsed_reason(entry.split(':')[0]) for entry in problems['unparsed'])
+        print(f'\n{len(problems["unparsed"])} documents yielded no rows:')
+        for reason, count in by_reason.most_common():
+            print(f'   {count:5}  {reason:24} {UNPARSED_REASONS.get(reason, "")}')
+
+    for label, items in (('no RON 95 row', problems['no_ron95']),
                          ('cached but unplaceable by name', problems['unplaceable'])):
         if items:
             print(f'\n{len(items)} documents {label}:')
