@@ -308,3 +308,36 @@ def test_the_panel_never_carries_an_aggregate_of_its_own(tmp_path):
     assert header.split(',') == list(series._FIELDS)
     for banned in ('mean', 'median', 'regional_average', 'aggregate'):
         assert banned not in header
+
+
+# ── Why a document contributed nothing ───────────────────────────────────────
+
+def test_a_grade_is_detected_by_its_number_not_by_the_letters():
+    """`PETRON` contains `RON`. A substring test said every 2018 Mindanao sheet
+    named a grade when none of them does, which would have hidden the one cause
+    that is permanent."""
+    import re
+    pattern = r'RON\s*(?:100|97|95|91)\b'
+    assert not re.search(pattern, 'AREA COMPANY PETRON CALTEX SHELL')
+    assert not re.search(pattern, 'BLAZE/PREM 98 SUPER-P/XCS/VOR-G ULG/VORTEX-S')
+    assert re.search(pattern, 'PRODUCT RON 95 RON 91 DIESEL')
+    assert re.search(pattern, 'GASOLINE (RON95)')
+
+
+def test_every_reason_carries_an_explanation():
+    """The count is the detection; the cause is the report. A pile of 413 reads
+    as one parser bug waiting to be fixed, and most of it is the source."""
+    for reason, why in series.UNPARSED_REASONS.items():
+        assert why and len(why) > 20, reason
+    assert 'OCR' in series.UNPARSED_REASONS['no text layer']
+    assert 'DEC-043' in series.UNPARSED_REASONS['no RON grade published']
+
+
+def test_the_brand_column_sheets_can_never_supply_the_dependent_variable():
+    """Not a gap to be closed later. The 2018 Mindanao columns are
+    `BLAZE/PREM 98`, `SUPER-P/XCS/VOR-G` and `ULG/VORTEX-S`, each pooling several
+    companies' products, so no column is one RON grade even in principle. Calling
+    one of them RON 95 would make the dependent variable mean a different thing
+    on every row, which `DEC-043` forbids."""
+    why = series.UNPARSED_REASONS['no RON grade published']
+    assert 'by name' in why and 'pooling' in why
