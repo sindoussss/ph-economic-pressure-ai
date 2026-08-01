@@ -328,6 +328,21 @@ def test_a_header_written_as_one_token_is_still_found():
     assert cols is not None and cols.city == 145.0 and cols.product == 210.0
 
 
+def test_the_repeated_column_header_is_not_read_as_a_province():
+    """DOE reprints the header partway down a long sheet, and the word
+    `Province` sits in the province column, so 112 rows carried it as a place
+    name. It survived the canonical-province check -- which refused it, as it
+    should -- but only by being counted as junk rather than never arriving.
+
+    Filtered on the header WORDS rather than by position, because the reprint
+    lands wherever the previous section ended."""
+    from ph_economic_ai.tools.doe_price_archive import _LABEL_HEADERS
+    for word in ('Province', 'PROVINCE', 'City', 'Municipality', 'Area'):
+        assert word.upper().strip('/ ') in _LABEL_HEADERS
+    assert 'ALBAY' not in _LABEL_HEADERS, 'a real province must never be filtered'
+    assert 'CEBU' not in _LABEL_HEADERS
+
+
 def test_a_data_row_naming_a_city_is_not_mistaken_for_a_header():
     """The window had to widen, because some sheets print `Province  Cities`
     three rows BELOW the PRODUCT row -- read as absent, the province column

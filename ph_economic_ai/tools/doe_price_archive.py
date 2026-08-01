@@ -574,6 +574,11 @@ def parse_price_pdf(content: bytes) -> list[dict]:
             for w in row:
                 if _num(w[4]) is not None or ':' in w[4]:
                     continue
+                # The column HEADER repeats partway down a long sheet, and the
+                # word `Province` sitting in the province column reads as one.
+                # 112 rows carried it as a place name.
+                if w[4].upper().strip('/ ') in _LABEL_HEADERS:
+                    continue
                 if w[0] < cols.city:
                     pending_prov.append((w[1], w[0], w[4]))
                 elif w[0] < cols.product and block is not None:
