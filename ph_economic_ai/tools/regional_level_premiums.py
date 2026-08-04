@@ -36,7 +36,8 @@ from pathlib import Path
 from typing import Optional
 
 from ph_economic_ai.benchmark.paths import artifact, data
-from ph_economic_ai.tools.doe_price_series import REGION_PROVINCES
+from ph_economic_ai.tools.doe_price_series import (
+    REGION_PROVINCES, region_of_south_luzon_file)
 from ph_economic_ai.tools.regional_multiplier_backtest import (
     MIN_CITIES, WINDOW_START, _deduplicated,
 )
@@ -68,27 +69,6 @@ def multipliers() -> dict[str, float]:
     """The table under test, read from the engine so it cannot drift from it."""
     from ph_economic_ai.engine import swarm
     return {g['name']: g['multiplier'] for g in swarm.ALL_REGIONS}
-
-
-#: South Luzon sheets are published PER REGION GROUP and name it in the FILENAME
-#: rather than in a province column, so those rows carry no province at all.
-#: Including these three regions was pre-registered ("South Luzon, if fetched in
-#: time"); this is how they are assigned, not a change to what is tested.
-_SOUTH_LUZON_REGION = (
-    ('mimaropa', 'MIMAROPA'), ('minaropa', 'MIMAROPA'),   # DOE's own typo
-    ('bicol', 'Bicol Region'),
-    ('cavite', 'CALABARZON'), ('laguna', 'CALABARZON'),
-    ('batangas', 'CALABARZON'), ('rizal', 'CALABARZON'), ('quezon', 'CALABARZON'),
-)
-
-
-def region_of_south_luzon_file(name: str) -> Optional[str]:
-    """The region a `petro_sluz` filename covers, or None."""
-    lowered = name.lower()
-    for token, region in _SOUTH_LUZON_REGION:
-        if token in lowered:
-            return region
-    return None
 
 
 def regional_levels_by_region(rows: list[dict]) -> dict[str, dict[dt.date, float]]:

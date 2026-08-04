@@ -146,7 +146,7 @@ def test_a_week_below_the_city_minimum_is_dropped(tmp_path):
 
 def test_the_basis_note_states_the_accuracy_result():
     """The action the pre-registration fixed BEFORE the run: label, do not
-    delete. Graded over 217 weeks the derivation's MAE is 1.445 against 1.197
+    delete. Graded over 294 weeks the derivation's MAE is 1.311 against 1.217
     for assuming no regional change, and the corrected interval on the
     difference contains zero -- so the note must say no more accurate, not
     worse, and must not claim a win either."""
@@ -169,3 +169,34 @@ def test_the_regional_figures_are_still_shown():
     assert len(derived) == len(ALL_REGIONS)
     for group in ALL_REGIONS:
         assert group['name'] in derived
+
+
+def test_the_level_construction_matches_the_premiums_module(tmp_path):
+    """Two constructions of the same quantity that must agree, and did not.
+
+    `regional_grading` neither deduplicated city-weeks nor recovered the South
+    Luzon regions from their filenames, so it disagreed with
+    `regional_level_premiums` on 22 of 1798 week-values and was missing about 183
+    weeks each for CALABARZON, MIMAROPA and Bicol. That understated the accuracy
+    test by 77 paired weeks.
+
+    Pinned on a fixture rather than the committed panel, so the guard holds
+    without a 4 MB read."""
+    import csv as _csv
+    from ph_economic_ai.tools.regional_level_premiums import (
+        regional_levels_by_region)
+
+    header = ('cycle,file_date,area,grain,province,province_raw,city,'
+              'low,high,common,source_file\n')
+    rows = header + ''.join(
+        f'2026-01-06,2026-01-06,Visayas,city,Iloilo,Iloilo,C{i},60,60,{60 + i},b\n'
+        for i in range(3))
+    # The same city-week in two documents: dedup must keep the later filename.
+    rows += '2026-01-06,2026-01-06,Visayas,city,Iloilo,Iloilo,C0,60,60,99,a\n'
+    path = tmp_path / 'panel.csv'
+    path.write_text(rows, encoding='utf-8')
+
+    mine = rg.regional_levels(path)
+    with open(path, encoding='utf-8') as fh:
+        theirs = regional_levels_by_region(list(_csv.DictReader(fh)))
+    assert mine == theirs, 'the two level constructions have diverged again'

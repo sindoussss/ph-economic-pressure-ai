@@ -79,9 +79,16 @@ def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
     a whole market with its own components would move the level without any price
     moving (`DEC-062`).
     """
-    from ph_economic_ai.tools.doe_price_series import REGION_PROVINCES
+    from ph_economic_ai.tools.doe_price_series import (
+        REGION_PROVINCES, region_of_south_luzon_file)
 
-    buckets: dict = {}
+    # One priced row per city-week, later filename winning. The Phase 2
+    # pre-registered tie-break, and NOT optional: without it a city that appears
+    # in two documents contributes twice to its own median. Found by comparing
+    # this function against `regional_level_premiums`, which had it -- two
+    # constructions of the same quantity that must agree and did not, on 22 of
+    # 1798 week-values.
+    latest: dict = {}
     with open(panel_path, encoding='utf-8') as fh:
         for row in csv.DictReader(fh):
             if row.get('grain', 'city') != 'city' or not row['city']:
@@ -89,13 +96,29 @@ def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
             price = _price(row)
             if price is None:
                 continue
-            for region, provinces in REGION_PROVINCES.items():
-                if region == 'NCR':
-                    if row['area'] != 'NCR':
-                        continue
-                elif not provinces or row['province'] not in provinces:
+            key = (row['area'], row['province'], row['city'], row['cycle'])
+            if key not in latest or row['source_file'] > latest[key]['source_file']:
+                latest[key] = {**row, '_price': price}
+
+    buckets: dict = {}
+    for row in latest.values():
+        # South Luzon sheets are published per REGION GROUP and name it in the
+        # FILENAME, carrying no province. Omitting this cost CALABARZON,
+        # MIMAROPA and Bicol about 183 weeks EACH in the accuracy test.
+        if row['area'] == 'South Luzon' and not row['province']:
+            named = region_of_south_luzon_file(row['source_file'])
+            if named:
+                buckets.setdefault(named, {}).setdefault(row['cycle'], []).append(
+                    row['_price'])
+            continue
+        for region, provinces in REGION_PROVINCES.items():
+            if region == 'NCR':
+                if row['area'] != 'NCR':
                     continue
-                buckets.setdefault(region, {}).setdefault(row['cycle'], []).append(price)
+            elif not provinces or row['province'] not in provinces:
+                continue
+            buckets.setdefault(region, {}).setdefault(row['cycle'], []).append(
+                row['_price'])
 
     return {region: {dt.date.fromisoformat(c): statistics.median(v)
                      for c, v in weeks.items() if len(v) >= MIN_CITIES}

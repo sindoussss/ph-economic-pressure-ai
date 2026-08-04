@@ -1,47 +1,47 @@
 {
   "preregistration": "docs/preregistration/2026-08-01-regional-accuracy.md",
-  "n_weeks": 217,
+  "n_weeks": 294,
   "mae": {
-    "DERIVATION": 1.445395113732098,
-    "DELTA-EQUAL": 1.4249970513900592,
-    "ZERO": 1.1973344566133108,
-    "PERSISTENCE": 1.7646671322160152
+    "DERIVATION": 1.31133125,
+    "DELTA-EQUAL": 1.29270625,
+    "ZERO": 1.2167907738095238,
+    "PERSISTENCE": 1.7396287289234762
   },
   "best_naive": "ZERO",
   "comparisons": {
     "DELTA-EQUAL": {
-      "diff": 0.02039806234203878,
-      "ci_low": 0.013832913518052381,
-      "ci_high": 0.027343173431734202,
-      "n_weeks": 217
+      "diff": 0.018625000000000114,
+      "ci_low": 0.013672073791348494,
+      "ci_high": 0.024168653158521902,
+      "n_weeks": 294
     },
     "ZERO": {
-      "diff": 0.2480606571187871,
-      "ci_low": -0.01153799654576848,
-      "ci_high": 0.5168688796680503,
-      "n_weeks": 217
+      "diff": 0.09454047619047623,
+      "ci_low": -0.10992004773269715,
+      "ci_high": 0.3091374321880651,
+      "n_weeks": 294
     },
     "PERSISTENCE": {
-      "diff": -0.3137191356260747,
-      "ci_low": -0.5864166600490666,
-      "ci_high": -0.03405011570301886,
-      "n_weeks": 211
+      "diff": -0.42869481744022253,
+      "ci_low": -0.6599663751241585,
+      "ci_high": -0.19759723786749994,
+      "n_weeks": 292
     }
   },
   "verdict": "NO MEASURABLE DIFFERENCE",
   "action": "label every derived figure as no better than assuming no regional change; the four unmeasurable regions keep their number under that label",
   "per_region_mae": {
-    "Northern Mindanao": 1.3975091463414633,
-    "Caraga": 1.6120642201834867,
-    "SOCCSKSARGEN": 1.5428537735849062,
-    "Zamboanga": 1.4130519480519477,
-    "Davao Region": 1.3677389705882346,
-    "Western Visayas": 1.3637184873949584,
-    "Central Visayas": 1.3959873949579837,
-    "Eastern Visayas": 1.521056034482759,
-    "Bicol Region": 1.8007272727272716,
-    "CALABARZON": 1.150545454545455,
-    "MIMAROPA": 1.4156481481481498
+    "CALABARZON": 0.880420454545455,
+    "MIMAROPA": 1.205460829493087,
+    "Bicol Region": 1.1827045454545446,
+    "Northern Mindanao": 1.4000091463414635,
+    "Caraga": 1.6134403669724775,
+    "SOCCSKSARGEN": 1.5572405660377364,
+    "Zamboanga": 1.4201948051948048,
+    "Davao Region": 1.3705698529411756,
+    "Western Visayas": 1.3917857142857148,
+    "Central Visayas": 1.409579831932774,
+    "Eastern Visayas": 1.5393103448275867
   },
   "ungradable": [
     "BARMM",

@@ -243,15 +243,23 @@ def regional_basis() -> str:
     exists to stop exactly that kind of drift.
 
     **Extended 2026-08-01 by the pre-registered accuracy result.** Graded on
-    DOE's own regional changes over 217 paired weeks, the derivation's MAE is
-    1.445 against 1.197 for assuming no regional change: the corrected interval
-    on that difference is [-0.012, +0.517] and contains zero, so the declared
+    DOE's own regional changes over 294 paired weeks, the derivation's MAE is
+    1.311 against 1.217 for assuming no regional change: the corrected interval
+    on that difference is [-0.110, +0.309] and contains zero, so the declared
     reading is NO MEASURABLE DIFFERENCE rather than a win for either.
 
     Against DELTA-EQUAL, which removes the premium and propagates the national
-    change unscaled, the interval is [+0.014, +0.027] and excludes zero:
+    change unscaled, the interval is [+0.014, +0.024] and excludes zero:
     **applying the premium is measurably worse than not applying it.** Small in
-    magnitude, clean in sign.
+    magnitude, clean in sign, and the one result that survived a rebuild of the
+    inputs unchanged.
+
+    The first run of this test used 217 weeks and put the gap against
+    zero-change at +0.248. It was computed on a level series that neither
+    deduplicated city-weeks nor recovered the South Luzon regions from their
+    filenames, so CALABARZON, MIMAROPA and Bicol were each missing about 183
+    weeks. Correcting that added 77 paired weeks and shrank the gap to +0.095.
+    The verdict did not move; the margin did.
 
     The decision rule fixed before the run said labelling, not deletion, and that
     is what this is. `DEC-021`'s spirit: the number stays, the claim around it
@@ -261,7 +269,7 @@ def regional_basis() -> str:
     return (f'4 region groups debated; the other 13 figures are scaled from them '
             f'by a regional price premium measured against DOE prices for '
             f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. '
-            f'**Graded against DOE’s own regional prices over 217 weeks, '
+            f'**Graded against DOE’s own regional prices over 294 weeks, '
             f'this derivation is no more accurate than assuming no regional '
             f'change at all**, and applying the premium is measurably worse '
             f'than not applying it. Only the national figure is graded against a '
