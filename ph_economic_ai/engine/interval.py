@@ -109,6 +109,12 @@ def band(point_estimate: float, abs_errors=None, level: float = DEFAULT_LEVEL,
         'half_width': round(float(half), 2),
         'level': level,
         'calibrated': calibrated,
+        # Whether this sector CAN ever be calibrated, as opposed to not being
+        # calibrated yet. The screen conflated them and told a reader that food
+        # had "0 of 12 graded runs", which implies 12 are reachable. Only fuel
+        # is graded against an observed price, so for every other sector the
+        # honest sentence is that no outcome series exists at all.
+        'gradable': sector in GRADED_SECTORS,
         'n_graded': len(errors),
         'source': source,
     }

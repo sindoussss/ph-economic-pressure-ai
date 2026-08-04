@@ -9,14 +9,17 @@ from PyQt6.QtWidgets import (
 
 from ph_economic_ai.benchmark.report import load_report, REPORT_PATH
 from ph_economic_ai.benchmark.report import ARTIFACTS
+from ph_economic_ai.engine import interval as _interval
+from ph_economic_ai.ui import honesty as _honesty
 
 _FIG_DIR = ARTIFACTS / 'figures'
 
 
 class AccuracyView(QWidget):
-    def __init__(self, report_path: Path = REPORT_PATH, parent=None):
+    def __init__(self, report_path: Path = REPORT_PATH, parent=None, store=None):
         super().__init__(parent)
         self._report_path = Path(report_path)
+        self._store = store
         self._report = self._safe_load()
         self._build()
 
@@ -25,6 +28,43 @@ class AccuracyView(QWidget):
             return load_report(self._report_path)
         except FileNotFoundError:
             return None
+
+    def own_record_lines(self) -> list:
+        """This app's own forecast record, above the frozen benchmark.
+
+        The whole screen used to describe the offline benchmark, which is a
+        different system answering a different question over months this app
+        never ran. A reader asking "how accurate is this app" was shown an
+        MAE that no forecast on this screen ever produced.
+
+        The honest answer as of 2026-08-05 is that nothing has been graded yet,
+        and the reasons are enumerable rather than vague. Stating both is the
+        point: a bare zero invites the harsher reading, that the app has never
+        run, which is also untrue.
+        """
+        lines = []
+        errors, runs, counts = [], 0, {}
+        if self._store is not None:
+            try:
+                from ph_economic_ai.engine.ground_truth import grade_verdict
+                errors = self._store.get_graded_errors()
+                runs = self._store.count_runs()
+                for run in self._store.get_due_runs():
+                    key = grade_verdict(self._store, run)['obstacle']
+                    if key is not None:
+                        counts[key] = counts.get(key, 0) + 1
+            except Exception:
+                pass
+        lines.append(_honesty.track_record_line(len(errors), runs))
+        backlog = _honesty.grade_backlog_line(counts)
+        if backlog:
+            lines.append(backlog)
+        band = _interval.band(0.0, errors, sector='gas')
+        lines.append(_honesty.band_provenance(band))
+        anchor = _honesty.anchor_record_line()
+        if anchor:
+            lines.append(anchor)
+        return lines
 
     def headline_text(self) -> str:
         if self._report is None:
@@ -45,6 +85,18 @@ class AccuracyView(QWidget):
         inner = QWidget(); col = QVBoxLayout(inner)
 
         col.addWidget(QLabel(f"<h2>Methodology &amp; Accuracy</h2>"))
+
+        # THIS APP'S OWN RECORD FIRST. Everything below it describes the offline
+        # benchmark: a different system, answering a different question, over
+        # months this app never ran. Leading with the benchmark answered "how
+        # accurate is this app" with an MAE no forecast on this screen produced.
+        own = QLabel('<b>This app’s own forecasts</b><br>'
+                     + '<br>'.join(self.own_record_lines()))
+        own.setWordWrap(True)
+        col.addWidget(own)
+
+        col.addWidget(QLabel('<b>Offline benchmark</b> — a separate backtest over '
+                             'historical months, not a record of runs made here.'))
         headline = QLabel(self.headline_text()); headline.setWordWrap(True)
         col.addWidget(headline)
 

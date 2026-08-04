@@ -312,7 +312,10 @@ class SimMainWindow(QMainWindow):
         self._stage3_container.addWidget(self._stage3_swarm)
 
         self._agent_perf = AgentPerformancePanel(self._store)
-        self._accuracy_view = AccuracyView()
+        # The store, so the tab can lead with THIS app's record before the
+        # offline benchmark's. Without it the screen answers "how accurate is
+        # this app" with a backtest of months the app never ran.
+        self._accuracy_view = AccuracyView(store=self._store)
         self._learning = LearningView(self._store)
         self._monitor = PressureMonitorPanel(self._rag, store=self._store)
 

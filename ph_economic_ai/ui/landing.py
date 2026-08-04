@@ -35,6 +35,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QThread
 from PyQt6.QtGui import QFont, QFontDatabase, QColor
 
+from ph_economic_ai.ui import honesty as _honesty
+
 
 # ── Palette — light, refined, single accent ──────────────────────────────────
 BG          = '#FAFAF8'        # warm near-white (paper)
@@ -751,6 +753,24 @@ class LandingPanel(QWidget):
         except Exception:
             return ts[:10]
 
+    def _grade_obstacle(self, run: dict):
+        """Why this run carries no grade, asked of the grader itself.
+
+        Going back to the source rather than inferring from the row keeps the
+        tile and the grading rule in step. A tile that states its own reason
+        drifts the first time the rule changes, and that already happened once:
+        "pending DOE" survived three revisions of what actually blocks a grade.
+        """
+        # `'unknown'`, never None. None is the gradable case, so falling back to
+        # it would label an ungraded run "graded" the moment anything here threw.
+        if self._store is None:
+            return 'unknown'
+        try:
+            from ph_economic_ai.engine.ground_truth import grade_verdict
+            return grade_verdict(self._store, run)['obstacle'] or 'unknown'
+        except Exception:
+            return 'unknown'
+
     def _build_run_tile(self, run: dict) -> QWidget:
         tile = QWidget()
         tile.setStyleSheet('background:transparent;')
@@ -792,7 +812,12 @@ class LandingPanel(QWidget):
         if actual is not None:
             sub_parts.append('graded ✓')
         else:
-            sub_parts.append('pending DOE')
+            # The real obstacle, not "pending DOE". That label reads as "the
+            # price has not arrived yet" and is false for four runs in five: most
+            # are blocked on a pricing week whose observations disagree, and some
+            # can never be graded at all. The reason comes from the grader itself
+            # so the tile and the grading rule cannot drift apart.
+            sub_parts.append(_honesty.grade_status_label(self._grade_obstacle(run)))
         sub = QLabel('  ·  '.join(sub_parts))
         sub.setStyleSheet(f'font-size:10px;color:{TEXT_3};')
         v.addWidget(sub)

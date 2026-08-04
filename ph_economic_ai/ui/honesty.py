@@ -90,6 +90,161 @@ def agreement_basis(n: int, regions: tuple[int, int] = (0, 0),
     return basis
 
 
+def spread_line(estimates, unit: str, pct: int = 0) -> str:
+    """What the agents actually said, in place of a percentage.
+
+    A reader asked "how much do the agents agree" and shown "100%" learns
+    nothing checkable. The same run said either two numbers or twenty, and the
+    percentage is identical: measured on 2026-07-29, 32 agents produced TWO
+    distinct estimates spanning 0.26 PHP/L and scored 100 percent.
+
+    So the count of distinct values and the span between them lead, and the
+    percentage follows in brackets as a summary of them rather than as the
+    finding. Neither is a probability, and the distinct count is the one a
+    panelist can check against the agent cards on the same screen.
+    """
+    values = sorted({round(float(e), 2) for e in (estimates or []) if e is not None})
+    n = len([e for e in (estimates or []) if e is not None])
+    if n == 0:
+        return 'no agent produced a usable estimate'
+    if n == 1:
+        return f'1 agent estimate, so there is nothing to agree with'
+    if len(values) == 1:
+        # The case the percentage flatters most: every agent said one number, and
+        # a range from a value to itself would read as a measurement.
+        body = (f'{n} agent estimates, all of them {values[0]:+.2f} {unit} — '
+                f'one value, not a converging range')
+    else:
+        body = (f'{n} agent estimates taking {len(values)} distinct values, '
+                f'{values[0]:+.2f} to {values[-1]:+.2f} {unit} '
+                f'(span {values[-1] - values[0]:.2f})')
+    return f'{body} · {pct}% agreement' if pct else body
+
+
+def band_provenance(band: dict) -> str:
+    """Where the displayed range comes from, stated whether or not it is good news.
+
+    This used to appear only when the band was UNCALIBRATED, which is the wrong
+    way round: a reader who never sees the line cannot tell a calibrated band
+    from a screen that forgot to warn them. The line is always present and only
+    its content changes, so its absence is never the message.
+    """
+    if band.get('calibrated'):
+        return (f'range calibrated on this app’s own {band.get("n_graded", 0)} '
+                f'graded runs (split conformal)')
+    if not band.get('gradable', True):
+        # "0 of 12" would promise a threshold this sector can never reach. Only
+        # fuel is graded against an observed price; food and electricity have no
+        # outcome series to calibrate on at all, which is a different sentence.
+        return ('range NOT calibrated — it is a stated prior, and this sector has '
+                'no graded outcome series at all, so it cannot become calibrated '
+                'by waiting')
+    n = int(band.get('n_graded', 0) or 0)
+    return (f'range NOT calibrated — it is a stated prior, not this app’s measured '
+            f'error ({n} of {_MIN_GRADED()} graded runs available)')
+
+
+def _MIN_GRADED() -> int:
+    from ph_economic_ai.engine.interval import MIN_GRADED_FOR_CALIBRATION
+    return MIN_GRADED_FOR_CALIBRATION
+
+
+def track_record_line(n_graded: int, n_runs: int = 0) -> str:
+    """How many of the app's own forecasts have been checked against a price.
+
+    The honest answer has been zero since 2026-08-05, when every grade on record
+    turned out to compare a forecast for one week against a different week's
+    price and all three were withdrawn (`RSK-023`). A screen that shows a
+    forecast without showing this invites a reader to assume the number has a
+    track record behind it.
+    """
+    if n_graded > 0:
+        stored = f' of {n_runs}' if n_runs else ''
+        return (f'{n_graded}{stored} of this app’s own forecasts have been graded '
+                f'against the price of the week they forecast')
+    stored = f'{n_runs} runs are stored and ' if n_runs else ''
+    return (f'{stored}none of this app’s own forecasts has been graded yet — a '
+            f'grade needs the forecast week’s price to settle, and the grades that '
+            f'compared the wrong week were withdrawn')
+
+
+#: The physical pass-through anchor's backtest, from
+#: `benchmark/artifacts/anchor_validation.json`. Read at call time rather than
+#: written into prose, because a figure typed into a sentence drifts from the
+#: artifact it describes.
+def anchor_record_line() -> str:
+    """The one measured accuracy result the app can point at, with its limit.
+
+    The physical anchor beats "assume no change" on mean absolute error over 78
+    months, 2.21 against 2.643 PHP/L. That is the strongest honest sentence on
+    this screen, and it comes with a caveat that must travel with it: the
+    Diebold-Mariano test on the same comparison returns p 0.065, so the margin
+    does not reach the conventional threshold. Reporting the MAE win alone would
+    be exactly the overstatement this project keeps retracting.
+
+    Returns '' when the artifact is missing rather than inventing a fallback.
+    """
+    try:
+        import json
+        from pathlib import Path
+        p = (Path(__file__).resolve().parent.parent / 'benchmark' / 'artifacts'
+             / 'anchor_validation.json')
+        bt = json.loads(p.read_text(encoding='utf-8'))['backtest']
+        mae, naive = float(bt['mae_anchor_php_l']), float(bt['mae_naive_php_l'])
+        n, dm = int(bt['n_months']), bt.get('dm_vs_naive') or {}
+        direction = float(bt.get('directional_accuracy', 0))
+    except Exception:
+        return ''
+    line = (f'the physical pass-through this forecast is anchored to is off by '
+            f'₱{mae:.2f}/L on average against ₱{naive:.2f} for assuming no change, '
+            f'over {n} months, and calls the direction right {direction:.0%} of the time')
+    p_value = dm.get('p_value')
+    if p_value is not None and not dm.get('significant'):
+        line += (f' — but the difference does not reach significance '
+                 f'(Diebold-Mariano p {p_value:.3f}), so read it as the better bet '
+                 f'and not as a proven edge')
+    return line
+
+
+#: Short label per grading obstacle, for a tile that has room for three words.
+#: Keyed on `ground_truth.UNGRADED_REASONS`. The old label was "pending DOE" for
+#: every ungraded run, which reads as "the price has not arrived yet" and is
+#: false for four runs in five: most are blocked on a week whose observations
+#: disagree, and two can never be graded because they stored no baseline.
+_GRADE_LABELS = {
+    None: 'graded',
+    'no_price_yet': 'awaiting the week’s price',
+    'target_week_ambiguous': 'that week never settled',
+    'baseline_week_ambiguous': 'its own week never settled',
+    'implausible_change': 'baseline was stale — not gradable',
+    'no_baseline': 'no baseline stored — not gradable',
+}
+
+
+def grade_status_label(obstacle) -> str:
+    """Three words for why a run carries no grade. Never guesses."""
+    return _GRADE_LABELS.get(obstacle, 'not graded')
+
+
+def grade_backlog_line(counts: dict) -> str:
+    """One sentence accounting for every ungraded run, by reason.
+
+    Written for the question a panelist asks after seeing a zero: "so is it
+    broken?". The answer is that the outcomes have not settled, and the shape of
+    the backlog says which kind of not-settled, which is checkable and is not
+    the same as a system that never ran.
+    """
+    total = sum(int(v) for v in (counts or {}).values())
+    if not total:
+        return ''
+    order = ('no_price_yet', 'target_week_ambiguous', 'baseline_week_ambiguous',
+             'implausible_change', 'no_baseline')
+    parts = [f'{counts[k]} {_GRADE_LABELS[k]}' for k in order if counts.get(k)]
+    extra = [f'{v} {k}' for k, v in sorted((counts or {}).items())
+             if k not in order and k is not None and v]
+    return f'{total} ungraded: ' + ', '.join(parts + extra)
+
+
 def cross_model_note(across: dict) -> str:
     """Whether the agreement survived a change of model, in the reader's words.
 

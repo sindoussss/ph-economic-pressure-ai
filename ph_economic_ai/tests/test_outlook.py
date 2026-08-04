@@ -10,9 +10,12 @@ def _brief():
     return PressureBrief(
         as_of='2026-07-24', window='this_week',
         readings=[
-            SectorReading('gas', 'rising', 1.0, '₱/L', 100, ['news'], ['RedditPH']),
-            SectorReading('food', 'rising', 0.5, '%', 90, ['news'], ['NFARiceRetail']),
-            SectorReading('electricity', 'rising', 0.3, '₱/kWh', 80, ['news'], ['MeralcoCharge']),
+            SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                          drivers=['news'], sources=['RedditPH']),
+            SectorReading('food', 'rising', 0.5, '%', 90,
+                          drivers=['news'], sources=['NFARiceRetail']),
+            SectorReading('electricity', 'rising', 0.3, '₱/kWh', 80,
+                          drivers=['news'], sources=['MeralcoCharge']),
         ],
         narrative='Pressure rising.')
 
