@@ -225,3 +225,15 @@ def test_the_estimates_field_cannot_be_hit_positionally():
         SectorReading('gas', 'rising', 1.0, '₱/L', 100, 0, [], [], [1.0])
     r = SectorReading('gas', 'rising', 1.0, '₱/L', 100, 90, ['d'], ['s'])
     assert r.direction_agreement == 90 and r.estimates == []
+
+
+def test_the_backlog_accounts_for_every_stored_run():
+    """The strip said 34 runs stored and then explained 32. A reader who
+    subtracts finds two runs the screen declined to account for; those two were
+    simply still inside their forecast week."""
+    line = honesty.grade_backlog_line({'not_due': 2, 'no_price_yet': 10,
+                                       'target_week_ambiguous': 10,
+                                       'baseline_week_ambiguous': 10,
+                                       'no_baseline': 2})
+    assert line.startswith('34 ungraded:')
+    assert line.index('2 still forecasting') < line.index('10 awaiting')
