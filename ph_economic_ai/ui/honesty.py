@@ -241,13 +241,32 @@ def regional_basis() -> str:
     The count is read from `swarm.MEASURED_MULTIPLIERS` rather than written in,
     because a number in prose drifts from the table it describes and this note
     exists to stop exactly that kind of drift.
+
+    **Extended 2026-08-01 by the pre-registered accuracy result.** Graded on
+    DOE's own regional changes over 217 paired weeks, the derivation's MAE is
+    1.445 against 1.197 for assuming no regional change: the corrected interval
+    on that difference is [-0.012, +0.517] and contains zero, so the declared
+    reading is NO MEASURABLE DIFFERENCE rather than a win for either.
+
+    Against DELTA-EQUAL, which removes the premium and propagates the national
+    change unscaled, the interval is [+0.014, +0.027] and excludes zero:
+    **applying the premium is measurably worse than not applying it.** Small in
+    magnitude, clean in sign.
+
+    The decision rule fixed before the run said labelling, not deletion, and that
+    is what this is. `DEC-021`'s spirit: the number stays, the claim around it
+    stops overreaching.
     """
     from ph_economic_ai.engine.swarm import ALL_REGIONS, MEASURED_MULTIPLIERS
     return (f'4 region groups debated; the other 13 figures are scaled from them '
             f'by a regional price premium measured against DOE prices for '
-            f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. Only the '
-            f'national figure is graded against a real price, so treat the '
-            f'per-region numbers as derived rather than forecast.')
+            f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. '
+            f'**Graded against DOE’s own regional prices over 217 weeks, '
+            f'this derivation is no more accurate than assuming no regional '
+            f'change at all**, and applying the premium is measurably worse '
+            f'than not applying it. Only the national figure is graded against a '
+            f'real price, so treat the per-region numbers as derived rather than '
+            f'forecast.')
 
 
 #: Regions for which DOE publishes no retail price series, so their figures cannot
