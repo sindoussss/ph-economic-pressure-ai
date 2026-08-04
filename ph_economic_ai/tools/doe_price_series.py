@@ -205,6 +205,27 @@ DEBATED_REGIONS = {
 }
 
 
+#: South Luzon sheets are published PER REGION GROUP and name it in the FILENAME
+#: rather than in a province column, so those rows carry no province at all.
+#: Including these three regions was pre-registered ("South Luzon, if fetched in
+#: time"); this is how they are assigned, not a change to what is tested.
+_SOUTH_LUZON_REGION = (
+    ('mimaropa', 'MIMAROPA'), ('minaropa', 'MIMAROPA'),   # DOE's own typo
+    ('bicol', 'Bicol Region'),
+    ('cavite', 'CALABARZON'), ('laguna', 'CALABARZON'),
+    ('batangas', 'CALABARZON'), ('rizal', 'CALABARZON'), ('quezon', 'CALABARZON'),
+)
+
+
+def region_of_south_luzon_file(name: str) -> Optional[str]:
+    """The region a `petro_sluz` filename covers, or None."""
+    lowered = name.lower()
+    for token, region in _SOUTH_LUZON_REGION:
+        if token in lowered:
+            return region
+    return None
+
+
 def coverage(rows: list[dict]) -> dict:
     """Priced weeks per debated region per year.
 
