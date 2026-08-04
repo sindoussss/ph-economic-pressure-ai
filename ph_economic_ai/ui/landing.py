@@ -444,7 +444,11 @@ class LandingPanel(QWidget):
         self._latest_row.setSpacing(28)
         cl.addLayout(self._latest_row)
 
-        head = QLabel('FUEL TRACK RECORD')
+        # Not "FUEL TRACK RECORD". These are past forecasts, and a track record
+        # is a record of how they turned out. None of them has a grade, and each
+        # tile now says why, so the heading was the last thing on this row still
+        # implying performance had been measured.
+        head = QLabel('RECENT FUEL FORECASTS')
         head.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:10px;font-weight:700;'
             f'color:{TEXT_3};letter-spacing:2px;'
@@ -516,11 +520,18 @@ class LandingPanel(QWidget):
              '20 role-specialised agents debate across 4 regional clusters. '
              'Round-by-round elimination produces a survivor per region; '
              'regional judges aggregate into a master verdict.'),
+            # "DOE pump prices retroactively score the forecast" described the
+            # mechanism as though it had produced results. It has produced none:
+            # a forecast is scored only against the price of the pricing week it
+            # forecast, and no week in the record has settled to a single price
+            # yet. A panelist reading this asks to see a scored forecast, and the
+            # honest answer is on the Accuracy tab, so the copy points there.
             ('03',
              'Score and evolve',
              'Each agent is graded immediately on citation quality and '
-             'convergence; later, DOE pump prices retroactively score the '
-             'forecast — promotions, demotions, and benching follow.'),
+             'convergence. Forecasts are scored later against the DOE price of '
+             'the week they forecast — none has settled yet, so no forecast '
+             'carries a score. The Accuracy tab shows the count and why.'),
         ]
         for num, label, body_text in steps:
             col = QVBoxLayout()
@@ -798,7 +809,11 @@ class LandingPanel(QWidget):
         conf = run.get('confidence_pct')
         if est is not None:
             color = UP if est >= 0 else DOWN
-            big = QLabel(f'{est:+.2f}₱/L')
+            # Space before the unit. At 20px Georgia with -0.3px tracking the
+            # peso glyph rendered on top of the last digit, so a forecast read
+            # as "-3.53₱" with the 3 and the ₱ overlapping. Every other surface
+            # in the app writes "-3.53 ₱/L".
+            big = QLabel(f'{est:+.2f} ₱/L')
             big.setFont(_serif_font(20, bold=True))
             big.setStyleSheet(f'color:{color};letter-spacing:-0.3px;')
             v.addWidget(big)
@@ -819,6 +834,11 @@ class LandingPanel(QWidget):
             # so the tile and the grading rule cannot drift apart.
             sub_parts.append(_honesty.grade_status_label(self._grade_obstacle(run)))
         sub = QLabel('  ·  '.join(sub_parts))
+        # Wrapped, because the tile is capped at 180px and the reason is now a
+        # phrase rather than the two words "pending DOE". Unwrapped it clipped
+        # mid-word to "awaiting the week's pri", which is worse than the label
+        # it replaced.
+        sub.setWordWrap(True)
         sub.setStyleSheet(f'font-size:10px;color:{TEXT_3};')
         v.addWidget(sub)
         return tile

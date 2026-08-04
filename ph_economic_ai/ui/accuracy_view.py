@@ -11,6 +11,8 @@ from ph_economic_ai.benchmark.report import load_report, REPORT_PATH
 from ph_economic_ai.benchmark.report import ARTIFACTS
 from ph_economic_ai.engine import interval as _interval
 from ph_economic_ai.ui import honesty as _honesty
+from ph_economic_ai.ui.theme import CARD as _CARD, HAIRLINE as _HAIRLINE
+from ph_economic_ai.ui.theme import INK as _INK, SURFACE as _SURFACE
 
 _FIG_DIR = ARTIFACTS / 'figures'
 
@@ -49,10 +51,16 @@ class AccuracyView(QWidget):
                 from ph_economic_ai.engine.ground_truth import grade_verdict
                 errors = self._store.get_graded_errors()
                 runs = self._store.count_runs()
-                for run in self._store.get_due_runs():
+                due = self._store.get_due_runs()
+                for run in due:
                     key = grade_verdict(self._store, run)['obstacle']
                     if key is not None:
                         counts[key] = counts.get(key, 0) + 1
+                # Runs still inside their forecast week, so the reasons account
+                # for every stored run rather than leaving a reader to subtract.
+                pending = runs - len(due) - len(errors)
+                if pending > 0:
+                    counts['not_due'] = pending
             except Exception:
                 pass
         lines.append(_honesty.track_record_line(len(errors), runs))
@@ -81,6 +89,19 @@ class AccuracyView(QWidget):
 
     def _build(self):
         outer = QVBoxLayout(self)
+        # Explicit ink on an explicit surface. This panel was the only one that
+        # hardcoded no colours, so its labels took the Fusion palette's default
+        # text while its container took the app's hardcoded light background.
+        # On a machine set to Windows dark mode that is near-white text on
+        # #F7F8FA: the whole Methodology and Accuracy tab renders blank, which
+        # is exactly the screen someone opens to check the numbers.
+        self.setStyleSheet(
+            f'QWidget{{background:{_SURFACE};color:{_INK};}}'
+            f'QLabel{{background:transparent;color:{_INK};}}'
+            f'QTableWidget{{background:{_CARD};color:{_INK};'
+            f'gridline-color:{_HAIRLINE};}}'
+            f'QHeaderView::section{{background:{_SURFACE};color:{_INK};'
+            f'border:none;border-bottom:1px solid {_HAIRLINE};padding:4px;}}')
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         inner = QWidget(); col = QVBoxLayout(inner)
 

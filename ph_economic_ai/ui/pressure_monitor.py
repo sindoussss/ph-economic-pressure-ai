@@ -676,10 +676,17 @@ class PressureMonitorPanel(QWidget):
         counts: dict = {}
         try:
             from ph_economic_ai.engine.ground_truth import grade_verdict
-            for run in store.get_due_runs():
+            due = store.get_due_runs()
+            for run in due:
                 key = grade_verdict(store, run)['obstacle']
                 if key is not None:
                     counts[key] = counts.get(key, 0) + 1
+            # Runs whose forecast week has not closed yet. Without them the
+            # counts do not add up to the stored total, and a reader who
+            # subtracts finds runs the screen declined to account for.
+            pending = store.count_runs() - len(due) - len(store.get_graded_errors())
+            if pending > 0:
+                counts['not_due'] = pending
         except Exception:
             return {}
         return counts

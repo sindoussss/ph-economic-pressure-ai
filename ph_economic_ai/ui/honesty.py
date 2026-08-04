@@ -213,6 +213,7 @@ def anchor_record_line() -> str:
 #: disagree, and two can never be graded because they stored no baseline.
 _GRADE_LABELS = {
     None: 'graded',
+    'not_due': 'still forecasting',
     'no_price_yet': 'awaiting the week’s price',
     'target_week_ambiguous': 'that week never settled',
     'baseline_week_ambiguous': 'its own week never settled',
@@ -237,8 +238,12 @@ def grade_backlog_line(counts: dict) -> str:
     total = sum(int(v) for v in (counts or {}).values())
     if not total:
         return ''
-    order = ('no_price_yet', 'target_week_ambiguous', 'baseline_week_ambiguous',
-             'implausible_change', 'no_baseline')
+    # `not_due` leads because it is the only benign one, and because leaving it
+    # out made the line fail its own arithmetic: the strip said 34 runs stored
+    # and then accounted for 32, and a reader who subtracts finds two runs the
+    # screen declined to explain.
+    order = ('not_due', 'no_price_yet', 'target_week_ambiguous',
+             'baseline_week_ambiguous', 'implausible_change', 'no_baseline')
     parts = [f'{counts[k]} {_GRADE_LABELS[k]}' for k in order if counts.get(k)]
     extra = [f'{v} {k}' for k, v in sorted((counts or {}).items())
              if k not in order and k is not None and v]

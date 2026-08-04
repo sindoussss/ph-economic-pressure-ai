@@ -88,7 +88,10 @@ def test_track_record_excludes_latest_run(app):
     panel.refresh_recent()
     labels = [l.text() for l in panel.findChildren(QLabel)]
     text = ' || '.join(labels)
-    assert 'FUEL TRACK RECORD' in text
+    # Not "FUEL TRACK RECORD". These are past forecasts; a track record is a
+    # record of how they turned out, and none of them carries a grade.
+    assert 'RECENT FUEL FORECASTS' in text
+    assert 'TRACK RECORD' not in text
     assert any(t.startswith('#5') for t in labels)
     assert not any(t.startswith('#6') for t in labels)
     assert 'agreement' in text and 'confidence' not in text
