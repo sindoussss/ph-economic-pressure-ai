@@ -109,11 +109,29 @@ def test_the_judges_do_not_answer_themselves_identically():
 
 
 def test_a_new_pricing_week_reseeds(monkeypatch):
-    """A stable seed must not outlive the window it is stable within."""
+    """A stable seed must not outlive the window it is stable within.
+
+    The substitute week is DERIVED from the current one, never written in. This
+    test hardcoded `2026-08-04` as "a different week" and passed for two years,
+    until 2026-08-04 became the current pricing week and the monkeypatch turned
+    into a no-op asserting a seed differs from itself.
+
+    A test whose fixture can become the thing it is contrasted against is a time
+    bomb with a long fuse, and the failure looks like a determinism bug rather
+    than a stale constant.
+    """
+    import datetime as _dt
+
+    real = swarm.vintage.vintage()
     first = swarm._vintage_seed('master')
+
+    cycle = _dt.date.fromisoformat(real['fuel_cycle']) - _dt.timedelta(days=7)
+    day = _dt.date.fromisoformat(real['day']) - _dt.timedelta(days=7)
+    assert cycle.isoformat() != real['fuel_cycle'], 'the substitute must differ'
+
     monkeypatch.setattr(swarm.vintage, 'vintage',
-                        lambda now=None: {'fuel_cycle': '2026-08-04',
-                                          'day': '2026-08-05'})
+                        lambda now=None: {'fuel_cycle': cycle.isoformat(),
+                                          'day': day.isoformat()})
     assert swarm._vintage_seed('master') != first
 
 

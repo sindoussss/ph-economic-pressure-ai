@@ -320,14 +320,56 @@ class AgentTrustStore:
 
     def record_price_observation(self, price: float, observed_at=None) -> None:
         """Store an observed price so past runs can be graded against their own
-        period instead of against the present."""
+        period instead of against the present.
+
+        **One row per (day, price).** `INSERT OR REPLACE` keys on `observed_at`,
+        which carries microseconds, so every call wrote a new row: the grading
+        poll runs six-hourly and every run records too, and the table reached 568
+        rows holding EIGHT observations, one price repeated 157 times in a day.
+
+        That is the same failure shape as an agreement percentage: a number that
+        looks like evidence of density and is not. "568 price observations" is a
+        sentence someone would say to a panel, and it would be false.
+
+        A price that genuinely moves within a day still records, because the key
+        is the pair and not the day alone. Philippine retail prices are a weekly
+        step function, so sub-day resolution carries no information a grade could
+        use -- `price_near` has a 3.5 day tolerance.
+        """
         when = (observed_at or datetime.now(timezone.utc))
         stamp = when.isoformat() if hasattr(when, 'isoformat') else str(when)
+        value = float(price)
         with self._lock:
+            seen = self._conn.execute(
+                'SELECT 1 FROM price_observations '
+                'WHERE substr(observed_at, 1, 10) = ? AND price = ? LIMIT 1',
+                (stamp[:10], value)).fetchone()
+            if seen is not None:
+                return
             self._conn.execute(
                 'INSERT OR REPLACE INTO price_observations (observed_at, price) '
-                'VALUES (?, ?)', (stamp, float(price)))
+                'VALUES (?, ?)', (stamp, value))
             self._conn.commit()
+
+    def deduplicate_price_observations(self) -> int:
+        """Collapse repeated (day, price) rows, keeping the earliest of each.
+
+        Returns the number removed. Information-preserving: the retained row has
+        the same price and the same day, and `price_near` picks by gap against a
+        3.5 day tolerance, so a shift of hours inside one day cannot change which
+        observation a run grades against.
+        """
+        with self._lock:
+            before = self._conn.execute(
+                'SELECT COUNT(*) FROM price_observations').fetchone()[0]
+            self._conn.execute(
+                'DELETE FROM price_observations WHERE rowid NOT IN ('
+                '  SELECT MIN(rowid) FROM price_observations '
+                '  GROUP BY substr(observed_at, 1, 10), price)')
+            self._conn.commit()
+            after = self._conn.execute(
+                'SELECT COUNT(*) FROM price_observations').fetchone()[0]
+        return before - after
 
     def price_near(self, target_date, tolerance_days: float = GRADE_TOLERANCE_DAYS):
         """The observation closest to `target_date`, or None if none is close enough.
@@ -338,10 +380,24 @@ class AgentTrustStore:
         """
         stamp = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
         with self._lock:
+            # Ranked by CALENDAR-DAY distance first, then by timestamp. The
+            # observations are a weekly step function sampled by a six-hourly
+            # poll, so the hour carries no information -- but ranking on the raw
+            # timestamp made the match depend on how many times a day the poll
+            # happened to run. Collapsing 568 duplicate rows to their 8 real
+            # observations moved one run's graded outcome from 84.38 to 89.51,
+            # because the nearest surviving row fell on the NEXT day. Same
+            # information, different grade, which is not a property a grader may
+            # have.
+            #
+            # Day distance makes a same-day observation always win, and the
+            # timestamp only breaks ties within equally distant days.
             row = self._conn.execute(
                 'SELECT observed_at, price, '
-                '  ABS(julianday(observed_at) - julianday(?)) AS gap '
-                'FROM price_observations ORDER BY gap ASC LIMIT 1', (stamp,)
+                '  ABS(julianday(observed_at) - julianday(?)) AS gap, '
+                '  ABS(julianday(date(observed_at)) - julianday(date(?))) AS daygap '
+                'FROM price_observations ORDER BY daygap ASC, gap ASC LIMIT 1',
+                (stamp, stamp)
             ).fetchone()
         if row is None or row['gap'] is None or row['gap'] > tolerance_days:
             return None
