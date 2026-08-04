@@ -1,0 +1,53 @@
+{
+  "preregistration": "docs/preregistration/2026-08-01-regional-accuracy.md",
+  "n_weeks": 217,
+  "mae": {
+    "DERIVATION": 1.445395113732098,
+    "DELTA-EQUAL": 1.4249970513900592,
+    "ZERO": 1.1973344566133108,
+    "PERSISTENCE": 1.7646671322160152
+  },
+  "best_naive": "ZERO",
+  "comparisons": {
+    "DELTA-EQUAL": {
+      "diff": 0.02039806234203878,
+      "ci_low": 0.013832913518052381,
+      "ci_high": 0.027343173431734202,
+      "n_weeks": 217
+    },
+    "ZERO": {
+      "diff": 0.2480606571187871,
+      "ci_low": -0.01153799654576848,
+      "ci_high": 0.5168688796680503,
+      "n_weeks": 217
+    },
+    "PERSISTENCE": {
+      "diff": -0.3137191356260747,
+      "ci_low": -0.5864166600490666,
+      "ci_high": -0.03405011570301886,
+      "n_weeks": 211
+    }
+  },
+  "verdict": "NO MEASURABLE DIFFERENCE",
+  "action": "label every derived figure as no better than assuming no regional change; the four unmeasurable regions keep their number under that label",
+  "per_region_mae": {
+    "Northern Mindanao": 1.3975091463414633,
+    "Caraga": 1.6120642201834867,
+    "SOCCSKSARGEN": 1.5428537735849062,
+    "Zamboanga": 1.4130519480519477,
+    "Davao Region": 1.3677389705882346,
+    "Western Visayas": 1.3637184873949584,
+    "Central Visayas": 1.3959873949579837,
+    "Eastern Visayas": 1.521056034482759,
+    "Bicol Region": 1.8007272727272716,
+    "CALABARZON": 1.150545454545455,
+    "MIMAROPA": 1.4156481481481498
+  },
+  "ungradable": [
+    "BARMM",
+    "CAR",
+    "Cagayan Valley",
+    "Central Luzon",
+    "Ilocos Region"
+  ]
+}

@@ -140,3 +140,32 @@ def test_a_week_below_the_city_minimum_is_dropped(tmp_path):
         '2026-01-06,2026-01-06,NCR,city,,,Pasig,61,61,61,b\n',
         encoding='utf-8')
     assert rg.regional_levels(csv_path).get('NCR', {}) == {}
+
+
+# ── The pre-registered accuracy result, and what the note must say ───────────
+
+def test_the_basis_note_states_the_accuracy_result():
+    """The action the pre-registration fixed BEFORE the run: label, do not
+    delete. Graded over 217 weeks the derivation's MAE is 1.445 against 1.197
+    for assuming no regional change, and the corrected interval on the
+    difference contains zero -- so the note must say no more accurate, not
+    worse, and must not claim a win either."""
+    from ph_economic_ai.ui.honesty import regional_basis
+    note = regional_basis()
+    assert 'no more accurate than assuming no regional change' in note
+    assert 'measurably worse than not applying it' in note
+    assert 'derived rather than forecast' in note
+    for overclaim in ('validated', 'accurate forecast', 'outperforms'):
+        assert overclaim not in note
+
+
+def test_the_regional_figures_are_still_shown():
+    """`DEC-021`'s spirit and the pre-registered rule: the number stays, the
+    claim around it stops overreaching. Only the branch where the derivation is
+    measurably WORSE than the best naive removes a figure, and the run did not
+    land there."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, derive_regional_estimates
+    derived = derive_regional_estimates(2.42, {0: 2.42})
+    assert len(derived) == len(ALL_REGIONS)
+    for group in ALL_REGIONS:
+        assert group['name'] in derived
