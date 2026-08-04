@@ -72,13 +72,42 @@ def find_and_grade_runs(
         # price could not be fetched stores no baseline at all and is skipped by
         # the `baseline is None` check above.
 
-        target = store.effective_target_date(run)
-        match = store.price_near(target)
+        # A measured change has TWO ends, and the baseline is the other one. If
+        # the week the run started in has no single price, the change from it
+        # has no single value either. Live case: the source read 84.38 on
+        # Thursday 30 July and 89.51 on Friday 31 July, both inside the cycle
+        # opened 07-28. Runs that stored 84.38 as their baseline would score a
+        # +5.13 "actual change" that is real only if the 89.51 reading was the
+        # error -- and nothing here can know which one was. Refusing costs a
+        # grade; grading costs the track record's meaning.
+        #
+        # Absence is not ambiguity. Most older runs have no observation in their
+        # own week at all, and for those the stored baseline is the best record
+        # of what the run actually reasoned from. Only disagreement disqualifies.
+        started, _, _ = store.cycle_prices(run['timestamp'])
+        if len(started) > 1:
+            logging.debug('ground_truth: run_id=%s started in a week with no single '
+                          'price (%s); the change from it is undefined, leaving '
+                          'ungraded', run.get('run_id'), sorted(started))
+            continue
+
+        target = store.target_cycle(run)
+        # The PRICING WEEK, not the nearest scrape and not a derived instant. A
+        # weekly forecast is a claim about the Tuesday step, so grading it
+        # against an arbitrary timestamp measures the source's sampling as much
+        # as the forecast. Two live defects came from that: runs targeting
+        # 2026-08-03 were graded against an 08-04 observation, which is the NEXT
+        # cycle, and the source moved 84.38 to 89.51 on a Thursday-to-Friday
+        # inside one cycle, turning +5.13 of scrape noise into an "actual
+        # change" and producing the only two zero scores on record.
+        match = store.cycle_price(target)
         if match is None:
-            # No observation for this run's period. Leaving it ungraded is the
-            # point of the fix; it stays eligible once a matching price arrives.
-            logging.debug('ground_truth: run_id=%s has no price near %s; leaving ungraded',
-                          run.get('run_id'), target)
+            # Either no observation for that week, or the week's observations
+            # disagree and it has no single price. Both leave the run eligible
+            # rather than graded against a guess.
+            logging.debug('ground_truth: run_id=%s has no unambiguous price for the '
+                          'pricing week it forecasts (opened %s); leaving ungraded',
+                          run.get('run_id'), target.date().isoformat())
             continue
 
         actual_change = match['price'] - baseline
@@ -106,7 +135,8 @@ def find_and_grade_runs(
 
         store.apply_ground_truth_grade(
             run['run_id'], actual_change,
-            graded_against=f"{match['observed_at']} (gap {match['gap_days']:.2f}d)")
+            graded_against=f"pricing week {match['cycle']} "
+                           f"({match['n_observations']} observations)")
         graded += 1
     return graded
 

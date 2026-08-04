@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -403,6 +404,155 @@ class AgentTrustStore:
             return None
         return {'observed_at': row['observed_at'], 'price': float(row['price']),
                 'gap_days': float(row['gap'])}
+
+    def cycle_price(self, target_date):
+        """The price for the PRICING WEEK containing `target_date`, or None.
+
+        Philippine retail fuel is a step function with a Tuesday 06:00 boundary.
+        A weekly forecast is a claim about the step, so the outcome it is graded
+        against has to be the step -- not whichever scrape happened to land
+        nearest the target timestamp.
+
+        Two defects this replaces, both live in the stored record:
+
+        * **The graded price came from the wrong week.** Runs targeting
+          2026-08-03, inside the cycle opened 07-28, were graded against an
+          observation from 08-04, which is the NEXT cycle. A forecast for one
+          week scored against another week's price.
+        * **The source moved inside a cycle.** It read 84.38 on Thursday 30 July
+          and 89.51 on Friday 31 July, both inside the cycle opened 07-28, on
+          days no adjustment happens. That +5.13 became the "actual change" for
+          two runs and produced the only two zero scores in the track record.
+
+        **An ambiguous week yields None rather than a guess.** When observations
+        inside one cycle disagree, the week has no single price and nothing here
+        can say which was real. Refusing is the same rule `price_near` already
+        applies across weeks, and `DEC-045`'s: a missing grade shrinks the record,
+        a wrong grade corrupts it and is permanent.
+
+        Returns `{'price', 'cycle', 'n_observations'}` or None.
+        """
+        from ph_economic_ai.engine import price_calendar, vintage
+
+        stamp = (target_date.isoformat() if hasattr(target_date, 'isoformat')
+                 else str(target_date))
+        prices, start, n = self.cycle_prices(target_date)
+        if not prices:
+            return None
+        if len(prices) > 1:
+            # The week has no single price. Grading against any one of them is a
+            # coin toss recorded as an outcome.
+            return None
+        return {'price': prices.pop(), 'cycle': start.date().isoformat(),
+                'n_observations': n}
+
+    def cycle_prices(self, when):
+        """Every distinct price observed in the pricing week containing `when`.
+
+        Returns `(prices, cycle_start, n_observations)`. Split out of
+        `cycle_price` because a caller needs to tell "this week has no price"
+        from "this week has two and cannot say which" -- absence is normal for
+        an old run, disagreement means the week is unusable as either end of a
+        measured change.
+        """
+        from ph_economic_ai.engine import price_calendar, vintage
+
+        stamp = (when.isoformat() if hasattr(when, 'isoformat') else str(when))
+        moment = datetime.fromisoformat(stamp)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=price_calendar.PH_TZ)
+        start = vintage.fuel_cycle_start(moment)
+        end = start + timedelta(days=7)
+
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT price FROM price_observations '
+                'WHERE julianday(observed_at) >= julianday(?) '
+                '  AND julianday(observed_at) <  julianday(?)',
+                (start.isoformat(), end.isoformat())).fetchall()
+        return {round(float(r['price']), 2) for r in rows}, start, len(rows)
+
+    def target_cycle(self, run: dict):
+        """The pricing WEEK a run is a forecast for, as a cycle-start datetime.
+
+        Not `timestamp + horizon_days`. That instant is derived, and bucketing it
+        to the second split one batch of ten runs across two different weeks:
+        runs 23 to 32 were all launched to forecast the adjustment of
+        2026-08-04, and their stored targets land between 40 seconds before
+        06:00:00 PHT and 36 seconds after it, because each was computed as
+        "now plus the time remaining" at a slightly different `now`. Three
+        landed in the week they were forecasting and seven in the week they
+        started from, on a margin of under a minute.
+
+        The unit of the forecast is the week, so the week is what is derived:
+        the run was made inside some cycle and is a claim about a LATER one.
+        `horizon_days` says how many steps ahead, and every horizon the app has
+        ever stored is "until the next adjustment", so that count is one.
+        """
+        from ph_economic_ai.engine import price_calendar, vintage
+
+        made = datetime.fromisoformat(run['timestamp'])
+        if made.tzinfo is None:
+            made = made.replace(tzinfo=price_calendar.PH_TZ)
+        horizon = float(run.get('horizon_days') or DEFAULT_HORIZON_DAYS)
+        # A forecast is always about a week that has not happened yet, so at
+        # least one step; `ceil` covers a horizon that spans several.
+        steps = max(1, math.ceil(horizon / 7.0))
+        return vintage.fuel_cycle_start(made) + timedelta(days=7 * steps)
+
+    def withdraw_cross_cycle_grades(self) -> list[dict]:
+        """Un-grade runs scored against a different pricing week than they forecast.
+
+        Every grade in the stored record was one: three runs forecasting the week
+        opened 2026-07-28, each scored against an observation from the week opened
+        08-04. A forecast for one week compared to another week's price is not a
+        loose grade, it is a grade of a different question -- the same defect
+        `RSK-018` was raised for, one level up from the stale baseline.
+
+        They become eligible again rather than deleted. Once their own week has
+        an unambiguous price they will grade correctly; if it never does, they
+        stay honestly ungraded.
+
+        **The trust updates those grades caused are NOT reversed.** Trust is an
+        EMA and `DEC-013` decays a bench back toward neutral over a few runs, so
+        the effect fades, but this method does not undo it and should not be read
+        as if it did.
+
+        Returns the withdrawn rows, so a caller can report what changed.
+        """
+        from ph_economic_ai.engine import price_calendar, vintage
+
+        withdrawn = []
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT * FROM runs WHERE graded_at IS NOT NULL').fetchall()
+        for row in rows:
+            run = dict(row)
+            target = self.effective_target_date(run)
+            when = datetime.fromisoformat(target)
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=price_calendar.PH_TZ)
+            target_cycle = vintage.fuel_cycle_start(when).date().isoformat()
+
+            against = (run.get('graded_against') or '').split(' ')[0]
+            if against.startswith('pricing'):          # already cycle-aligned
+                continue
+            try:
+                observed = datetime.fromisoformat(against)
+            except ValueError:
+                continue
+            if vintage.fuel_cycle_start(observed).date().isoformat() == target_cycle:
+                continue
+
+            withdrawn.append({'run_id': run['run_id'], 'target_cycle': target_cycle,
+                              'was_error': run.get('accuracy_error')})
+            with self._lock:
+                self._conn.execute(
+                    'UPDATE runs SET actual_price_change=NULL, accuracy_error=NULL, '
+                    'graded_at=NULL, graded_against=NULL WHERE run_id=?',
+                    (run['run_id'],))
+                self._conn.commit()
+        return withdrawn
 
     def get_due_runs(self) -> list[dict]:
         """Ungraded runs whose forecast period has actually elapsed.

@@ -233,29 +233,32 @@ def test_no_estimate_scores_zero():
 
 # ── Grading: the inputs, not just the arithmetic ──────────────────────────────
 
-def test_an_implausible_outcome_is_refused(tmp_path):
+def test_an_implausible_outcome_is_refused(due_run):
     """The audit's central finding. A stored baseline of 98.82 against an
-    observed 84.38 implies a -14.44 weekly move, which is not a market event."""
+    observed 84.38 implies a -14.44 weekly move, which is not a market event.
+
+    The outcome is recorded inside the run's own forecast week, so the refusal
+    is the plausibility guard and not a missing price. Both guard tests used to
+    lean on the grader recording at `now`, which reached a one-day-old run only
+    while yesterday and today fell the same side of the Tuesday 06:00 boundary:
+    run on a Wednesday they graded nothing and passed for the wrong reason.
+    """
     from ph_economic_ai.engine import ground_truth as gt
-    store = AgentTrustStore(db_path=str(tmp_path / 't.db'))
-    run_id = store.save_run(scenario={'current_price': 98.82}, final_estimate=-1.0,
-                            confidence_pct=50, horizon_days=-1.0)
+    store, run_id = due_run(baseline=98.82, estimate=-1.0, price=84.38,
+                            confidence_pct=50)
     assert gt.find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 0
     assert store.get_run(run_id)['actual_price_change'] is None
-    store.close()
 
 
-def test_a_real_outcome_is_still_graded(tmp_path):
+def test_a_real_outcome_is_still_graded(due_run):
     """The guard must not stop the app grading itself."""
     from ph_economic_ai.engine import ground_truth as gt
-    store = AgentTrustStore(db_path=str(tmp_path / 't.db'))
-    run_id = store.save_run(scenario={'current_price': 85.00}, final_estimate=-0.5,
-                            confidence_pct=50, horizon_days=-1.0)
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38,
+                            confidence_pct=50)
     assert gt.find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
     row = store.get_run(run_id)
     assert row['actual_price_change'] == pytest.approx(-0.62)
     assert row['accuracy_error'] == pytest.approx(0.12, abs=0.01)
-    store.close()
 
 
 def test_the_swarm_reports_the_price_it_reasoned_from():
