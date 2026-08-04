@@ -77,6 +77,34 @@ class AgentTrustStore:
                 current_model_tier  TEXT    NOT NULL DEFAULT 'default',
                 last_updated        TEXT    NOT NULL
             );
+            -- Every movement of a trust score, in the order it happened.
+            --
+            -- Trust was a running EMA with no history, so it recorded a
+            -- CONCLUSION and destroyed the evidence for it. Withdrawing a grade
+            -- therefore could not undo the trust it had moved, and three
+            -- withdrawn grades (`RSK-023`) left permanent residue in the roster.
+            -- Inverting the EMA is not a fix: `old = (new - a*raw)/(1-a)` holds
+            -- only if nothing clamped and nothing has happened since, and both
+            -- had.
+            --
+            -- With the log, trust is a REPLAY of its events rather than a
+            -- number that accumulated. Removing evidence removes its effect
+            -- exactly, and a trust score can be audited back to the runs that
+            -- produced it.
+            CREATE TABLE IF NOT EXISTS trust_events (
+                event_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at  TEXT    NOT NULL,
+                agent_name   TEXT    NOT NULL,
+                kind         TEXT    NOT NULL,   -- response | grade | recovery
+                raw          REAL,               -- the EMA target; NULL for recovery
+                run_id       INTEGER,            -- the evidence this rests on
+                internal_score  REAL,
+                accuracy_score  REAL
+            );
+            CREATE INDEX IF NOT EXISTS trust_events_order
+                ON trust_events (occurred_at, event_id);
+            CREATE INDEX IF NOT EXISTS trust_events_run
+                ON trust_events (run_id, kind);
         ''')
         self._conn.commit()
 
@@ -513,10 +541,13 @@ class AgentTrustStore:
         an unambiguous price they will grade correctly; if it never does, they
         stay honestly ungraded.
 
-        **The trust updates those grades caused are NOT reversed.** Trust is an
-        EMA and `DEC-013` decays a bench back toward neutral over a few runs, so
-        the effect fades, but this method does not undo it and should not be read
-        as if it did.
+        **The trust those grades moved is reversed too**, by deleting their
+        events and replaying what is left. It used not to be: trust was a running
+        EMA that kept a conclusion and destroyed its evidence, so the roster
+        carried movement from grades that no longer existed. The withdrawn
+        entry's `trust_moved` reports which agents changed and by how much,
+        because a silent correction to a trust score is the same class of problem
+        as the residue it fixes.
 
         Returns the withdrawn rows, so a caller can report what changed.
         """
@@ -528,11 +559,11 @@ class AgentTrustStore:
                 'SELECT * FROM runs WHERE graded_at IS NOT NULL').fetchall()
         for row in rows:
             run = dict(row)
-            target = self.effective_target_date(run)
-            when = datetime.fromisoformat(target)
-            if when.tzinfo is None:
-                when = when.replace(tzinfo=price_calendar.PH_TZ)
-            target_cycle = vintage.fuel_cycle_start(when).date().isoformat()
+            # `target_cycle`, the same rule the grader uses. Deriving it here
+            # from `timestamp + horizon` instead would let the withdrawal and
+            # the grader disagree about which week a run forecasts, and a
+            # withdrawal that disagrees with the grader is just a second bug.
+            target_cycle = self.target_cycle(run).date().isoformat()
 
             against = (run.get('graded_against') or '').split(' ')[0]
             if against.startswith('pricing'):          # already cycle-aligned
@@ -551,7 +582,18 @@ class AgentTrustStore:
                     'UPDATE runs SET actual_price_change=NULL, accuracy_error=NULL, '
                     'graded_at=NULL, graded_against=NULL WHERE run_id=?',
                     (run['run_id'],))
+                # The evidence goes with the grade. Leaving these behind is what
+                # made a withdrawal cosmetic: the run showed as ungraded while
+                # the roster still carried the score it had been given.
+                self._conn.execute(
+                    "DELETE FROM trust_events WHERE run_id=? AND kind='grade'",
+                    (run['run_id'],))
                 self._conn.commit()
+
+        if withdrawn:
+            moved = self.replay_trust()
+            for entry in withdrawn:
+                entry['trust_moved'] = moved
         return withdrawn
 
     def get_due_runs(self) -> list[dict]:
@@ -647,6 +689,9 @@ class AgentTrustStore:
                     resp['agent_name'],
                     internal_score=resp['internal_score'],
                     accuracy_score=accuracy_score,
+                    # Tied to the run, so withdrawing that run's grade removes
+                    # exactly the trust movement the grade caused.
+                    run_id=run_id,
                 )
             # Single atomic commit covers both the run update and all trust updates
             self._conn.commit()
@@ -684,8 +729,14 @@ class AgentTrustStore:
             return [dict(row) for row in cur.fetchall()]
 
     def _update_trust_no_commit(self, agent_name: str, internal_score: float,
-                                accuracy_score: Optional[float] = None) -> None:
-        """Insert/update trust without committing — caller must commit."""
+                                accuracy_score: Optional[float] = None,
+                                run_id: Optional[int] = None,
+                                occurred_at: Optional[str] = None) -> None:
+        """Insert/update trust without committing — caller must commit.
+
+        Also appends to `trust_events`, so the score stays reproducible from the
+        evidence rather than being an accumulated number nobody can take apart.
+        """
         old_row = self._conn.execute(
             'SELECT trust_score FROM agent_trust WHERE agent_name=?', (agent_name,)
         ).fetchone()
@@ -694,6 +745,12 @@ class AgentTrustStore:
             raw = 0.4 * internal_score + 0.6 * accuracy_score
         else:
             raw = internal_score
+        self._conn.execute(
+            'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, run_id, '
+            'internal_score, accuracy_score) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (occurred_at or datetime.now(timezone.utc).isoformat(), agent_name,
+             'grade' if accuracy_score is not None else 'response',
+             raw, run_id, internal_score, accuracy_score))
         new_trust = _EMA_ALPHA * raw + (1 - _EMA_ALPHA) * old_trust
         new_trust = max(_TRUST_MIN, min(_TRUST_MAX, new_trust))
         tier = trust_tier(new_trust)
@@ -720,6 +777,210 @@ class AgentTrustStore:
         with self._lock:
             self._update_trust_no_commit(agent_name, internal_score, accuracy_score)
             self._conn.commit()
+
+    def replay_trust(self) -> dict:
+        """Recompute every trust score from `trust_events`, in order.
+
+        The fix for the residue `RSK-023` left behind. Withdrawing a grade used
+        to clear the grade and leave the trust it had moved, because trust was a
+        running EMA that kept a conclusion and destroyed its evidence. Inverting
+        the EMA is not available: `old = (new - a*raw)/(1-a)` holds only when
+        nothing clamped and nothing has happened since, and by the time a grade
+        is withdrawn both are usually false.
+
+        Replay sidesteps that. Trust is defined as the EMA over the surviving
+        events, so removing evidence removes its effect exactly rather than
+        approximately, and any score can be traced back to the runs behind it.
+
+        Returns `{agent: {'before', 'after', 'events'}}` for agents that moved,
+        so a caller can report the correction instead of applying it silently.
+        """
+        with self._lock:
+            before = {r['agent_name']: float(r['trust_score']) for r in
+                      self._conn.execute('SELECT agent_name, trust_score '
+                                         'FROM agent_trust').fetchall()}
+            events = self._conn.execute(
+                'SELECT * FROM trust_events ORDER BY occurred_at, event_id'
+            ).fetchall()
+
+            trust: dict = {}
+            counts: dict = {}
+            for e in events:
+                agent = e['agent_name']
+                old = trust.get(agent, _TRUST_INIT)
+                if e['kind'] == 'recovery':
+                    # Decay toward the neutral prior, not an EMA on evidence.
+                    new = old + _BENCH_RECOVERY_ALPHA * (_TRUST_INIT - old)
+                else:
+                    new = _EMA_ALPHA * float(e['raw']) + (1 - _EMA_ALPHA) * old
+                trust[agent] = max(_TRUST_MIN, min(_TRUST_MAX, new))
+                counts[agent] = counts.get(agent, 0) + 1
+
+            now = datetime.now(timezone.utc).isoformat()
+            moved = {}
+            for agent, score in trust.items():
+                self._conn.execute(
+                    '''INSERT INTO agent_trust (agent_name, trust_score,
+                       runs_participated, avg_internal_score, avg_accuracy_error,
+                       current_model_tier, last_updated)
+                       VALUES (?, ?, 0, 0.5, NULL, ?, ?)
+                       ON CONFLICT(agent_name) DO UPDATE SET
+                         trust_score        = excluded.trust_score,
+                         current_model_tier = excluded.current_model_tier,
+                         last_updated       = excluded.last_updated''',
+                    (agent, score, trust_tier(score), now))
+                # `runs_participated` and the quality averages are deliberately
+                # NOT replayed. They describe how much an agent ran and how well
+                # it wrote, which no grade and no withdrawal can change; the same
+                # separation ADR-008's reset kept.
+                if abs(before.get(agent, _TRUST_INIT) - score) > 1e-9:
+                    moved[agent] = {'before': before.get(agent, _TRUST_INIT),
+                                    'after': score, 'events': counts[agent]}
+            self._conn.commit()
+        return moved
+
+    def reconstruct_trust_events(self, since: Optional[str] = None) -> dict:
+        """Rebuild the event log for history recorded before the log existed.
+
+        Idempotent and refuses to run over an existing log, because rebuilding
+        on top of real events would double every movement.
+
+        Builds one `response` event per agent per run it answered in, at the
+        run's timestamp and carrying the internal score on its response, plus
+        one `grade` event per graded response at the run's `graded_at`. `since`
+        restricts it to runs after a known-state anchor.
+
+        **Do not use this to repair a store whose history predates the log. It
+        was tried on the live store and it does not work.** Replay starts every
+        agent at the neutral prior, so a reconstruction is faithful only when the
+        store was genuinely at that prior at `since` and every movement after it
+        is reconstructible. Neither held:
+
+        * 1217 trust updates have happened; 623 are reconstructible. Most of the
+          difference rests on grades `ADR-008` deleted as fiction, so the
+          evidence is gone by design.
+        * Reconstructing the whole history moved all twenty agents UP, by up to
+          +0.18, pushing three across the 0.70 promotion threshold. Promotions on
+          evidence that does not exist is the failure this project keeps
+          retracting.
+        * Anchoring at `ADR-008`'s repair, which did set every agent to exactly
+          the prior, still moved all twenty by up to +0.14 and created two
+          promotions. Adding back the withdrawn grades' movement to test the
+          residual left a 0.28 gap, so the anchored version could not be
+          validated against the live scores either.
+
+        The finding that matters is the one underneath: **the stored trust
+        scores cannot be reproduced from any surviving evidence.** That is why
+        the log exists. It makes replay exact from the moment it starts, and it
+        cannot reach backwards.
+
+        **Also not recoverable, permanently:** bench recoveries from before the
+        log. `recover_benched` wrote no history, so a replayed score for an agent
+        that was ever benched sits further from neutral than the truth. No agent
+        is currently below the 0.30 demotion threshold, which is not the same as
+        knowing none ever was. `exact` is therefore never True here.
+        """
+        with self._lock:
+            if self._conn.execute(
+                    'SELECT 1 FROM trust_events LIMIT 1').fetchone() is not None:
+                return {'reconstructed': 0, 'skipped': 'log already exists',
+                        'exact': True}
+
+            rows = self._conn.execute(
+                '''SELECT r.run_id, r.timestamp, r.graded_at, r.actual_price_change,
+                          a.agent_name, a.internal_score, a.estimate
+                   FROM runs r JOIN agent_responses a ON a.run_id = r.run_id
+                   WHERE (? IS NULL OR r.timestamp > ?)
+                   ORDER BY r.run_id, a.id''', (since, since)).fetchall()
+
+            events, seen_response = [], set()
+            for row in rows:
+                key = (row['run_id'], row['agent_name'])
+                if key not in seen_response:
+                    # One per agent per run: `update_trust` is called once per
+                    # agent from the scores dict, not once per response row.
+                    seen_response.add(key)
+                    events.append((row['timestamp'], row['agent_name'], 'response',
+                                   float(row['internal_score'] or _TRUST_INIT),
+                                   row['run_id'],
+                                   float(row['internal_score'] or _TRUST_INIT), None))
+                if (row['graded_at'] and row['actual_price_change'] is not None
+                        and row['estimate'] is not None):
+                    # Per RESPONSE, matching apply_ground_truth_grade, which
+                    # updates once for every response row carrying an estimate.
+                    acc = compute_accuracy_score(float(row['estimate']),
+                                                 float(row['actual_price_change']))
+                    internal = float(row['internal_score'] or _TRUST_INIT)
+                    events.append((row['graded_at'], row['agent_name'], 'grade',
+                                   0.4 * internal + 0.6 * acc, row['run_id'],
+                                   internal, acc))
+
+            events.sort(key=lambda e: (e[0], e[4] or 0))
+            self._conn.executemany(
+                'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, '
+                'run_id, internal_score, accuracy_score) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                events)
+            self._conn.commit()
+        return {'reconstructed': len(events),
+                'agents': len({e[1] for e in events}),
+                'since': since,
+                # Never claimed exact. `since` makes the START trustworthy; it
+                # cannot conjure the bench decays that were never written down.
+                'exact': False,
+                'cannot_recover': 'bench recoveries, which wrote no history'}
+
+    def trust_provenance(self) -> dict:
+        """What the displayed trust scores rest on: counts by kind, and since when.
+
+        The leaderboard shows a number per agent and nothing about where it came
+        from, which is the same gap the forecast card had. `{'response': n,
+        'grade': n, 'recovery': n, 'since': iso or None}`.
+        """
+        with self._lock:
+            kinds = {r['kind']: r['n'] for r in self._conn.execute(
+                'SELECT kind, COUNT(*) n FROM trust_events GROUP BY kind')}
+            since = self._conn.execute(
+                'SELECT MIN(occurred_at) FROM trust_events').fetchone()[0]
+        return {'response': kinds.get('response', 0),
+                'grade': kinds.get('grade', 0),
+                'recovery': kinds.get('recovery', 0),
+                'since': since}
+
+    def reset_trust_to_prior(self) -> dict:
+        """Return every agent to the neutral prior and start the event log clean.
+
+        For a store whose trust predates `trust_events`. Those scores were built
+        by movements that no longer have evidence behind them -- 1217 updates on
+        the live store, 623 reconstructible -- and `reconstruct_trust_events`
+        documents why rebuilding them produces promotions nobody earned. A score
+        that cannot be derived from anything is not a measurement, and this
+        project's answer to that has been consistent since `ADR-008`, which reset
+        the same column for the same reason.
+
+        What it costs is real and worth stating: the post-`ADR-008` history, four
+        runs of internal-score movement, goes with it. What it buys is that every
+        score from here is reproducible from the runs behind it, so "where does
+        this 0.63 come from" has a complete answer.
+
+        `runs_participated` and the quality averages are deliberately kept. They
+        describe how much an agent ran and how well it wrote, which no grading
+        defect touched -- the same line `ADR-008` drew.
+
+        Returns the scores it cleared, so the correction is reported rather than
+        applied silently.
+        """
+        with self._lock:
+            before = {r['agent_name']: float(r['trust_score']) for r in
+                      self._conn.execute('SELECT agent_name, trust_score '
+                                         'FROM agent_trust').fetchall()}
+            self._conn.execute(
+                'UPDATE agent_trust SET trust_score=?, current_model_tier=?, '
+                'last_updated=?',
+                (_TRUST_INIT, trust_tier(_TRUST_INIT),
+                 datetime.now(timezone.utc).isoformat()))
+            self._conn.execute('DELETE FROM trust_events')
+            self._conn.commit()
+        return {'reset': before, 'to': _TRUST_INIT}
 
     def recover_benched(self, agent_name: str) -> float:
         """Move a benched agent's trust back toward the neutral prior.
@@ -749,6 +1010,14 @@ class AgentTrustStore:
             old = float(row['trust_score'])
             new = old + _BENCH_RECOVERY_ALPHA * (_TRUST_INIT - old)
             new = max(_TRUST_MIN, min(_TRUST_MAX, new))
+            # Logged like any other movement. A decay that is not in the log
+            # cannot be replayed, and a replay that silently drops it would
+            # return an agent to a score it had already recovered from.
+            self._conn.execute(
+                'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, '
+                'run_id, internal_score, accuracy_score) '
+                'VALUES (?, ?, ?, NULL, NULL, NULL, NULL)',
+                (datetime.now(timezone.utc).isoformat(), agent_name, 'recovery'))
             self._conn.execute(
                 '''UPDATE agent_trust
                    SET trust_score = ?, current_model_tier = ?, last_updated = ?

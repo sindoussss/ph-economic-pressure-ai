@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
+from ph_economic_ai.ui import honesty as _honesty
+
 if TYPE_CHECKING:
     from ph_economic_ai.engine.store import AgentTrustStore
 
@@ -52,6 +54,15 @@ class AgentPerformancePanel(QWidget):
             'color:#57606a;font-size:10px;font-weight:700;letter-spacing:1px;'
         )
         left_layout.addWidget(header_lbl)
+
+        # What the numbers rest on. A leaderboard of scores with no provenance
+        # is the gap the forecast card had, and right now it matters more: every
+        # agent sits at the neutral prior, which without an explanation reads as
+        # a bug rather than as the honest state.
+        self._basis_lbl = QLabel()
+        self._basis_lbl.setWordWrap(True)
+        self._basis_lbl.setStyleSheet('color:#57606a;font-size:10px;margin-top:6px;')
+        left_layout.addWidget(self._basis_lbl)
 
         self._leaderboard_area = QWidget()
         self._leaderboard_layout = QVBoxLayout(self._leaderboard_area)
@@ -109,6 +120,11 @@ class AgentPerformancePanel(QWidget):
 
     def _refresh_leaderboard(self) -> None:
         rows = self._store.get_all_trust_rows()
+        try:
+            self._basis_lbl.setText(
+                _honesty.trust_basis(self._store.trust_provenance()))
+        except Exception:
+            self._basis_lbl.setText('')
         while self._leaderboard_layout.count():
             item = self._leaderboard_layout.takeAt(0)
             if item.widget():

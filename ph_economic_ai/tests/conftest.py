@@ -46,8 +46,16 @@ def due_run(tmp_path):
     """
     stores = []
 
-    def make(baseline=98.82, estimate=1.42, price=None, weeks_ago=1,
+    def make(baseline=98.82, estimate=1.42, price=None, weeks_ago=2,
              confidence_pct=78, horizon_days=7.0, db=None):
+        # Two weeks, not one. At one week the run's target week IS the current
+        # week, so `find_and_grade_runs` recording today's price lands inside the
+        # very week under test: the fixture's price and the live one share a
+        # cycle, and any difference between them makes that week ambiguous and
+        # silently grades nothing. It passed while both were the same number and
+        # failed once, unreproducibly, which is the worst way for it to fail.
+        # At two weeks the target week is closed and today's observation cannot
+        # reach it.
         store = AgentTrustStore(db_path=str(tmp_path / (db or 'trust.db')))
         stores.append(store)
         run_id = store.save_run(scenario={'current_price': baseline},

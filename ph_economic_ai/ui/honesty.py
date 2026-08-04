@@ -250,6 +250,36 @@ def grade_backlog_line(counts: dict) -> str:
     return f'{total} ungraded: ' + ', '.join(parts + extra)
 
 
+def trust_basis(provenance: dict) -> str:
+    """What the trust leaderboard's numbers rest on.
+
+    The leaderboard showed a score per agent and nothing about where it came
+    from, the same gap the forecast card had. Since 2026-08-05 every score is a
+    replay of recorded events, so the honest line is a count of them.
+
+    An empty log is the current state and reads as such: the scores were reset
+    to the neutral prior because the movements behind them could not be
+    reproduced from any surviving evidence, and nothing has moved them since.
+    That is a stronger statement than a leaderboard of identical numbers with no
+    explanation, which reads as a bug.
+    """
+    graded = int((provenance or {}).get('grade', 0) or 0)
+    responses = int((provenance or {}).get('response', 0) or 0)
+    if not (graded or responses):
+        return ('every score is at the neutral prior — the movements behind the '
+                'old scores could not be reproduced from surviving evidence, so '
+                'they were cleared rather than shown as measurements')
+    parts = [f'{responses} from response quality']
+    if graded:
+        parts.append(f'{graded} from graded outcomes')
+    else:
+        parts.append('none from a graded outcome yet')
+    since = (provenance or {}).get('since')
+    when = f' since {str(since)[:10]}' if since else ''
+    return (f'every score replays from {responses + graded} recorded events'
+            f'{when}: ' + ', '.join(parts))
+
+
 def cross_model_note(across: dict) -> str:
     """Whether the agreement survived a change of model, in the reader's words.
 
