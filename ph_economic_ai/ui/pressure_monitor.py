@@ -17,6 +17,7 @@ from ph_economic_ai.engine import price_calendar as _calendar
 from ph_economic_ai.engine.monitor import MonitorThread
 from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
 from ph_economic_ai.engine.kg_forum_adapter import add_forum_turn, seed_sectors
+from ph_economic_ai.ui import honesty as _honesty
 from ph_economic_ai.ui.forum_graph import ForumGraphCanvas
 
 _INK = '#0F1115'
@@ -424,6 +425,10 @@ class PressureMonitorPanel(QWidget):
         self._status.setText(f'Present read as of {brief.as_of} ({brief.window}). '
                              'Forecasting…')
         _clear(self._cards)
+        # One track-record strip above the cards, not a copy on each of the
+        # three. It is a fact about the app, not about a sector, and repeating
+        # it turned the honest sentence into wallpaper a reader scrolls past.
+        self._cards.addWidget(self._record_strip())
         for r in brief.readings:
             self._cards.addWidget(self._sector_card(r))
         if brief.narrative:
@@ -613,6 +618,72 @@ class PressureMonitorPanel(QWidget):
         except Exception:
             return []
 
+    def _run_count(self) -> int:
+        """How many runs are stored, graded or not.
+
+        Shown beside the graded count so "0 graded" reads as "not settled yet"
+        rather than "this app has never run". They are different facts and the
+        first without the second overstates the problem.
+        """
+        store = self._store
+        if store is None:
+            return 0
+        try:
+            return int(store.count_runs())
+        except Exception:
+            return 0
+
+    def _record_strip(self) -> QFrame:
+        """What this app's forecasts have actually been checked against.
+
+        The question a reader has before they can read anything below it, and
+        the one the screen never answered: the cards showed a number, a range
+        and an agreement percentage, all of which look like evidence, and
+        nothing said whether a single forecast had ever been compared to a
+        price. The answer is currently none, with the reasons enumerated, which
+        is a stronger statement than silence in either direction.
+        """
+        strip = QFrame()
+        strip.setStyleSheet(
+            f'QFrame{{background:#FFFFFF;border:1px solid {_DIV};border-radius:10px;}}'
+            f'QFrame QLabel{{background:transparent;border:none;}}')
+        lay = QVBoxLayout(strip)
+        lay.setContentsMargins(18, 12, 18, 12)
+        head = QLabel('TRACK RECORD')
+        head.setStyleSheet(_EYEBROW)
+        lay.addWidget(head)
+        for text, strong in ((_honesty.track_record_line(
+                                 len(self._graded_errors()), self._run_count()), True),
+                             (_honesty.grade_backlog_line(self._grade_backlog()), False)):
+            if not text:
+                continue
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f'color:{_INK if strong else _T3};font-size:11px;'
+                              f'font-weight:{600 if strong else 400};margin-top:4px;')
+            lbl.setWordWrap(True)
+            lay.addWidget(lbl)
+        return strip
+
+    def _grade_backlog(self) -> dict:
+        """Why each ungraded run is ungraded, counted by reason.
+
+        Asked of `grade_verdict`, the same function that decides whether to
+        grade, so the screen cannot describe a rule the grader no longer uses.
+        """
+        store = self._store
+        if store is None:
+            return {}
+        counts: dict = {}
+        try:
+            from ph_economic_ai.engine.ground_truth import grade_verdict
+            for run in store.get_due_runs():
+                key = grade_verdict(store, run)['obstacle']
+                if key is not None:
+                    counts[key] = counts.get(key, 0) + 1
+        except Exception:
+            return {}
+        return counts
+
     def _sector_card(self, r) -> QFrame:
         card = QFrame()
         card.setStyleSheet(
@@ -652,12 +723,25 @@ class PressureMonitorPanel(QWidget):
             rng.setStyleSheet(f'color:{_T2};font-size:12px;margin-top:2px;')
             lay.addWidget(rng)
 
-            wide = QLabel(f"{b90['low']:+.2f} to {b90['high']:+.2f} {r.unit}  ·  90% range"
-                          f"  ·  {b50['source']}")
+            # No `source` here any more: the provenance line below is always
+            # present, so repeating it inside the toggle said the same thing
+            # twice and made the honest sentence look like boilerplate.
+            wide = QLabel(f"{b90['low']:+.2f} to {b90['high']:+.2f} {r.unit}  ·  90% range")
             wide.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:2px;')
             wide.setWordWrap(True)
             wide.setVisible(False)
             lay.addWidget(wide)
+
+            # PROVENANCE, always. This line used to appear only when the band was
+            # uncalibrated, which is backwards: a reader who never sees it cannot
+            # tell a calibrated band from a screen that forgot to warn them, so
+            # its absence carried the message. Now only its content changes.
+            prov = QLabel(_honesty.band_provenance(b50))
+            prov.setStyleSheet(
+                f'color:{_INK if not b50["calibrated"] else _T2};font-size:11px;'
+                f'font-weight:{600 if not b50["calibrated"] else 400};margin-top:4px;')
+            prov.setWordWrap(True)
+            lay.addWidget(prov)
 
             more = QPushButton('show 90% range')
             more.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -675,15 +759,41 @@ class PressureMonitorPanel(QWidget):
             more.clicked.connect(_toggle)
             lay.addWidget(more)
 
-            if not b50['calibrated']:
-                warn = QLabel(f"range not yet calibrated · {b50['source']}")
-                warn.setStyleSheet(f'color:{_T3};font-size:10px;font-style:italic;')
-                warn.setWordWrap(True)
-                lay.addWidget(warn)
+            # The one measured accuracy result the app owns, with the caveat that
+            # has to travel with it. Fuel only: the anchor backtest is a fuel
+            # backtest, and reusing it under food or electricity would be the
+            # cross-sector borrowing the band already refuses.
+            if r.sector == 'gas':
+                anchor = _honesty.anchor_record_line()
+                if anchor:
+                    al = QLabel(anchor)
+                    al.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:2px;')
+                    al.setWordWrap(True)
+                    lay.addWidget(al)
+
+        # WHAT THE AGENTS SAID. The distinct values and their span lead; the
+        # percentage follows as a summary of them. A percentage cannot separate
+        # agents who independently agreed from agents who copied, and the
+        # distinct count is the part a reader can check against the agent cards
+        # on the same screen.
+        spread = QLabel(_honesty.spread_line(
+            getattr(r, 'estimates', None), r.unit, r.confidence))
+        spread.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:6px;')
+        spread.setWordWrap(True)
+        lay.addWidget(spread)
+
+        caveat = _honesty.agreement_caveat(
+            len(getattr(r, 'estimates', None) or []),
+            distinct=len({round(float(e), 2)
+                          for e in (getattr(r, 'estimates', None) or [])}))
+        if caveat:
+            cav = QLabel(caveat)
+            cav.setStyleSheet(f'color:{_INK};font-size:11px;margin-top:2px;')
+            cav.setWordWrap(True)
+            lay.addWidget(cav)
 
         da = getattr(r, 'direction_agreement', 0)
-        agree_bit = (f"direction agreement {da}%  ·  magnitude {r.confidence}%"
-                     if da else f"agreement {r.confidence}%")
+        agree_bit = f"direction agreement {da}%" if da else 'direction unmeasured'
         meta = QLabel(f"{r.direction}  ·  {agree_bit} (not a probability)  ·  "
                       f"{', '.join(r.sources) or 'no sources'}")
         meta.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:6px;')

@@ -56,15 +56,20 @@ def test_panel_renders_without_thread(app):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     panel = PressureMonitorPanel(FakeRag())
     brief = PressureBrief(as_of='2026-07-24', window='this_week', readings=[
-        SectorReading('gas', 'rising', 1.0, '₱/L', 100, ['drives it'], ['RedditPH']),
-        SectorReading('food', 'flat', None, '%', 0, [], []),
+        SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1]),
+        SectorReading('food', 'flat', None, '%', 0, drivers=[], sources=[]),
     ], narrative='Pressure rising.')
     panel._on_monitor_ready(brief)                     # must not raise
     outlook = Outlook(as_of='2026-07-24', sectors=[
         SectorOutlook('gas', 'efficient', 1.0, [-2.0, 4.0], '₱/L', 100, 'no exploitable edge'),
     ])
     panel._on_outlook_ready(outlook)                   # must not raise
-    assert panel._cards.count() == 2
+    # Two sector cards plus the track-record strip above them. The strip is one
+    # statement about the app, not three copies of it on the sector cards, where
+    # repetition turned the honest sentence into wallpaper.
+    assert panel._cards.count() == 3
     assert panel._outlook.count() == 1
 
 

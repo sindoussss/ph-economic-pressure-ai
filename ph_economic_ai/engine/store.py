@@ -574,9 +574,11 @@ class AgentTrustStore:
         """Absolute errors of graded runs, newest first.
 
         These feed the conformal band in `engine/interval.py`. They are only
-        meaningful because grading is horizon-matched (RSK-018): each error
-        compares a run against a price observed near its own target date, so the
-        band is calibrated to the question the app actually answers.
+        meaningful because grading is cycle-aligned (`RSK-023`): each error
+        compares a run against the price of the pricing WEEK it forecast. Under
+        the earlier horizon match (`RSK-018`) the tolerance was 3.5 days either
+        side, which spans a week boundary, and every error this returned came
+        from a comparison against a different week.
         """
         with self._lock:
             rows = self._conn.execute(
@@ -585,6 +587,18 @@ class AgentTrustStore:
                 'ORDER BY graded_at DESC LIMIT ?', (int(limit),)
             ).fetchall()
         return [float(r['accuracy_error']) for r in rows]
+
+    def count_runs(self) -> int:
+        """How many runs are stored, graded or not.
+
+        The screen shows this beside the graded count. Zero graded runs and zero
+        runs are different facts: the first says the outcomes have not settled
+        yet, the second says the app has never been used, and showing only the
+        graded count lets a reader take the harsher reading.
+        """
+        with self._lock:
+            return int(self._conn.execute(
+                'SELECT COUNT(*) FROM runs').fetchone()[0])
 
     def effective_target_date(self, run: dict) -> str:
         """The period a run is a forecast for, inferring it for legacy rows."""

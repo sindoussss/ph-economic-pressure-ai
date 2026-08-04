@@ -32,6 +32,110 @@ def compute_accuracy_score(estimate: float, actual: float) -> float:
     return max(0.0, 1.0 - abs(estimate - actual) / 3.0)
 
 
+#: Why a due run was not graded. Ordered from "wait" to "never".
+UNGRADED_REASONS = ('no_baseline', 'baseline_week_ambiguous', 'no_price_yet',
+                    'target_week_ambiguous', 'implausible_change')
+
+
+def grade_verdict(store: 'AgentTrustStore', run: dict) -> dict:
+    """Whether a run can be graded, and if not, exactly why.
+
+    Split out of `find_and_grade_runs` so the SCREEN and the GRADER cannot give
+    different answers. The landing tile used to label every ungraded run
+    "pending DOE", which reads as "the price has not arrived yet" and was false
+    for most of them: some are blocked on a week whose observations disagree,
+    and some can never be graded at all because their stored baseline is the
+    fallback constant. A reader asked "why does it say zero graded" deserves the
+    real reason, and a panelist will ask.
+
+    Returns `{'obstacle', 'reason', 'level', 'match', 'actual_change'}`.
+    `obstacle` is None when the run is gradable.
+    """
+    def blocked(obstacle, reason, level=logging.DEBUG):
+        return {'obstacle': obstacle, 'reason': reason, 'level': level,
+                'match': None, 'actual_change': None}
+
+    try:
+        scenario = json.loads(run['scenario_json'])
+    except json.JSONDecodeError:
+        return blocked('no_baseline', 'malformed scenario_json', logging.WARNING)
+    baseline = scenario.get('current_price')
+    if baseline is None:
+        # No magic-value check on the baseline, deliberately. Comparing it
+        # against the fallback constant was tried and rejected: it cannot tell
+        # "this IS the fallback" from "the real price happens to equal it", so a
+        # week where the market lands on that number would silently stop grading
+        # for good. The liveness is recorded at the source instead -- a run whose
+        # price could not be fetched stores no baseline at all and lands here.
+        return blocked('no_baseline',
+                       'the run stored no baseline price, so there is no change '
+                       'to measure')
+
+    # A measured change has TWO ends, and the baseline is the other one. If the
+    # week the run started in has no single price, the change from it has no
+    # single value either. Live case: the source read 84.38 on Thursday 30 July
+    # and 89.51 on Friday 31 July, both inside the cycle opened 07-28. A run
+    # holding 84.38 would score a +5.13 "actual change" that is real only if the
+    # 89.51 reading was the error, and nothing here can know which one was.
+    #
+    # Absence is not ambiguity. Most older runs have no observation in their own
+    # week at all, and for those the stored baseline is the best record of what
+    # the run actually reasoned from. Only disagreement disqualifies.
+    started, started_week, _ = store.cycle_prices(run['timestamp'])
+    if len(started) > 1:
+        return blocked(
+            'baseline_week_ambiguous',
+            f'the week it started in ({started_week.date().isoformat()}) holds '
+            f'{len(started)} different prices ' + ', '.join(
+                f'{p:.2f}' for p in sorted(started)) +
+            ', so the change from its baseline has no single value')
+
+    # The PRICING WEEK, not the nearest scrape and not a derived instant. A
+    # weekly forecast is a claim about the Tuesday step, so grading it against
+    # an arbitrary timestamp measures the source's sampling as much as the
+    # forecast. Two live defects came from that: runs targeting 2026-08-03 were
+    # graded against an 08-04 observation, which is the NEXT cycle, and the
+    # source moved 84.38 to 89.51 on a Thursday-to-Friday inside one cycle,
+    # turning +5.13 of scrape noise into an "actual change" and producing the
+    # only two zero scores on record.
+    target = store.target_cycle(run)
+    week = target.date().isoformat()
+    prices, _, _ = store.cycle_prices(target)
+    if len(prices) > 1:
+        return blocked('target_week_ambiguous',
+                       f'the week it forecast ({week}) holds {len(prices)} '
+                       f'different prices, so that week has no settled price')
+    if not prices:
+        return blocked('no_price_yet',
+                       f'no price has been observed for the week it forecast ({week})')
+    match = store.cycle_price(target)
+
+    actual_change = match['price'] - baseline
+    if abs(actual_change) > _MAX_PLAUSIBLE_CHANGE:
+        # The app already refuses an ESTIMATE outside this bound as an
+        # absolute-price parse. The OUTCOME deserves the same scepticism, and did
+        # not get it: a stale baseline in the stored scenario produced an "actual
+        # change" of -14.44 PHP/L on every graded run, which is the observed price
+        # minus a hardcoded fallback rather than any week's move. Nothing rejected
+        # it, so `compute_accuracy_score` floored at zero for every agent and drove
+        # seven of twenty below the demotion threshold on a number that never
+        # described a real outcome.
+        #
+        # An implausible outcome means the baseline or the observation is wrong,
+        # and grading against either is worse than not grading at all, because a
+        # wrong grade is permanent and silently reshapes the roster.
+        return blocked(
+            'implausible_change',
+            f'it implies a {actual_change:+.2f} PHP/L change (week {week} at '
+            f'{match["price"]:.2f} against a stored baseline of {baseline:.2f}), '
+            f'outside the +/-{_MAX_PLAUSIBLE_CHANGE:.0f} plausibility bound, so '
+            f'the baseline is stale rather than the market extraordinary',
+            logging.WARNING)
+
+    return {'obstacle': None, 'reason': f'pricing week {match["cycle"]}',
+            'level': logging.DEBUG, 'match': match, 'actual_change': actual_change}
+
+
 def find_and_grade_runs(
     store: 'AgentTrustStore',
     current_price: float,
@@ -55,84 +159,13 @@ def find_and_grade_runs(
 
     graded = 0
     for run in store.get_due_runs():
-        try:
-            scenario = json.loads(run['scenario_json'])
-        except json.JSONDecodeError:
-            logging.warning('ground_truth: malformed scenario_json for run_id=%s',
-                            run.get('run_id'))
-            continue
-        baseline = scenario.get('current_price')
-        if baseline is None:
-            continue
-        # No magic-value check on the baseline here, deliberately. Comparing it
-        # against the fallback constant was tried and rejected: it cannot tell
-        # "this IS the fallback" from "the real price happens to equal it", so a
-        # week where the market lands on that number would silently stop grading
-        # for good. The liveness is recorded at the source instead — a run whose
-        # price could not be fetched stores no baseline at all and is skipped by
-        # the `baseline is None` check above.
-
-        # A measured change has TWO ends, and the baseline is the other one. If
-        # the week the run started in has no single price, the change from it
-        # has no single value either. Live case: the source read 84.38 on
-        # Thursday 30 July and 89.51 on Friday 31 July, both inside the cycle
-        # opened 07-28. Runs that stored 84.38 as their baseline would score a
-        # +5.13 "actual change" that is real only if the 89.51 reading was the
-        # error -- and nothing here can know which one was. Refusing costs a
-        # grade; grading costs the track record's meaning.
-        #
-        # Absence is not ambiguity. Most older runs have no observation in their
-        # own week at all, and for those the stored baseline is the best record
-        # of what the run actually reasoned from. Only disagreement disqualifies.
-        started, _, _ = store.cycle_prices(run['timestamp'])
-        if len(started) > 1:
-            logging.debug('ground_truth: run_id=%s started in a week with no single '
-                          'price (%s); the change from it is undefined, leaving '
-                          'ungraded', run.get('run_id'), sorted(started))
+        verdict = grade_verdict(store, run)
+        if verdict['obstacle'] is not None:
+            logging.log(verdict['level'], 'ground_truth: run_id=%s not graded: %s',
+                        run.get('run_id'), verdict['reason'])
             continue
 
-        target = store.target_cycle(run)
-        # The PRICING WEEK, not the nearest scrape and not a derived instant. A
-        # weekly forecast is a claim about the Tuesday step, so grading it
-        # against an arbitrary timestamp measures the source's sampling as much
-        # as the forecast. Two live defects came from that: runs targeting
-        # 2026-08-03 were graded against an 08-04 observation, which is the NEXT
-        # cycle, and the source moved 84.38 to 89.51 on a Thursday-to-Friday
-        # inside one cycle, turning +5.13 of scrape noise into an "actual
-        # change" and producing the only two zero scores on record.
-        match = store.cycle_price(target)
-        if match is None:
-            # Either no observation for that week, or the week's observations
-            # disagree and it has no single price. Both leave the run eligible
-            # rather than graded against a guess.
-            logging.debug('ground_truth: run_id=%s has no unambiguous price for the '
-                          'pricing week it forecasts (opened %s); leaving ungraded',
-                          run.get('run_id'), target.date().isoformat())
-            continue
-
-        actual_change = match['price'] - baseline
-        if abs(actual_change) > _MAX_PLAUSIBLE_CHANGE:
-            # The app already refuses an ESTIMATE outside this bound as an
-            # absolute-price parse. The OUTCOME deserves the same scepticism, and
-            # did not get it: a stale baseline in the stored scenario produced an
-            # "actual change" of -14.44 PHP/L on every graded run, which is the
-            # observed price minus a hardcoded fallback rather than any week's
-            # move. Nothing rejected it, so `compute_accuracy_score` floored at
-            # zero for every agent and drove seven of twenty below the demotion
-            # threshold on a number that never described a real outcome.
-            #
-            # An implausible outcome means the baseline or the observation is
-            # wrong, and grading against either is worse than not grading at all,
-            # because a wrong grade is permanent and silently reshapes the roster.
-            logging.warning(
-                'ground_truth: run_id=%s implies a %+.2f PHP/L change '
-                '(observed %.2f vs stored baseline %.2f). That is outside the '
-                '+/-%.0f plausibility bound, so the baseline is stale rather than '
-                'the market extraordinary. Leaving it ungraded.',
-                run.get('run_id'), actual_change, match['price'], baseline,
-                _MAX_PLAUSIBLE_CHANGE)
-            continue
-
+        match, actual_change = verdict['match'], verdict['actual_change']
         store.apply_ground_truth_grade(
             run['run_id'], actual_change,
             graded_against=f"pricing week {match['cycle']} "

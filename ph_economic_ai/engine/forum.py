@@ -787,6 +787,10 @@ class Forum:
             estimate=(round(avg, 2) if avg is not None else None),
             unit=ctx.unit, confidence=confidence,
             direction_agreement=direction_agreement,
+            # The raw estimates, not the summary of them. The card shows the
+            # distinct values and their span; a percentage alone cannot be
+            # checked against anything else on the screen.
+            estimates=[round(float(e), 2) for e in ests],
             drivers=drivers, sources=sources)
 
     def _synthesize(self, readings: list[SectorReading]) -> str:

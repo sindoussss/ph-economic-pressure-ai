@@ -26,6 +26,21 @@ class SectorReading:
     direction_agreement: int = 0
     drivers: list[str] = field(default_factory=list)   # salient present-tense points
     sources: list[str] = field(default_factory=list)   # snapshot/RAG sources used
+    # The estimates the percentage was computed FROM. Carried because a
+    # percentage cannot distinguish a room of twenty from two survivors, nor
+    # agents who independently agreed from agents who copied: 32 agents produced
+    # TWO distinct estimates spanning 0.26 PHP/L and scored 100 percent. The
+    # values are checkable against the agent cards on the same screen; the
+    # percentage is not.
+    #
+    # `kw_only` because this class is built positionally in places and a field
+    # added in the middle silently reassigns every argument after it. That is not
+    # hypothetical here: adding `direction_agreement` left three call sites
+    # passing `drivers` into it, and nothing failed because nothing did
+    # arithmetic on the value until this field arrived. Same shape as the
+    # `AgentResponse` rebuild that dropped `retrieval` (`RSK-019`). Keyword-only
+    # makes the position irrelevant, so the next field cannot repeat it.
+    estimates: list[float] = field(default_factory=list, kw_only=True)
 
     def to_dict(self) -> dict:
         return asdict(self)
