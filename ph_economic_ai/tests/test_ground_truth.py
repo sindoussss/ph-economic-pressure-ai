@@ -112,3 +112,118 @@ def test_find_and_grade_runs_skips_missing_current_price(tmp_path):
 
 def test_accuracy_score_symmetric():
     assert compute_accuracy_score(1.92, 1.42) == compute_accuracy_score(1.42, 1.92)
+
+
+# ── The price table holds observations, not poll counts ──────────────────────
+
+def test_repeating_the_same_price_records_one_observation(tmp_path):
+    """`INSERT OR REPLACE` keyed on `observed_at`, which carries microseconds, so
+    every call wrote a row. The grading poll runs six-hourly and every run
+    records too: the table reached 568 rows holding EIGHT observations, one price
+    repeated 157 times in a single day.
+
+    Same failure shape as an agreement percentage -- a number that looks like
+    evidence of density and is not. "568 price observations" is a sentence
+    someone would say to a panel, and it would be false."""
+    import datetime as _dt
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+
+    import sqlite3
+
+    path = str(tmp_path / 'trust.db')
+    s = AgentTrustStore(path)
+    day = _dt.datetime(2026, 7, 27, 6, 0, tzinfo=_dt.timezone.utc)
+    for hour in range(0, 24, 2):
+        s.record_price_observation(84.38, day.replace(hour=hour))
+
+    con = sqlite3.connect(path)
+    assert con.execute('select count(*) from price_observations').fetchone()[0] == 1
+    # And the one kept is still findable, so the poll frequency changed and the
+    # grading behaviour did not.
+    assert s.price_near('2026-07-27T12:00:00+00:00')['price'] == 84.38
+    con.close()
+
+
+def test_a_price_that_moves_within_a_day_still_records(tmp_path):
+    """The key is the PAIR, not the day. A genuine intraday move is information
+    and must not be swallowed by the deduplication."""
+    import datetime as _dt
+    import sqlite3
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+
+    s = AgentTrustStore(str(tmp_path / 'trust.db'))
+    day = _dt.datetime(2026, 7, 27, 6, 0, tzinfo=_dt.timezone.utc)
+    s.record_price_observation(84.38, day)
+    s.record_price_observation(89.51, day.replace(hour=18))
+    con = sqlite3.connect(str(tmp_path / 'trust.db'))
+    assert con.execute('select count(*) from price_observations').fetchone()[0] == 2
+    con.close()
+
+
+def test_deduplication_cannot_move_a_graded_price_to_another_day(tmp_path):
+    """The claim "information-preserving" was made and was FALSE.
+
+    Collapsing 568 duplicate rows to their 8 real observations moved one run's
+    graded outcome from 84.38 to 89.51, because the nearest SURVIVING row fell on
+    the next day, which happened to carry a different price. Same information,
+    different grade.
+
+    The defect was in `price_near`, not in the deduplication: ranking by raw
+    timestamp made the match depend on how many times a day the poll ran. It now
+    ranks by calendar-day distance first, so a same-day observation always wins
+    and poll frequency cannot change a grade.
+    """
+    import datetime as _dt
+    import sqlite3
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+
+    path = str(tmp_path / 'trust.db')
+    s = AgentTrustStore(path)
+    con = sqlite3.connect(path)
+
+    # The real shape: one price all of day 1, a different price from day 2.
+    day1 = _dt.datetime(2026, 7, 30, 0, 0, tzinfo=_dt.timezone.utc)
+    for hour in range(24):
+        con.execute('insert or replace into price_observations (observed_at, price)'
+                    ' values (?, ?)', (day1.replace(hour=hour).isoformat(), 84.38))
+    con.execute('insert or replace into price_observations (observed_at, price)'
+                ' values (?, ?)', ('2026-07-31T01:14:00+00:00', 89.51))
+    con.commit()
+
+    target = '2026-07-30T17:17:00+00:00'
+    before = s.price_near(target)
+    s.deduplicate_price_observations()
+    after = s.price_near(target)
+
+    assert before['price'] == 84.38
+    assert after['price'] == 84.38, (
+        'deduplication moved the graded price to the next day')
+    assert after['observed_at'][:10] == '2026-07-30', 'same-day must win'
+    con.close()
+
+
+def test_a_same_day_observation_beats_a_closer_one_on_another_day(tmp_path):
+    """The property that makes the above hold in general. A target at 23:00 is
+    nearer in HOURS to 01:00 the next day than to 06:00 the same day, and the
+    same-day price is still the right one: these are weekly step prices sampled
+    by a poll, so the day is the resolution and the hour is noise."""
+    import sqlite3
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+
+    path = str(tmp_path / 'trust.db')
+    s = AgentTrustStore(path)
+    con = sqlite3.connect(path)
+    con.execute('insert into price_observations (observed_at, price) values (?, ?)',
+                ('2026-07-30T06:00:00+00:00', 84.38))
+    con.execute('insert into price_observations (observed_at, price) values (?, ?)',
+                ('2026-07-31T01:00:00+00:00', 89.51))
+    con.commit()
+
+    got = s.price_near('2026-07-30T23:00:00+00:00')
+    assert got['price'] == 84.38
+    assert got['observed_at'][:10] == '2026-07-30'
+    con.close()
