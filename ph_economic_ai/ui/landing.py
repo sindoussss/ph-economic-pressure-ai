@@ -825,7 +825,14 @@ class LandingPanel(QWidget):
             sub_parts.append(f'{conf}% agreement')
         actual = run.get('actual_price_change')
         if actual is not None:
-            sub_parts.append('graded ✓')
+            # The OUTCOME, not a tick. A tile showing "+0.95 ₱/L · graded ✓"
+            # reads as vindication, and the first graded run in the record
+            # predicted a rise of 0.95 in a week that did not move at all. Small
+            # error, wrong direction, and the checkmark said neither.
+            err = run.get('accuracy_error')
+            sub_parts.append(f'actual {actual:+.2f}')
+            if err is not None:
+                sub_parts.append(f'off by {err:.2f}')
         else:
             # The real obstacle, not "pending DOE". That label reads as "the
             # price has not arrived yet" and is false for four runs in five: most
