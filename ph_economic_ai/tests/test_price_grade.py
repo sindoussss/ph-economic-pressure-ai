@@ -202,3 +202,31 @@ def test_a_week_with_no_observation_still_trusts_the_stored_baseline(due_run):
     run = dict(store.get_run(run_id))
     assert store.cycle_prices(run['timestamp'])[0] == set()
     assert grade_verdict(store, run)['obstacle'] is None
+
+
+# ── a graded tile must show the outcome, not a tick ──────────────────────────
+
+def test_a_graded_tile_reports_the_actual_and_the_error(tmp_path, monkeypatch):
+    """"+0.95 ₱/L · graded ✓" reads as vindication. The first graded run in the
+    record predicted a rise of 0.95 in a week that did not move at all: small
+    error, wrong direction, and the checkmark said neither."""
+    import sys
+    from PyQt6.QtWidgets import QApplication, QLabel
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from ph_economic_ai.ui.landing import LandingPanel
+
+    class _FakeStore:
+        def get_recent_runs(self, limit=4):
+            return [{'run_id': 40, 'timestamp': '2026-08-04T00:00:00+00:00',
+                     'final_estimate': -1.0, 'confidence_pct': 70},
+                    {'run_id': 32, 'timestamp': '2026-08-02T00:00:00+00:00',
+                     'final_estimate': 0.95, 'confidence_pct': 98,
+                     'actual_price_change': 0.0, 'accuracy_error': 0.95}]
+
+    panel = LandingPanel(store=_FakeStore())
+    panel.refresh_recent()
+    text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert 'actual +0.00' in text
+    assert 'off by 0.95' in text
+    assert 'graded ✓' not in text, 'a tick is not an outcome'
