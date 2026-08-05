@@ -705,12 +705,82 @@ class AgentTrustStore:
         horizon = run.get('horizon_days') or DEFAULT_HORIZON_DAYS
         return (base + timedelta(days=float(horizon))).isoformat()
 
+    def _latest_responses_no_commit(self, run_id: int):
+        """One response per agent: its final word on this run.
+
+        The same rule `forum._latest_per_agent` applies to consensus, confidence
+        and the judge. Grading was the one place that ignored it, and it iterated
+        every response row instead.
+
+        Two defects came out of that, both live on the app's first graded run:
+
+        * **One forecast moved an agent's trust twice.** Run 32 has 20 agents and
+          32 responses, so twelve agents took two EMA updates from a single
+          outcome and moved further than the eight who spoke once. That weights
+          trust by how much an agent talks.
+        * **A withdrawn estimate was still graded.** Central Luzon DataExtractor
+          said 1.20 in round one and revised to 1.35 in round two, and both were
+          scored. An agent's answer is the one it ends on; scoring a position it
+          already retracted measures the debate, not the forecast.
+        """
+        return self._conn.execute(
+            'SELECT * FROM agent_responses a WHERE a.run_id = ? AND a.id = ('
+            '  SELECT b.id FROM agent_responses b'
+            '  WHERE b.run_id = a.run_id AND b.agent_name = a.agent_name'
+            '  ORDER BY b.round_num DESC, b.id DESC LIMIT 1)',
+            (run_id,)).fetchall()
+
+    def rebuild_grade_events(self, run_id: int) -> dict:
+        """Rewrite an already-graded run's trust events under the current rule.
+
+        Needed because the grading rule has changed twice under a stored grade,
+        and a trust score is only auditable if it reflects the rule in force
+        rather than the one that happened to be running the day it was written.
+
+        Deletes the run's `grade` events, rebuilds them from its final-word
+        responses, and replays. The run's own grade is untouched: the outcome it
+        was scored against has not changed, only how many times that outcome was
+        allowed to move each agent.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                'SELECT actual_price_change, graded_at FROM runs WHERE run_id=?',
+                (run_id,)).fetchone()
+            if row is None or row['actual_price_change'] is None:
+                return {'rebuilt': 0, 'skipped': 'run is not graded'}
+            actual = float(row['actual_price_change'])
+            before = self._conn.execute(
+                "SELECT COUNT(*) FROM trust_events WHERE run_id=? AND kind='grade'",
+                (run_id,)).fetchone()[0]
+            self._conn.execute(
+                "DELETE FROM trust_events WHERE run_id=? AND kind='grade'", (run_id,))
+            written = 0
+            for resp in self._latest_responses_no_commit(run_id):
+                if resp['estimate'] is None:
+                    continue
+                internal = float(resp['internal_score'] or _TRUST_INIT)
+                acc = compute_accuracy_score(float(resp['estimate']), actual)
+                self._conn.execute(
+                    'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, '
+                    'run_id, internal_score, accuracy_score) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    (row['graded_at'], resp['agent_name'], 'grade',
+                     0.4 * internal + 0.6 * acc, run_id, internal, acc))
+                written += 1
+            self._conn.commit()
+        moved = self.replay_trust()
+        return {'rebuilt': written, 'was': before, 'trust_moved': moved}
+
     def apply_ground_truth_grade(self, run_id: int, actual_change: float,
                                  graded_against: Optional[str] = None) -> None:
         """Grade a run against actual DOE price change, update agent trust.
 
         `graded_against` records WHICH observation was used, so a grade can be
         audited later rather than taken on trust.
+
+        Each agent is scored ONCE, on its final word. See
+        `_latest_responses_no_commit` for the two defects that came from grading
+        every response row.
         """
         with self._lock:
             row = self._conn.execute(
@@ -729,11 +799,8 @@ class AgentTrustStore:
                 (actual_change, error, datetime.now(timezone.utc).isoformat(),
                  graded_against, run_id),
             )
-            # Grade each agent response — use no-commit helper for atomicity
-            cur = self._conn.execute(
-                'SELECT * FROM agent_responses WHERE run_id=?', (run_id,)
-            )
-            responses = [dict(r) for r in cur.fetchall()]
+            responses = [dict(r) for r in
+                         self._latest_responses_no_commit(run_id)]
             for resp in responses:
                 est = resp['estimate']
                 if est is None:
@@ -942,11 +1009,18 @@ class AgentTrustStore:
 
             rows = self._conn.execute(
                 '''SELECT r.run_id, r.timestamp, r.graded_at, r.actual_price_change,
-                          a.agent_name, a.internal_score, a.estimate
+                          a.agent_name, a.internal_score, a.estimate, a.id
                    FROM runs r JOIN agent_responses a ON a.run_id = r.run_id
                    WHERE (? IS NULL OR r.timestamp > ?)
                    ORDER BY r.run_id, a.id''', (since, since)).fetchall()
 
+            final_word = {
+                (r['run_id'], r['agent_name']): r['id'] for r in
+                self._conn.execute(
+                    'SELECT a.run_id, a.agent_name, a.id FROM agent_responses a '
+                    'WHERE a.id = (SELECT b.id FROM agent_responses b '
+                    '  WHERE b.run_id = a.run_id AND b.agent_name = a.agent_name '
+                    '  ORDER BY b.round_num DESC, b.id DESC LIMIT 1)').fetchall()}
             events, seen_response = [], set()
             for row in rows:
                 key = (row['run_id'], row['agent_name'])
@@ -959,9 +1033,13 @@ class AgentTrustStore:
                                    row['run_id'],
                                    float(row['internal_score'] or _TRUST_INIT), None))
                 if (row['graded_at'] and row['actual_price_change'] is not None
-                        and row['estimate'] is not None):
-                    # Per RESPONSE, matching apply_ground_truth_grade, which
-                    # updates once for every response row carrying an estimate.
+                        and row['estimate'] is not None
+                        and row['id'] == final_word.get(
+                            (row['run_id'], row['agent_name']))):
+                    # Once per agent, on its FINAL WORD, matching
+                    # `apply_ground_truth_grade`. It used to be once per response
+                    # row, which moved a talkative agent's trust twice on one
+                    # outcome and scored estimates the agent had already revised.
                     acc = compute_accuracy_score(float(row['estimate']),
                                                  float(row['actual_price_change']))
                     internal = float(row['internal_score'] or _TRUST_INIT)

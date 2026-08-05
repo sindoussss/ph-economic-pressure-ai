@@ -219,10 +219,15 @@ def test_reconstruction_gives_one_response_event_per_agent_per_run(due_run):
     assert store.reconstruct_trust_events()['reconstructed'] == 1
 
 
-def test_reconstruction_gives_one_grade_event_per_response(due_run):
-    """`apply_ground_truth_grade` updates for EVERY response row carrying an
-    estimate, so an agent that spoke three times is graded three times. The
-    reconstruction has to match the path it is standing in for, not tidy it."""
+def test_reconstruction_grades_each_agent_once_on_its_final_word(due_run):
+    """The reconstruction must match the path it stands in for.
+
+    It used to build one grade event per RESPONSE row, matching
+    `apply_ground_truth_grade` at the time. Both were wrong the same way: an
+    agent that spoke three times had one outcome move its trust three times, on
+    estimates it had already revised. This test asserted that behaviour and had
+    to change with it, which is the signal that matters.
+    """
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
     store.save_agent_responses(run_id, [
         {'agent_name': 'A', 'round_num': r, 'estimate': -0.6, 'statement': 's',
@@ -239,7 +244,7 @@ def test_reconstruction_gives_one_grade_event_per_response(due_run):
     con.close()
 
     report = store.reconstruct_trust_events()
-    assert report['reconstructed'] == 4, '1 response + 3 grades'
+    assert report['reconstructed'] == 2, '1 response + 1 grade, not 1 + 3'
     store.replay_trust()
     assert store.get_trust('A') == pytest.approx(live)
 
@@ -361,3 +366,98 @@ def test_the_basis_omits_a_zero_half_rather_than_printing_it():
                                 'since': '2026-08-05T00:00:00+00:00'})
     assert '0 from response quality' not in line
     assert '32 from graded outcomes' in line
+
+
+# ── one forecast, one movement per agent ─────────────────────────────────────
+
+def _rounds(agent, pairs):
+    return [{'agent_name': agent, 'round_num': rn, 'estimate': est,
+             'statement': 's', 'citation_count': 0, 'has_causal_chain': 0,
+             'internal_score': 0.7, 'model_used': 'm'} for rn, est in pairs]
+
+
+def test_an_agent_that_spoke_twice_is_graded_once(due_run):
+    """One outcome must move an agent's trust once.
+
+    Live on the app's first graded run: 20 agents, 32 responses, 32 grade
+    events. Twelve agents took two EMA updates from a single forecast and moved
+    further than the eight who spoke once, which weights trust by how much an
+    agent talks rather than by how right it was.
+    """
+    import sqlite3
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    store.save_agent_responses(run_id, _rounds('A', [(1, -0.2), (2, -0.6)])
+                               + _rounds('B', [(1, -0.6)]))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+
+    events = sqlite3.connect(store._path).execute(
+        "SELECT agent_name, COUNT(*) FROM trust_events WHERE kind='grade' "
+        "GROUP BY agent_name").fetchall()
+    assert dict(events) == {'A': 1, 'B': 1}
+
+
+def test_a_revised_estimate_is_not_graded(due_run):
+    """An agent's answer is the one it ends on.
+
+    `forum._latest_per_agent` already encodes that for consensus, confidence and
+    the judge. Grading was the one place that scored a position the agent had
+    retracted: Central Luzon DataExtractor said 1.20, revised to 1.35, and both
+    were scored.
+    """
+    import sqlite3
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    # Round 1 is exactly right, round 2 is exactly wrong. Grading the round the
+    # agent withdrew would reward it.
+    store.save_agent_responses(run_id, _rounds('A', [(1, -0.62), (2, 2.50)]))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+
+    acc = sqlite3.connect(store._path).execute(
+        "SELECT accuracy_score FROM trust_events WHERE kind='grade'").fetchall()
+    assert len(acc) == 1
+    assert acc[0][0] == pytest.approx(0.0), 'the final word was wrong by 3.12'
+
+
+def test_the_highest_round_wins_regardless_of_insert_order(due_run):
+    """Rows arrive in whatever order `save_agent_responses` was handed."""
+    import sqlite3
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    store.save_agent_responses(run_id, _rounds('A', [(3, -0.62), (1, 2.50)]))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    acc = sqlite3.connect(store._path).execute(
+        "SELECT accuracy_score FROM trust_events WHERE kind='grade'").fetchone()
+    assert acc[0] == pytest.approx(1.0), 'round 3 was exactly right'
+
+
+def test_rebuilding_grade_events_applies_the_current_rule(due_run):
+    """The grading rule has changed twice under a stored grade. A trust score is
+    only auditable if it reflects the rule in force, not the one that happened
+    to be running the day it was written."""
+    import sqlite3
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    store.save_agent_responses(run_id, _rounds('A', [(1, -0.2), (2, -0.6)]))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+
+    con = sqlite3.connect(store._path)
+    # Simulate a log written under the old per-response rule.
+    con.execute("INSERT INTO trust_events (occurred_at, agent_name, kind, raw, "
+                "run_id, internal_score, accuracy_score) "
+                "VALUES ('2026-01-01T00:00:00+00:00', 'A', 'grade', 0.5, ?, 0.7, 0.5)",
+                (run_id,))
+    con.commit()
+    assert con.execute("SELECT COUNT(*) FROM trust_events WHERE kind='grade'"
+                       ).fetchone()[0] == 2
+
+    report = store.rebuild_grade_events(run_id)
+    assert report['was'] == 2 and report['rebuilt'] == 1
+    assert con.execute("SELECT COUNT(*) FROM trust_events WHERE kind='grade'"
+                       ).fetchone()[0] == 1
+    con.close()
+
+
+def test_rebuilding_refuses_an_ungraded_run(due_run):
+    store, run_id = due_run(baseline=85.00, estimate=-0.5)
+    assert store.rebuild_grade_events(run_id)['skipped'] == 'run is not graded'
