@@ -11,6 +11,15 @@ from typing import Optional
 from ph_economic_ai.engine.ground_truth import compute_accuracy_score
 
 _DEFAULT_DB = Path(__file__).parent.parent / 'cache' / 'trust.db'
+
+#: The product this app forecasts and grades against. An observation of anything
+#: else is not evidence about this series, however plausible its number looks.
+FORECAST_GRADE = 'RON 95'
+#: When the scraper started selecting the grade BY NAME instead of taking the
+#: median across every fuel on the page (`swarm._PRICE_GRADE_PREFERENCE`, commit
+#: `f050c53`). Observations recorded before this are of an unidentified product.
+_GRADE_SELECTION_FIXED_AT = '2026-07-31T01:29:00+00:00'
+
 _TRUST_INIT = 0.5
 _EMA_ALPHA  = 0.3
 _TRUST_MIN  = 0.05
@@ -161,9 +170,39 @@ class AgentTrustStore:
         cur.executescript('''
             CREATE TABLE IF NOT EXISTS price_observations (
                 observed_at TEXT PRIMARY KEY,
-                price       REAL NOT NULL
+                price       REAL NOT NULL,
+                grade       TEXT
             );
         ''')
+
+        # WHICH PRODUCT an observation is of. Without it the table is not a price
+        # series, because two fuel grades can sit in it looking like one price
+        # that moved.
+        #
+        # That is not hypothetical: the cycle opened 2026-07-28 held 84.38 on the
+        # Thursday and 89.51 on the Friday, on days no adjustment happens, and it
+        # blocked ten runs from grading as an "unsettled week". They are two
+        # different products. Until `f050c53` on 2026-07-31 the scraper took the
+        # MEDIAN across every fuel on the page, and the page that day listed
+        # Diesel 81.13, Diesel Plus 83.94, Unleaded 91 84.38, Premium 95 89.51
+        # and Kerosene 111.43 -- median 84.38, which is Unleaded 91. The app
+        # forecasts RON 95. The changeover in the stored data falls within
+        # fifteen minutes of that commit.
+        obs_cols = {r['name'] for r in
+                    cur.execute('PRAGMA table_info(price_observations)').fetchall()}
+        if obs_cols and 'grade' not in obs_cols:
+            cur.execute("ALTER TABLE price_observations ADD COLUMN grade TEXT")
+            # Rows written before the selection fix are labelled `unknown`, not
+            # `RON 91`. The evidence that they ARE Unleaded 91 is strong -- the
+            # value matches that product exactly on the one day the page was
+            # recorded -- but the rule in force did not select a product at all,
+            # it took the middle of a list. `unknown` is what is actually known,
+            # and it is enough: whatever they are, they are not RON 95.
+            cur.execute("UPDATE price_observations SET grade='unknown' "
+                        "WHERE grade IS NULL AND observed_at < ?",
+                        (_GRADE_SELECTION_FIXED_AT,))
+            cur.execute(f"UPDATE price_observations SET grade='{FORECAST_GRADE}' "
+                        "WHERE grade IS NULL")
         self._conn.commit()
 
     # ── Run persistence ───────────────────────────────────────────────────────
@@ -347,7 +386,8 @@ class AgentTrustStore:
 
     # ── Observed prices, for horizon-matched grading ──────────────────────────
 
-    def record_price_observation(self, price: float, observed_at=None) -> None:
+    def record_price_observation(self, price: float, observed_at=None,
+                                 grade: str = FORECAST_GRADE) -> None:
         """Store an observed price so past runs can be graded against their own
         period instead of against the present.
 
@@ -364,6 +404,12 @@ class AgentTrustStore:
         is the pair and not the day alone. Philippine retail prices are a weekly
         step function, so sub-day resolution carries no information a grade could
         use -- `price_near` has a 3.5 day tolerance.
+
+        `grade` names WHICH PRODUCT was observed, and without it this table is
+        not a price series at all. The cycle opened 2026-07-28 held Unleaded 91
+        at 84.38 and Premium 95 at 89.51 and read as one price that moved twice
+        inside a week, on days no adjustment happens. It blocked ten runs from
+        grading as an "unsettled week" when nothing about the week was unsettled.
         """
         when = (observed_at or datetime.now(timezone.utc))
         stamp = when.isoformat() if hasattr(when, 'isoformat') else str(when)
@@ -371,13 +417,15 @@ class AgentTrustStore:
         with self._lock:
             seen = self._conn.execute(
                 'SELECT 1 FROM price_observations '
-                'WHERE substr(observed_at, 1, 10) = ? AND price = ? LIMIT 1',
-                (stamp[:10], value)).fetchone()
+                'WHERE substr(observed_at, 1, 10) = ? AND price = ? '
+                'AND COALESCE(grade, ?) = ? LIMIT 1',
+                (stamp[:10], value, grade, grade)).fetchone()
             if seen is not None:
                 return
             self._conn.execute(
-                'INSERT OR REPLACE INTO price_observations (observed_at, price) '
-                'VALUES (?, ?)', (stamp, value))
+                'INSERT OR REPLACE INTO price_observations '
+                '(observed_at, price, grade) VALUES (?, ?, ?)',
+                (stamp, value, grade))
             self._conn.commit()
 
     def deduplicate_price_observations(self) -> int:
@@ -494,10 +542,16 @@ class AgentTrustStore:
 
         with self._lock:
             rows = self._conn.execute(
+                # Only the product this app forecasts. An observation of another
+                # grade is not evidence about this series however plausible its
+                # number is, and mixing them is what made one week look like it
+                # held two prices.
                 'SELECT price FROM price_observations '
                 'WHERE julianday(observed_at) >= julianday(?) '
-                '  AND julianday(observed_at) <  julianday(?)',
-                (start.isoformat(), end.isoformat())).fetchall()
+                '  AND julianday(observed_at) <  julianday(?) '
+                '  AND COALESCE(grade, ?) = ?',
+                (start.isoformat(), end.isoformat(),
+                 FORECAST_GRADE, FORECAST_GRADE)).fetchall()
         return {round(float(r['price']), 2) for r in rows}, start, len(rows)
 
     def target_cycle(self, run: dict):

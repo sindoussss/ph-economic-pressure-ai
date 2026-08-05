@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -33,7 +33,8 @@ def compute_accuracy_score(estimate: float, actual: float) -> float:
 
 
 #: Why a due run was not graded. Ordered from "wait" to "never".
-UNGRADED_REASONS = ('no_baseline', 'baseline_week_ambiguous', 'no_price_yet',
+UNGRADED_REASONS = ('no_baseline', 'baseline_week_ambiguous',
+                    'baseline_contradicted', 'no_price_yet',
                     'target_week_ambiguous', 'implausible_change')
 
 
@@ -90,6 +91,27 @@ def grade_verdict(store: 'AgentTrustStore', run: dict) -> dict:
                 f'{p:.2f}' for p in sorted(started)) +
             ', so the change from its baseline has no single value')
 
+    # And if that week HAS a settled price, the baseline had better be it.
+    #
+    # A run whose stored baseline contradicts the observed price of the week it
+    # ran in did not read this series. Two ways that happens, both in the record:
+    # the baseline is the stale fallback constant, or it is a different fuel
+    # grade -- runs made before `f050c53` stored Unleaded 91 while the app
+    # forecasts RON 95. Measuring a change from one product to another produces a
+    # number that looks like a market move and is a relabelling.
+    #
+    # This is sharper than the plausibility bound below, which only catches a
+    # contradiction large enough to be implausible. A 5.13 gap between two real
+    # fuel grades sits comfortably inside it.
+    if len(started) == 1:
+        observed = next(iter(started))
+        if abs(observed - baseline) > 0.005:
+            return blocked(
+                'baseline_contradicted',
+                f'its stored baseline of {baseline:.2f} is not the observed price '
+                f'of the week it ran in ({started_week.date().isoformat()} settled '
+                f'at {observed:.2f}), so the run did not read this price series')
+
     # The PRICING WEEK, not the nearest scrape and not a derived instant. A
     # weekly forecast is a claim about the Tuesday step, so grading it against
     # an arbitrary timestamp measures the source's sampling as much as the
@@ -140,6 +162,7 @@ def find_and_grade_runs(
     store: 'AgentTrustStore',
     current_price: float,
     min_age_days: float = 5.0,
+    grade: Optional[str] = None,
 ) -> int:
     """Grade every run whose forecast period has elapsed, each against a price
     observed near ITS OWN target date. Returns the count graded.
@@ -155,7 +178,13 @@ def find_and_grade_runs(
     target date is around today. Runs whose period has no observation close enough
     stay ungraded rather than being scored against a mismatched week.
     """
-    store.record_price_observation(current_price)
+    # WHICH PRODUCT, recorded with the price. A price with no product is not an
+    # observation of this series: readings of Unleaded 91 and Premium 95 sat in
+    # one week looking like a price that moved twice, and blocked ten runs.
+    if grade is None:
+        store.record_price_observation(current_price)
+    else:
+        store.record_price_observation(current_price, grade=grade)
 
     graded = 0
     for run in store.get_due_runs():
@@ -184,10 +213,10 @@ class DOECheckerThread(QThread):
         self._stop_event = threading.Event()
 
     def run(self):
-        from ph_economic_ai.engine.swarm import fetch_live_retail_price_checked
+        from ph_economic_ai.engine.swarm import fetch_live_retail_price_graded
         while not self._stop_event.is_set():
             try:
-                current_price, is_live = fetch_live_retail_price_checked()
+                current_price, is_live, grade = fetch_live_retail_price_graded()
                 if not is_live:
                     # A failed scrape is not an observation. Recording the
                     # fallback as one is how ten runs came to be graded against a
@@ -199,7 +228,10 @@ class DOECheckerThread(QThread):
                                  'fallback as an observation')
                     self._stop_event.wait(timeout=_POLL_INTERVAL_MS / 1000)
                     continue
-                count = find_and_grade_runs(self._store, current_price)
+                # The grade travels with the price. The preference list can fall
+                # through to RON 91 when the page omits RON 95, and storing that
+                # as an observation of RON 95 recreates the defect exactly.
+                count = find_and_grade_runs(self._store, current_price, grade=grade)
                 if count:
                     self.grades_applied.emit(count)
             except Exception as e:

@@ -351,3 +351,13 @@ def test_the_basis_does_not_imply_a_grade_that_has_not_happened(due_run):
     store.update_trust('A', internal_score=0.7)
     line = honesty.trust_basis(store.trust_provenance())
     assert 'none from a graded outcome yet' in line
+
+
+def test_the_basis_omits_a_zero_half_rather_than_printing_it():
+    """"0 from response quality" reads as a bug rather than as the state after a
+    reset, which is exactly when it occurs."""
+    from ph_economic_ai.ui import honesty
+    line = honesty.trust_basis({'response': 0, 'grade': 32,
+                                'since': '2026-08-05T00:00:00+00:00'})
+    assert '0 from response quality' not in line
+    assert '32 from graded outcomes' in line
