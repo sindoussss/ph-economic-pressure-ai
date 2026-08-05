@@ -32,6 +32,11 @@ _FALLBACK_PRICE_AS_OF: str = 'May 2026 (NCR unleaded 91)'
 
 _PRICE_FETCH_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
 
+#: Which grade the last successful scrape matched. The preference list can fall
+#: through to RON 91 when the page omits RON 95, and a caller storing that as an
+#: observation of RON 95 recreates exactly the defect this list was written for.
+_LAST_MATCHED_GRADE: str | None = None
+
 
 #: The grade this app forecasts, and the labels fuelprice.ph uses for it, in
 #: preference order. Selected BY NAME.
@@ -109,12 +114,29 @@ def fetch_live_retail_price_checked() -> tuple[float, bool]:
                 if 20.0 <= value <= 200.0:
                     logging.info('swarm: retail baseline %s = %.2f from fuelprice.ph',
                                  label, value)
+                    global _LAST_MATCHED_GRADE
+                    _LAST_MATCHED_GRADE = label
                     return value, True
         logging.info('swarm: no named fuel grade found on fuelprice.ph')
     except Exception:
         logging.info('swarm: retail price fetch failed; using the fallback',
                      exc_info=True)
     return _FALLBACK_RETAIL_PRICE_PHP, False
+
+
+def fetch_live_retail_price_graded() -> tuple[float, bool, str]:
+    """The price, whether it was fetched, and WHICH PRODUCT it is.
+
+    The grade has to travel with the number. Without it the price history is not
+    a series: readings of Unleaded 91 and Premium 95 sat in one week looking
+    like a price that moved twice on days no adjustment happens, and it blocked
+    ten runs from grading. `store.record_price_observation` stores this label.
+
+    A failed fetch reports `unknown` rather than the forecast grade, because the
+    fallback constant is not an observation of anything.
+    """
+    price, live = fetch_live_retail_price_checked()
+    return price, live, (_LAST_MATCHED_GRADE or 'unknown') if live else 'unknown'
 
 # ── Region list ───────────────────────────────────────────────────────────────
 REGIONS: list[str] = [

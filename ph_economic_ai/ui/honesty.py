@@ -217,6 +217,7 @@ _GRADE_LABELS = {
     'no_price_yet': 'awaiting the week’s price',
     'target_week_ambiguous': 'that week never settled',
     'baseline_week_ambiguous': 'its own week never settled',
+    'baseline_contradicted': 'read a different price series',
     'implausible_change': 'baseline was stale — not gradable',
     'no_baseline': 'no baseline stored — not gradable',
 }
@@ -243,7 +244,8 @@ def grade_backlog_line(counts: dict) -> str:
     # and then accounted for 32, and a reader who subtracts finds two runs the
     # screen declined to explain.
     order = ('not_due', 'no_price_yet', 'target_week_ambiguous',
-             'baseline_week_ambiguous', 'implausible_change', 'no_baseline')
+             'baseline_week_ambiguous', 'baseline_contradicted',
+             'implausible_change', 'no_baseline')
     parts = [f'{counts[k]} {_GRADE_LABELS[k]}' for k in order if counts.get(k)]
     extra = [f'{v} {k}' for k, v in sorted((counts or {}).items())
              if k not in order and k is not None and v]
@@ -269,7 +271,11 @@ def trust_basis(provenance: dict) -> str:
         return ('every score is at the neutral prior — the movements behind the '
                 'old scores could not be reproduced from surviving evidence, so '
                 'they were cleared rather than shown as measurements')
-    parts = [f'{responses} from response quality']
+    # Only the non-zero halves. "0 from response quality" reads as a bug rather
+    # than as the state after a reset, which is when it happens.
+    parts = []
+    if responses:
+        parts.append(f'{responses} from response quality')
     if graded:
         parts.append(f'{graded} from graded outcomes')
     else:
