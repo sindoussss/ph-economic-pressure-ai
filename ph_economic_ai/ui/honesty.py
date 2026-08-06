@@ -471,6 +471,17 @@ def regional_basis() -> str:
     # away. A note written to stop drift is the worst place to leave a figure
     # that can drift.
     over = f'over {weeks} weeks' if weeks else 'in a pre-registered test'
+    # Whether that result predates the price-basis guard. The regional series
+    # merged DOE's `common` price with the midpoint of its published range, two
+    # quantities differing by a mean 0.758 PHP/L, and a change measured across a
+    # switch between them is now refused -- which removes 9.2 percent of the
+    # region-week pairs the published run used.
+    #
+    # Derived, not typed: an artifact from a re-run carries `basis_guard` and
+    # this clause disappears on its own. Re-running is a research action under
+    # `DEC-010`, so it is not done here and the result is labelled instead.
+    if weeks and not _regional_accuracy().get('basis_guard'):
+        over += ' (measured before the price-basis guard, on a pool 9% larger)'
     return (f'{debated} region groups debated; the other '
             f'{len(ALL_REGIONS) - debated} figures are scaled from them '
             f'by a regional price premium measured against DOE prices for '

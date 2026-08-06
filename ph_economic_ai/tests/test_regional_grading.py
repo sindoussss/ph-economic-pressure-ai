@@ -200,3 +200,80 @@ def test_the_level_construction_matches_the_premiums_module(tmp_path):
     with open(path, encoding='utf-8') as fh:
         theirs = regional_levels_by_region(list(_csv.DictReader(fh)))
     assert mine == theirs, 'the two level constructions have diverged again'
+
+
+# ── two price definitions in one series ──────────────────────────────────────
+
+def test_a_change_across_two_price_definitions_is_refused(tmp_path):
+    """DOE publishes a `common` price for some city-weeks and only a low/high
+    range for others, and `_price` merged them into one series.
+
+    They are different quantities. Measured on the committed panel: 20,933 rows
+    carry a common price and 14,715 carry only a range, they differ by more than
+    0.50 PHP/L in 73.5 percent of the rows where both exist, mean -0.758, and
+    4.8 percent of consecutive region-week pairs switch between them. A change
+    measured across a switch is a change of DEFINITION carrying a change of
+    price, and 0.758 is larger than every effect size the accuracy test compares.
+    """
+    import datetime as _dt
+
+    path = tmp_path / 'panel.csv'
+    header = ('cycle,file_date,area,grain,province,province_raw,city,'
+              'low,high,common,source_file\n')
+    rows = []
+    for cycle, common in (('2026-01-06', True), ('2026-01-13', False)):
+        for city in ('Manila City', 'Makati City', 'Quezon City'):
+            c = '61.0' if common else ''
+            rows.append(f'{cycle},{cycle},NCR,city,,,{city},60.0,66.0,{c},f-{cycle}\n')
+    path.write_text(header + ''.join(rows), encoding='utf-8')
+
+    levels, bases = rg.regional_levels(path, with_bases=True)
+    assert bases['NCR'][_dt.date(2026, 1, 6)] == 'common'
+    assert bases['NCR'][_dt.date(2026, 1, 13)] == 'midpoint'
+    # 61.00 to 63.00 looks like a +2.00 move and is a relabelling.
+    assert rg.regional_actual('NCR', _dt.date(2026, 1, 13), levels, bases) is None
+
+
+def test_a_change_within_one_definition_still_grades(tmp_path):
+    """The guard must be narrowed, not dissolved."""
+    import datetime as _dt
+
+    path = tmp_path / 'panel.csv'
+    header = ('cycle,file_date,area,grain,province,province_raw,city,'
+              'low,high,common,source_file\n')
+    rows = []
+    for cycle, common in (('2026-01-06', '61.0'), ('2026-01-13', '62.0')):
+        for city in ('Manila City', 'Makati City', 'Quezon City'):
+            rows.append(f'{cycle},{cycle},NCR,city,,,{city},60.0,66.0,{common},'
+                        f'f-{cycle}\n')
+    path.write_text(header + ''.join(rows), encoding='utf-8')
+
+    levels, bases = rg.regional_levels(path, with_bases=True)
+    assert rg.regional_actual('NCR', _dt.date(2026, 1, 13), levels,
+                              bases) == pytest.approx(1.0)
+
+
+def test_levels_keeps_its_public_shape(tmp_path):
+    """`{region: {date: float}}`. Callers and hand-built fixtures depend on it,
+    and the basis rides alongside rather than inside."""
+    import datetime as _dt
+
+    path = tmp_path / 'panel.csv'
+    header = ('cycle,file_date,area,grain,province,province_raw,city,'
+              'low,high,common,source_file\n')
+    rows = [f'2026-01-06,2026-01-06,NCR,city,,,{c},60.0,66.0,61.0,f\n'
+            for c in ('Manila City', 'Makati City', 'Quezon City')]
+    path.write_text(header + ''.join(rows), encoding='utf-8')
+
+    levels = rg.regional_levels(path)
+    assert levels['NCR'][_dt.date(2026, 1, 6)] == pytest.approx(61.0)
+
+
+def test_a_caller_supplying_its_own_levels_is_not_judged_on_a_basis(tmp_path):
+    """Absence is not contradiction. A hand-built level series carries no basis,
+    and refusing it would break every fixture for a distinction it cannot make."""
+    import datetime as _dt
+
+    levels = {'NCR': {_dt.date(2026, 1, 6): 61.0, _dt.date(2026, 1, 13): 62.0}}
+    assert rg.regional_actual('NCR', _dt.date(2026, 1, 13),
+                              levels) == pytest.approx(1.0)
