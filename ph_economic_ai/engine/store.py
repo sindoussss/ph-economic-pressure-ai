@@ -437,12 +437,21 @@ class AgentTrustStore:
             self._conn.commit()
 
     def deduplicate_price_observations(self) -> int:
-        """Collapse repeated (day, price) rows, keeping the earliest of each.
+        """Collapse repeated (day, price, GRADE) rows, keeping the earliest of each.
 
-        Returns the number removed. Information-preserving: the retained row has
-        the same price and the same day, and `price_near` picks by gap against a
-        3.5 day tolerance, so a shift of hours inside one day cannot change which
-        observation a run grades against.
+        Returns the number removed.
+
+        **The grade is part of the key, and leaving it out silently deleted real
+        observations.** Two fuels can cost the same on the same day. Grouping on
+        (day, price) alone put them in one group and `MIN(rowid)` kept whichever
+        was inserted first, so a RON 95 reading could be dropped and a RON 91
+        reading left standing in its place. The week then reports no RON 95 price
+        at all and stops grading, and nothing anywhere says why.
+
+        This method has claimed to be "information-preserving" before and it was
+        false then too: collapsing 568 rows moved a graded outcome from 84.38 to
+        89.51. It preserves information WITHIN a (day, price, grade) group, which
+        is the claim that can actually be checked, and that is all it claims.
         """
         with self._lock:
             before = self._conn.execute(
@@ -450,18 +459,27 @@ class AgentTrustStore:
             self._conn.execute(
                 'DELETE FROM price_observations WHERE rowid NOT IN ('
                 '  SELECT MIN(rowid) FROM price_observations '
-                '  GROUP BY substr(observed_at, 1, 10), price)')
+                '  GROUP BY substr(observed_at, 1, 10), price, COALESCE(grade, ?))',
+                (FORECAST_GRADE,))
             self._conn.commit()
             after = self._conn.execute(
                 'SELECT COUNT(*) FROM price_observations').fetchone()[0]
         return before - after
 
-    def price_near(self, target_date, tolerance_days: float = GRADE_TOLERANCE_DAYS):
+    def price_near(self, target_date, tolerance_days: float = GRADE_TOLERANCE_DAYS,
+                   grade: str = FORECAST_GRADE):
         """The observation closest to `target_date`, or None if none is close enough.
 
         Returning None is the point. A run whose period has no matching observation
         stays ungraded rather than being scored against a price from a different
         week, which is what produced misleading trust and accuracy views.
+
+        Restricted to one PRODUCT, like `cycle_prices`. Without that it would
+        happily answer a RON 95 question with a RON 91 reading, which is the
+        defect that made one pricing week look unsettled and blocked ten runs.
+        Grading no longer calls this -- it uses `cycle_price` -- but a method that
+        returns the wrong series when asked is a defect whether or not the app
+        currently asks.
         """
         stamp = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
         with self._lock:
@@ -481,8 +499,9 @@ class AgentTrustStore:
                 'SELECT observed_at, price, '
                 '  ABS(julianday(observed_at) - julianday(?)) AS gap, '
                 '  ABS(julianday(date(observed_at)) - julianday(date(?))) AS daygap '
-                'FROM price_observations ORDER BY daygap ASC, gap ASC LIMIT 1',
-                (stamp, stamp)
+                'FROM price_observations WHERE COALESCE(grade, ?) = ? '
+                'ORDER BY daygap ASC, gap ASC LIMIT 1',
+                (stamp, stamp, grade, grade)
             ).fetchone()
         if row is None or row['gap'] is None or row['gap'] > tolerance_days:
             return None

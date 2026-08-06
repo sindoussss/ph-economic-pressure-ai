@@ -230,3 +230,61 @@ def test_a_graded_tile_reports_the_actual_and_the_error(tmp_path, monkeypatch):
     assert 'actual +0.00' in text
     assert 'off by 0.95' in text
     assert 'graded ✓' not in text, 'a tick is not an outcome'
+
+
+# ── every path over this table has to know about the product ─────────────────
+
+def test_deduplication_cannot_delete_one_products_reading_for_another(tmp_path):
+    """Two fuels can cost the same on the same day. Grouping on (day, price)
+    alone put them in one group and `MIN(rowid)` kept whichever was inserted
+    first, so a RON 95 reading was dropped and a RON 91 reading left standing in
+    its place. The week then reported no RON 95 price at all and stopped
+    grading, and nothing said why."""
+    s = _store(tmp_path)
+    day = _WEEK + timedelta(days=2)
+    s.record_price_observation(89.51, observed_at=day, grade='RON 91')
+    s.record_price_observation(89.51, observed_at=day.replace(hour=18),
+                               grade=FORECAST_GRADE)
+    assert s.cycle_prices(day)[0] == {89.51}
+
+    assert s.deduplicate_price_observations() == 0, 'different products, not duplicates'
+    assert s.cycle_prices(day)[0] == {89.51}, 'the RON 95 reading must survive'
+    s.close()
+
+
+def test_deduplication_still_collapses_a_real_repeat(tmp_path):
+    """Narrowed, not dissolved. The same product at the same price on the same
+    day is still one observation however many times the poll ran."""
+    s = _store(tmp_path)
+    day = _WEEK + timedelta(days=2)
+    for hour in range(0, 24, 6):
+        s.record_price_observation(89.51, observed_at=day.replace(hour=hour))
+    n = sqlite3.connect(s._path).execute(
+        'SELECT COUNT(*) FROM price_observations').fetchone()[0]
+    assert n == 1, 'record_price_observation already keys on (day, price, grade)'
+    assert s.deduplicate_price_observations() == 0
+    s.close()
+
+
+def test_price_near_answers_for_one_product(tmp_path):
+    """It ranked over every row regardless of grade, so it would answer a RON 95
+    question with a RON 91 reading. Grading no longer calls it, but a method that
+    returns the wrong series when asked is a defect whether or not it is called."""
+    s = _store(tmp_path)
+    day = _WEEK + timedelta(days=2)
+    s.record_price_observation(84.38, observed_at=day, grade='RON 91')
+    s.record_price_observation(89.51, observed_at=day + timedelta(days=1),
+                               grade=FORECAST_GRADE)
+
+    assert s.price_near(day.isoformat())['price'] == 89.51, 'the nearer row is RON 91'
+    assert s.price_near(day.isoformat(), grade='RON 91')['price'] == 84.38
+    s.close()
+
+
+def test_price_near_returns_none_when_only_another_product_is_near(tmp_path):
+    """Refusing is the rule everywhere else on this table."""
+    s = _store(tmp_path)
+    s.record_price_observation(84.38, observed_at=_WEEK + timedelta(days=2),
+                               grade='RON 91')
+    assert s.price_near((_WEEK + timedelta(days=2)).isoformat()) is None
+    s.close()
