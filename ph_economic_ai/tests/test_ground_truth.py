@@ -131,7 +131,12 @@ def test_repeating_the_same_price_records_one_observation(tmp_path):
 
     path = str(tmp_path / 'trust.db')
     s = AgentTrustStore(path)
-    day = _dt.datetime(2026, 7, 27, 6, 0, tzinfo=_dt.timezone.utc)
+    # One PHILIPPINE day. The bucket is the PH calendar, because that is the
+    # calendar these prices live on and the one the pricing week is cut against;
+    # a UTC day splits a PH day in two. Written here with the PH offset so the
+    # day under test is unambiguous rather than a consequence of the writer's.
+    day = _dt.datetime(2026, 7, 27, 0, 0,
+                       tzinfo=_dt.timezone(_dt.timedelta(hours=8)))
     for hour in range(0, 24, 2):
         s.record_price_observation(84.38, day.replace(hour=hour))
 
@@ -139,7 +144,7 @@ def test_repeating_the_same_price_records_one_observation(tmp_path):
     assert con.execute('select count(*) from price_observations').fetchone()[0] == 1
     # And the one kept is still findable, so the poll frequency changed and the
     # grading behaviour did not.
-    assert s.price_near('2026-07-27T12:00:00+00:00')['price'] == 84.38
+    assert s.price_near('2026-07-27T04:00:00+00:00')['price'] == 84.38
     con.close()
 
 
@@ -204,10 +209,15 @@ def test_deduplication_cannot_move_a_graded_price_to_another_day(tmp_path):
 
 
 def test_a_same_day_observation_beats_a_closer_one_on_another_day(tmp_path):
-    """The property that makes the above hold in general. A target at 23:00 is
-    nearer in HOURS to 01:00 the next day than to 06:00 the same day, and the
-    same-day price is still the right one: these are weekly step prices sampled
-    by a poll, so the day is the resolution and the hour is noise."""
+    """The property that makes the above hold in general. A target late in the
+    day is nearer in HOURS to an observation just after midnight than to one that
+    morning, and the same-day price is still the right one: these are weekly step
+    prices sampled by a poll, so the day is the resolution and the hour is noise.
+
+    Stated in PHILIPPINE days, which is the calendar the bucket uses and the one
+    the pricing week is cut against. The example used to be built in UTC, where
+    it happened to hold for a different reason.
+    """
     import sqlite3
 
     from ph_economic_ai.engine.store import AgentTrustStore
@@ -215,15 +225,16 @@ def test_a_same_day_observation_beats_a_closer_one_on_another_day(tmp_path):
     path = str(tmp_path / 'trust.db')
     s = AgentTrustStore(path)
     con = sqlite3.connect(path)
-    con.execute('insert into price_observations (observed_at, price) values (?, ?)',
-                ('2026-07-30T06:00:00+00:00', 84.38))
-    con.execute('insert into price_observations (observed_at, price) values (?, ?)',
-                ('2026-07-31T01:00:00+00:00', 89.51))
+    # 2026-07-31 02:00 Manila. Same PH day as the target, 21 hours away.
+    con.execute('insert into price_observations (observed_at, price, grade) '
+                'values (?, ?, ?)', ('2026-07-30T18:00:00+00:00', 84.38, 'RON 95'))
+    # 2026-08-01 00:30 Manila. The NEXT PH day, but only 1.5 hours away.
+    con.execute('insert into price_observations (observed_at, price, grade) '
+                'values (?, ?, ?)', ('2026-07-31T16:30:00+00:00', 89.51, 'RON 95'))
     con.commit()
 
-    got = s.price_near('2026-07-30T23:00:00+00:00')
-    assert got['price'] == 84.38
-    assert got['observed_at'][:10] == '2026-07-30'
+    got = s.price_near('2026-07-31T15:00:00+00:00')      # 23:00 Manila, 07-31
+    assert got['price'] == 84.38, 'the same PH day wins over the nearer hour'
     con.close()
 
 

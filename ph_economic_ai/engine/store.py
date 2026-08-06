@@ -39,6 +39,13 @@ DEFAULT_HORIZON_DAYS = 7.0
 # matching period; beyond that the observation is measuring a different week.
 GRADE_TOLERANCE_DAYS = 3.5
 
+#: SQLite modifier that turns an offset-carrying `observed_at` into a Philippine
+#: calendar day. `date()` alone normalises to UTC, which splits one PH day across
+#: two buckets: 08:00 and 18:00 Manila are 00:00Z and 10:00Z, the same PH day and
+#: two different UTC days. These prices live on the PH calendar, so that is the
+#: day they are bucketed by. Fixed offset, because the Philippines has no DST.
+_PH_DAY = '+8 hours'
+
 
 class AgentTrustStore:
     def __init__(self, db_path: str | None = None):
@@ -206,8 +213,15 @@ class AgentTrustStore:
             # recorded -- but the rule in force did not select a product at all,
             # it took the middle of a list. `unknown` is what is actually known,
             # and it is enough: whatever they are, they are not RON 95.
+            # `julianday`, not a string compare. `observed_at` carries an
+            # offset, and comparing two ISO strings compares the wall clocks
+            # rather than the instants: a row written `2026-07-31T05:00+08:00`
+            # is 2026-07-30T21:00Z, genuinely before the cutoff, and string
+            # order puts it after. It would then be stamped RON 95, which is
+            # precisely the mislabelling this migration exists to prevent.
             cur.execute("UPDATE price_observations SET grade='unknown' "
-                        "WHERE grade IS NULL AND observed_at < ?",
+                        "WHERE grade IS NULL "
+                        "  AND julianday(observed_at) < julianday(?)",
                         (_GRADE_SELECTION_FIXED_AT,))
             cur.execute(f"UPDATE price_observations SET grade='{FORECAST_GRADE}' "
                         "WHERE grade IS NULL")
@@ -424,10 +438,14 @@ class AgentTrustStore:
         value = float(price)
         with self._lock:
             seen = self._conn.execute(
+                # The PHILIPPINE day, not `substr(observed_at, 1, 10)`. Those
+                # ten characters are the writer's local date, so one instant
+                # recorded in two offsets lands on two different "days" and both
+                # survive, while readings sixteen hours apart can share one.
                 'SELECT 1 FROM price_observations '
-                'WHERE substr(observed_at, 1, 10) = ? AND price = ? '
+                'WHERE date(observed_at, ?) = date(?, ?) AND price = ? '
                 'AND COALESCE(grade, ?) = ? LIMIT 1',
-                (stamp[:10], value, grade, grade)).fetchone()
+                (_PH_DAY, stamp, _PH_DAY, value, grade, grade)).fetchone()
             if seen is not None:
                 return
             self._conn.execute(
@@ -459,8 +477,8 @@ class AgentTrustStore:
             self._conn.execute(
                 'DELETE FROM price_observations WHERE rowid NOT IN ('
                 '  SELECT MIN(rowid) FROM price_observations '
-                '  GROUP BY substr(observed_at, 1, 10), price, COALESCE(grade, ?))',
-                (FORECAST_GRADE,))
+                '  GROUP BY date(observed_at, ?), price, COALESCE(grade, ?))',
+                (_PH_DAY, FORECAST_GRADE))
             self._conn.commit()
             after = self._conn.execute(
                 'SELECT COUNT(*) FROM price_observations').fetchone()[0]
@@ -498,10 +516,11 @@ class AgentTrustStore:
             row = self._conn.execute(
                 'SELECT observed_at, price, '
                 '  ABS(julianday(observed_at) - julianday(?)) AS gap, '
-                '  ABS(julianday(date(observed_at)) - julianday(date(?))) AS daygap '
+                '  ABS(julianday(date(observed_at, ?)) '
+                '      - julianday(date(?, ?))) AS daygap '
                 'FROM price_observations WHERE COALESCE(grade, ?) = ? '
                 'ORDER BY daygap ASC, gap ASC LIMIT 1',
-                (stamp, stamp, grade, grade)
+                (stamp, _PH_DAY, stamp, _PH_DAY, grade, grade)
             ).fetchone()
         if row is None or row['gap'] is None or row['gap'] > tolerance_days:
             return None
