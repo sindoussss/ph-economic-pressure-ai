@@ -108,7 +108,10 @@ class AgentTrustStore:
                 raw          REAL,               -- the EMA target; NULL for recovery
                 run_id       INTEGER,            -- the evidence this rests on
                 internal_score  REAL,
-                accuracy_score  REAL
+                accuracy_score  REAL,
+                abs_error       REAL   -- PHP/L, so the per-agent average error
+                                       -- can be replayed. Not recoverable from
+                                       -- accuracy_score, which floors at zero.
             );
             CREATE INDEX IF NOT EXISTS trust_events_order
                 ON trust_events (occurred_at, event_id);
@@ -188,6 +191,11 @@ class AgentTrustStore:
         # and Kerosene 111.43 -- median 84.38, which is Unleaded 91. The app
         # forecasts RON 95. The changeover in the stored data falls within
         # fifteen minutes of that commit.
+        ev_cols = {r['name'] for r in
+                   cur.execute('PRAGMA table_info(trust_events)').fetchall()}
+        if ev_cols and 'abs_error' not in ev_cols:
+            cur.execute('ALTER TABLE trust_events ADD COLUMN abs_error REAL')
+
         obs_cols = {r['name'] for r in
                     cur.execute('PRAGMA table_info(price_observations)').fetchall()}
         if obs_cols and 'grade' not in obs_cols:
@@ -762,10 +770,11 @@ class AgentTrustStore:
                 acc = compute_accuracy_score(float(resp['estimate']), actual)
                 self._conn.execute(
                     'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, '
-                    'run_id, internal_score, accuracy_score) '
-                    'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    'run_id, internal_score, accuracy_score, abs_error) '
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     (row['graded_at'], resp['agent_name'], 'grade',
-                     0.4 * internal + 0.6 * acc, run_id, internal, acc))
+                     0.4 * internal + 0.6 * acc, run_id, internal, acc,
+                     abs(float(resp['estimate']) - actual)))
                 written += 1
             self._conn.commit()
         moved = self.replay_trust()
@@ -810,6 +819,9 @@ class AgentTrustStore:
                     resp['agent_name'],
                     internal_score=resp['internal_score'],
                     accuracy_score=accuracy_score,
+                    # The miss in PHP/L. `accuracy_score` floors at zero beyond a
+                    # 3 peso error, so the error cannot be recovered from it.
+                    abs_error=abs(float(est) - actual_change),
                     # Tied to the run, so withdrawing that run's grade removes
                     # exactly the trust movement the grade caused.
                     run_id=run_id,
@@ -852,7 +864,8 @@ class AgentTrustStore:
     def _update_trust_no_commit(self, agent_name: str, internal_score: float,
                                 accuracy_score: Optional[float] = None,
                                 run_id: Optional[int] = None,
-                                occurred_at: Optional[str] = None) -> None:
+                                occurred_at: Optional[str] = None,
+                                abs_error: Optional[float] = None) -> None:
         """Insert/update trust without committing — caller must commit.
 
         Also appends to `trust_events`, so the score stays reproducible from the
@@ -868,30 +881,63 @@ class AgentTrustStore:
             raw = internal_score
         self._conn.execute(
             'INSERT INTO trust_events (occurred_at, agent_name, kind, raw, run_id, '
-            'internal_score, accuracy_score) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            'internal_score, accuracy_score, abs_error) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             (occurred_at or datetime.now(timezone.utc).isoformat(), agent_name,
              'grade' if accuracy_score is not None else 'response',
-             raw, run_id, internal_score, accuracy_score))
+             raw, run_id, internal_score, accuracy_score, abs_error))
         new_trust = _EMA_ALPHA * raw + (1 - _EMA_ALPHA) * old_trust
         new_trust = max(_TRUST_MIN, min(_TRUST_MAX, new_trust))
         tier = trust_tier(new_trust)
         self._conn.execute(
             '''INSERT INTO agent_trust (agent_name, trust_score, runs_participated,
                avg_internal_score, avg_accuracy_error, current_model_tier, last_updated)
-               VALUES (?, ?, 1, ?, ?, ?, ?)
+               VALUES (?, ?, 0, 0.5, NULL, ?, ?)
                ON CONFLICT(agent_name) DO UPDATE SET
                  trust_score        = excluded.trust_score,
-                 runs_participated  = runs_participated + 1,
-                 avg_internal_score = (avg_internal_score + excluded.avg_internal_score) / 2,
-                 avg_accuracy_error = COALESCE(
-                     (avg_accuracy_error + excluded.avg_accuracy_error) / 2,
-                     excluded.avg_accuracy_error
-                 ),
                  current_model_tier = excluded.current_model_tier,
                  last_updated       = excluded.last_updated''',
-            (agent_name, new_trust, internal_score, accuracy_score, tier,
+            (agent_name, new_trust, tier,
              datetime.now(timezone.utc).isoformat()),
         )
+        self._refresh_agent_aggregates_no_commit(agent_name)
+
+    def _refresh_agent_aggregates_no_commit(self, agent_name: str) -> None:
+        """Recompute the three summary columns from the tables that hold the facts.
+
+        All three used to be maintained incrementally, and all three were lies:
+
+        * **`runs_participated` counted trust UPDATES, not runs.** It incremented
+          once per `_update_trust_no_commit` call, and an agent takes one at run
+          time and another when the run is graded. Live: an agent showed 72 in a
+          store holding 34 runs. `ADR-008` quotes "991 run participations" in the
+          research record, and that number is of the same kind. Same failure
+          shape as "568 price observations" -- a count that looks like evidence
+          of volume and is counting something else.
+        * **`avg_internal_score` was `(old + new) / 2`**, which is an EMA with
+          alpha 0.5, not a mean. A column named `avg_` holding a recency-weighted
+          blend is a claim in a name.
+        * **`avg_accuracy_error` held an accuracy SCORE**, bound from
+          `compute_accuracy_score`, so a value of 0.55 in a column named "error"
+          reads as an average miss of 0.55 PHP/L when it is a 0-to-1 quality
+          score. Now the mean absolute error in PHP/L, matching `runs.accuracy_error`.
+
+        Derived rather than accumulated, so they cannot drift from their sources,
+        and `replay_trust` recomputes them the same way.
+        """
+        self._conn.execute(
+            '''UPDATE agent_trust SET
+                 runs_participated = (
+                   SELECT COUNT(DISTINCT run_id) FROM agent_responses
+                   WHERE agent_name = ?),
+                 avg_internal_score = COALESCE((
+                   SELECT AVG(internal_score) FROM agent_responses
+                   WHERE agent_name = ?), 0.5),
+                 avg_accuracy_error = (
+                   SELECT AVG(abs_error) FROM trust_events
+                   WHERE agent_name = ? AND kind = 'grade' AND abs_error IS NOT NULL)
+               WHERE agent_name = ?''',
+            (agent_name, agent_name, agent_name, agent_name))
 
     def update_trust(self, agent_name: str, internal_score: float,
                      accuracy_score: Optional[float] = None) -> None:
@@ -937,6 +983,15 @@ class AgentTrustStore:
                 trust[agent] = max(_TRUST_MIN, min(_TRUST_MAX, new))
                 counts[agent] = counts.get(agent, 0) + 1
 
+            # Every agent the store knows about, not only those with surviving
+            # events. An agent whose entire evidence was withdrawn has no events
+            # left, so iterating the replay alone SKIPPED it and left it wearing
+            # the score that evidence gave it -- the same residue this method
+            # exists to remove, in the one corner where it is total.
+            for agent in before:
+                trust.setdefault(agent, _TRUST_INIT)
+                counts.setdefault(agent, 0)
+
             now = datetime.now(timezone.utc).isoformat()
             moved = {}
             for agent, score in trust.items():
@@ -950,10 +1005,13 @@ class AgentTrustStore:
                          current_model_tier = excluded.current_model_tier,
                          last_updated       = excluded.last_updated''',
                     (agent, score, trust_tier(score), now))
-                # `runs_participated` and the quality averages are deliberately
-                # NOT replayed. They describe how much an agent ran and how well
-                # it wrote, which no grade and no withdrawal can change; the same
-                # separation ADR-008's reset kept.
+                # The summary columns are recomputed from their sources, not
+                # replayed: they are facts about the responses table and the
+                # event log, so deriving them is the only way they cannot drift.
+                # `runs_participated` and `avg_internal_score` do not depend on
+                # grading at all, which is the separation ADR-008's reset kept;
+                # `avg_accuracy_error` does, so a withdrawal correctly changes it.
+                self._refresh_agent_aggregates_no_commit(agent)
                 if abs(before.get(agent, _TRUST_INIT) - score) > 1e-9:
                     moved[agent] = {'before': before.get(agent, _TRUST_INIT),
                                     'after': score, 'events': counts[agent]}

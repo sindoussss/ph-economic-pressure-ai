@@ -461,3 +461,104 @@ def test_rebuilding_grade_events_applies_the_current_rule(due_run):
 def test_rebuilding_refuses_an_ungraded_run(due_run):
     store, run_id = due_run(baseline=85.00, estimate=-0.5)
     assert store.rebuild_grade_events(run_id)['skipped'] == 'run is not graded'
+
+
+# ── the summary columns must mean what their names say ───────────────────────
+
+def test_runs_participated_counts_runs_not_trust_updates(due_run):
+    """It incremented once per trust update, and an agent takes one at run time
+    and another when the run is graded. Live: an agent showed 72 in a store
+    holding 34 runs. `ADR-008` quotes "991 run participations" in the research
+    record and that number is of the same kind."""
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    store.save_agent_responses(run_id, _responses(['A'], estimate=-0.6))
+    store.update_trust('A', internal_score=0.7)
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+
+    row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
+    assert row['runs_participated'] == 1, 'one run, two trust updates'
+
+
+def test_an_agent_speaking_twice_in_one_run_participated_once(due_run):
+    store, run_id = due_run(baseline=85.00, estimate=-0.5)
+    store.save_agent_responses(run_id, _rounds('A', [(1, -0.2), (2, -0.6)]))
+    store.update_trust('A', internal_score=0.7)
+    row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
+    assert row['runs_participated'] == 1
+
+
+def test_avg_internal_score_is_a_mean_not_a_half_life(due_run):
+    """It was `(old + new) / 2`, an EMA with alpha 0.5. A column named `avg_`
+    holding a recency-weighted blend is a claim in a name."""
+    store, run_id = due_run(baseline=85.00, estimate=-0.5)
+    store.save_agent_responses(run_id, [
+        {'agent_name': 'A', 'round_num': r, 'estimate': 1.0, 'statement': 's',
+         'citation_count': 0, 'has_causal_chain': 0, 'internal_score': v,
+         'model_used': 'm'} for r, v in ((1, 0.2), (2, 0.8), (3, 0.8))])
+    store.update_trust('A', internal_score=0.8)
+
+    row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
+    assert row['avg_internal_score'] == pytest.approx(0.6), 'the mean of 0.2, 0.8, 0.8'
+    # The old blend would have landed at 0.65 from the same inputs.
+    assert row['avg_internal_score'] != pytest.approx(0.65)
+
+
+def test_avg_accuracy_error_is_an_error_in_pesos_not_a_score(due_run):
+    """It was bound from `compute_accuracy_score`, so 0.55 in a column named
+    "error" read as an average miss of 0.55 PHP/L when it was a 0-to-1 quality
+    score. The two move in OPPOSITE directions, so the sign of any conclusion
+    drawn from it was inverted."""
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    # Actual change is -0.62; this agent said +1.00, so it missed by 1.62.
+    store.save_agent_responses(run_id, _responses(['A'], estimate=1.0))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+
+    row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
+    assert row['avg_accuracy_error'] == pytest.approx(1.62, abs=0.01)
+    from ph_economic_ai.engine.ground_truth import compute_accuracy_score
+    assert row['avg_accuracy_error'] != pytest.approx(
+        compute_accuracy_score(1.0, -0.62)), 'not the score'
+
+
+def test_the_error_survives_the_score_flooring(due_run):
+    """`compute_accuracy_score` floors at zero beyond a 3 peso miss, so the error
+    is not recoverable from it. It has to be recorded."""
+    store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
+    store.save_agent_responses(run_id, _responses(['A'], estimate=6.0))
+    from ph_economic_ai.engine.ground_truth import find_and_grade_runs
+    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+
+    row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
+    assert row['avg_accuracy_error'] == pytest.approx(6.62, abs=0.01)
+
+
+def test_withdrawing_a_grade_clears_the_error_it_contributed(due_run):
+    """`avg_accuracy_error` DOES depend on grading, unlike the other two, so a
+    withdrawal has to move it."""
+    store, run_id = due_run(baseline=84.38, estimate=-1.28, price=89.51)
+    store.save_agent_responses(run_id, _responses(['A'], estimate=1.0))
+    store.apply_ground_truth_grade(run_id, actual_change=5.13,
+                                   graded_against=_wrong_week(store, run_id))
+    assert [r for r in store.get_all_trust_rows()
+            if r['agent_name'] == 'A'][0]['avg_accuracy_error'] is not None
+
+    store.withdraw_cross_cycle_grades()
+    assert [r for r in store.get_all_trust_rows()
+            if r['agent_name'] == 'A'][0]['avg_accuracy_error'] is None
+
+
+def test_an_agent_whose_whole_evidence_is_withdrawn_returns_to_the_prior(due_run):
+    """Replay iterated its own event list, so an agent left with NO events was
+    skipped and kept the score those events had given it. The residue this
+    method exists to remove, in the one corner where it is total."""
+    store, run_id = due_run(baseline=84.38, estimate=-1.28, price=89.51)
+    store.save_agent_responses(run_id, _responses(['A'], estimate=1.0))
+    store.apply_ground_truth_grade(run_id, actual_change=5.13,
+                                   graded_against=_wrong_week(store, run_id))
+    assert store.get_trust('A') != _TRUST_INIT
+
+    store.withdraw_cross_cycle_grades()
+    assert store.get_trust('A') == pytest.approx(_TRUST_INIT)
+    assert trust_tier(store.get_trust('A')) == trust_tier(_TRUST_INIT)
