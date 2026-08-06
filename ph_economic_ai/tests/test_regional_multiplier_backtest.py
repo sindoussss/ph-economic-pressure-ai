@@ -208,3 +208,42 @@ def test_central_luzon_is_carried_with_no_source_rather_than_dropped():
     assert 'Central Luzon' in bt.DEBATED_REGIONS
     assert bt.DEBATED_REGIONS['Central Luzon'] == frozenset()
     assert 'Central Luzon' not in bt.MULTIPLIERS or True  # never regressed
+
+
+# ── the same two price definitions, in the tool that made the multipliers ────
+
+def test_the_price_basis_travels_with_the_number():
+    """`engine.regional_grading` was fixed first and this is its sibling, which
+    is where the defect bites harder.
+
+    That module measures a week-over-week CHANGE, and a constant offset between
+    DOE's `common` price and the midpoint of its range cancels in a difference.
+    A MULTIPLIER is a ratio of levels, and an offset does not cancel in a ratio.
+    """
+    common = {'common': '61.0', 'low': '60.0', 'high': '66.0'}
+    ranged = {'common': '', 'low': '60.0', 'high': '66.0'}
+    assert bt._price(common) == (61.0, 'common')
+    assert bt._price(ranged) == (63.0, 'midpoint')
+    assert bt._price({'common': '', 'low': '', 'high': ''}) == (None, None)
+
+
+def test_a_deduplicated_row_carries_its_basis():
+    rows = [{'area': 'NCR', 'province': '', 'city': 'Manila City',
+             'cycle': '2026-01-06', 'grain': 'city', 'source_file': 'f',
+             'common': '', 'low': '60.0', 'high': '66.0'}]
+    out = bt._deduplicated(rows)
+    assert out[0]['_basis'] == 'midpoint'
+    assert out[0]['_price'] == pytest.approx(63.0)
+
+
+def test_the_two_constructions_price_a_row_identically():
+    """Two implementations of the same quantity that must agree. They disagreed
+    once before, on 22 of 1798 week-values, and only one of them was fixed when
+    the basis defect was found -- which is the sibling-sweep failure this
+    project has now recorded three times."""
+    from ph_economic_ai.engine import regional_grading as rg
+    for row in ({'common': '61.0', 'low': '60.0', 'high': '66.0'},
+                {'common': '', 'low': '60.0', 'high': '66.0'},
+                {'common': 'n/a', 'low': '60.0', 'high': '66.0'},
+                {'common': '', 'low': '', 'high': ''}):
+        assert bt._price(row) == rg._price(row), row
