@@ -73,7 +73,24 @@ def conformal_halfwidth(abs_errors, level: float) -> float:
 
 
 def fallback_halfwidth(sector: str, level: float) -> float:
-    table = FALLBACK_HALFWIDTH.get(sector, FALLBACK_HALFWIDTH[_DEFAULT_SECTOR])
+    """The stated prior for a sector, in that sector's own unit.
+
+    Refuses an unknown sector rather than substituting the default's numbers.
+    It used to fall back to `gas`, so a typo or a sector nobody added to the
+    table received +/-0.60 PHP/L and a card rendered it beside a percent sign.
+
+    `band` already guards the mirror image of this -- it drops graded errors for
+    a sector the app does not grade, "so that is refused rather than trusted to
+    call sites" -- and the same hazard through the fallback table was left open.
+    A sector is a closed set defined in this module, so an unknown one is a
+    caller's bug and should say so rather than render a plausible wrong number.
+    """
+    table = FALLBACK_HALFWIDTH.get(sector)
+    if table is None:
+        raise ValueError(
+            f'no stated prior for sector {sector!r}; known sectors are '
+            f'{sorted(FALLBACK_HALFWIDTH)}. Falling back to '
+            f'{_DEFAULT_SECTOR!r} would return a band in the wrong unit.')
     return table.get(level, table[DEFAULT_LEVEL])
 
 

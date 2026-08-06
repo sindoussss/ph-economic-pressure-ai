@@ -60,3 +60,43 @@ def test_normalized_bands_are_wider_where_sigma_larger():
     cal_res = rng.normal(0, 1, 2000) * sigma
     qn = normalized_conformal_quantile(cal_res, sigma, level=0.90)
     assert qn * 3.0 > qn * 1.0
+
+
+# ── a band in the wrong unit ─────────────────────────────────────────────────
+
+def test_an_unknown_sector_is_refused_rather_than_given_the_gas_prior():
+    """It fell back to `gas`, so a typo or a sector nobody added to the table
+    received +/-0.60 PHP/L, and a card would render that beside a percent sign.
+
+    `band` already guards the mirror image -- it drops graded errors for a
+    sector the app does not grade, "so that is refused rather than trusted to
+    call sites" -- and the same hazard through the fallback table was open.
+    """
+    from ph_economic_ai.engine import interval as I
+
+    for unknown in ('fuel', 'transport', '', 'GAS'):
+        with pytest.raises(ValueError) as e:
+            I.fallback_halfwidth(unknown, I.DEFAULT_LEVEL)
+        assert 'wrong unit' in str(e.value)
+
+
+def test_every_real_sector_still_has_a_prior():
+    """Narrowed, not dissolved. The three sectors the app actually shows must
+    keep working, and both live call sites pass one of them."""
+    from ph_economic_ai.engine import interval as I
+
+    for sector in ('gas', 'food', 'electricity'):
+        for level in (I.DEFAULT_LEVEL, I.EXPANDED_LEVEL):
+            assert I.fallback_halfwidth(sector, level) > 0
+        assert I.band(1.0, [], sector=sector)['half_width'] > 0
+
+
+def test_the_priors_are_in_each_sector_own_unit():
+    """The gas prior is PHP/L and the food prior is percent. That they differ by
+    more than a factor of two is what makes substituting one for the other a
+    defect rather than an approximation."""
+    from ph_economic_ai.engine import interval as I
+
+    gas = I.fallback_halfwidth('gas', I.DEFAULT_LEVEL)
+    food = I.fallback_halfwidth('food', I.DEFAULT_LEVEL)
+    assert gas > 2 * food, 'if these converge the test stops meaning anything'
