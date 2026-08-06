@@ -291,3 +291,73 @@ def test_the_track_record_line_reports_the_census(tmp_path):
     line = honesty.track_record_line(s.count_graded_runs(), s.count_runs())
     assert '250 of 250' in line
     s.close()
+
+
+# ── a sign that lies ─────────────────────────────────────────────────────────
+
+def test_the_master_prompt_signs_a_falling_verdict_correctly():
+    """A literal '+' in front of a signed number produced "+₱-1.20/L" in the
+    MASTER JUDGE's prompt, which is the model that produces the headline.
+
+    Not cosmetic here: the causal-chain prompt was once handed a raw dataclass
+    repr and the model answered +₱13.70/L against a +₱2.54/L consensus. The
+    correct idiom sits two lines above, on the scenario shocks."""
+    import inspect
+    from ph_economic_ai.engine import swarm
+    src = inspect.getsource(swarm)
+    assert "f'+₱{v.estimate:.2f}/L'" not in src
+    assert "{v.estimate:+.2f} ₱/L" in src
+
+
+def test_the_run_table_signs_a_falling_forecast_correctly(tmp_path):
+    """Every falling forecast rendered as "+₱-3.53/L" on the Agent Performance
+    table, and the leading plus is the character a reader scans first."""
+    import sys
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+    from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+
+    s = AgentTrustStore(db_path=str(tmp_path / 'trust.db'))
+    s.save_run(scenario={'current_price': 85.0}, final_estimate=-3.53,
+               confidence_pct=62, horizon_days=7.0)
+    panel = AgentPerformancePanel(s)
+    panel.refresh()
+    cells = [panel._run_table.item(0, c).text()
+             for c in range(panel._run_table.columnCount())]
+    assert '-3.53 ₱/L' in cells
+    assert not any('+₱-' in c for c in cells)
+    s.close()
+
+
+def test_the_run_table_names_the_obstacle_and_does_not_tick(tmp_path):
+    """'⏳ Pending DOE' and 'Graded ✓' were replaced on the landing tiles and
+    survived here, on the sibling screen nobody swept."""
+    import sys
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+    from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+
+    s = AgentTrustStore(db_path=str(tmp_path / 'trust2.db'))
+    s.save_run(scenario={'current_price': 85.0}, final_estimate=-1.0,
+               confidence_pct=70, horizon_days=7.0)
+    panel = AgentPerformancePanel(s)
+    panel.refresh()
+    text = ' | '.join(panel._run_table.item(0, c).text()
+                      for c in range(panel._run_table.columnCount()))
+    assert 'Pending DOE' not in text
+    assert '✓' not in text
+    s.close()
+
+
+def test_the_causal_chain_prompt_shows_how_to_write_a_fall():
+    """Its worked example is an entirely rising scenario, so a model describing
+    an easing week has no template for a negative magnitude."""
+    from ph_economic_ai.engine import live_data
+    import inspect
+    src = inspect.getsource(live_data)
+    assert 'the SIGN must match the direction' in src
+    assert 'never "+₱-1.42/L"' in src

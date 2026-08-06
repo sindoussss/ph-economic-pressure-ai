@@ -2269,7 +2269,13 @@ class MasterJudge:
         verdicts_text = '\n\n'.join(
             f"[{'HIGH WEIGHT — ' if any(r in _HIGH_WEIGHT_REGIONS for r in v.region_pair) else ''}"
             f"{' & '.join(v.region_pair)}] "
-            f"Estimate: {f'+₱{v.estimate:.2f}/L' if v.estimate is not None else 'N/A'} "
+            # `{:+.2f}`, not a literal '+'. A falling verdict reached the master
+            # judge as "Estimate: +₱-1.20/L", and a mangled figure in a prompt is
+            # not a cosmetic defect here: the causal-chain prompt was once handed
+            # a raw dataclass repr and the model answered +₱13.70/L against a
+            # +₱2.54/L consensus. The correct idiom is two lines above this, in
+            # the same f-string, on the scenario shocks.
+            f"Estimate: {f'{v.estimate:+.2f} ₱/L' if v.estimate is not None else 'N/A'} "
             f"(confidence {v.confidence:.2f})\n{v.reasoning[:400]}"
             for v in self._verdicts
         )

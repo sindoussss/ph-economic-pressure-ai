@@ -176,6 +176,18 @@ class AgentPerformancePanel(QWidget):
 
         self._leaderboard_layout.addStretch()
 
+    def _grade_obstacle(self, run: dict):
+        """Why this run carries no grade, asked of the grader itself.
+
+        `'unknown'`, never None: None is the gradable case, so falling back to it
+        would label an ungraded run "graded" the moment anything here threw.
+        """
+        try:
+            from ph_economic_ai.engine.ground_truth import grade_verdict
+            return grade_verdict(self._store, run)['obstacle'] or 'unknown'
+        except Exception:
+            return 'unknown'
+
     def _refresh_run_table(self) -> None:
         from datetime import datetime
         runs = self._store.get_recent_runs(limit=20)
@@ -193,19 +205,31 @@ class AgentPerformancePanel(QWidget):
             error = run.get('accuracy_error')
             quality = run.get('internal_quality')
 
-            pred_str = f'+₱{pred:.2f}/L' if pred is not None else '—'
-            actual_str = f'+₱{actual:.2f}/L' if actual is not None else '—'
+            # `{:+.2f}`, not a literal '+' in front of a signed number. Every
+            # falling forecast rendered as "+₱-3.53/L", and the leading plus is
+            # the character a reader scans first. Unit after the number, as every
+            # other surface in the app writes it.
+            pred_str = f'{pred:+.2f} ₱/L' if pred is not None else '—'
+            actual_str = f'{actual:+.2f} ₱/L' if actual is not None else '—'
             error_str = f'₱{error:.2f}' if error is not None else '—'
             quality_str = f'{quality:.2f}' if quality is not None else '—'
 
             if actual is not None:
-                status = 'Graded ✓'
-                status_color = _GREEN
-                status_bg = _BG_GREEN
-            else:
-                status = '⏳ Pending DOE'
+                # 'Graded', not 'Graded ✓' on green. The tick and the colour say
+                # the forecast was good; the Actual and Error columns beside it
+                # are what say how it went, and the first graded run in the
+                # record called a rise in a week that did not move.
+                status = 'Graded'
                 status_color = _GRAY
                 status_bg = _BG_GRAY
+            else:
+                # The real obstacle. '⏳ Pending DOE' reads as "the price has not
+                # arrived yet" and is false for four runs in five; it was removed
+                # from the landing tiles and survived here, on the sibling screen
+                # nobody swept.
+                status = _honesty.grade_status_label(self._grade_obstacle(run))
+                status_color = _AMBER
+                status_bg = _BG_AMBER
 
             for col, val in enumerate([date_str, pred_str, actual_str,
                                         error_str, quality_str, status]):
