@@ -262,15 +262,27 @@ def test_a_mixed_roster_does_not_share_an_identity_with_a_single_model_run():
 
 
 def test_the_identity_does_not_depend_on_which_agent_finished_first():
+    """The identity feeds `run_key`, the recall fingerprint. If it depended on
+    which agent happened to answer first, two identical runs would fingerprint
+    differently and recall could never fire.
+
+    This test computed the second ordering, RESET before reading it, and then
+    asserted `one == one` -- a tautology. Both orderings were built and the
+    comparison in the test's own name never happened. The property does hold;
+    nothing here was checking that it did.
+    """
     llm.reset_provenance()
     llm._record_provenance(llm.FAST, 'ollama', 'model-b')
     llm._record_provenance(llm.FAST, 'ollama', 'model-a')
     one = llm.provenance_id()
+
     llm.reset_provenance()
     llm._record_provenance(llm.FAST, 'ollama', 'model-a')
     llm._record_provenance(llm.FAST, 'ollama', 'model-b')
+    two = llm.provenance_id()          # read BEFORE the reset, not after
     llm.reset_provenance()
-    assert one == one  # sorted, so order in equals order out
+
+    assert one == two, 'sorted, so order in equals order out'
     assert 'model-a+model-b' in one or 'ollama:model-a+ollama:model-b' in one
 
 
