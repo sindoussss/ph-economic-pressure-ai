@@ -361,3 +361,44 @@ def test_the_causal_chain_prompt_shows_how_to_write_a_fall():
     src = inspect.getsource(live_data)
     assert 'the SIGN must match the direction' in src
     assert 'never "+₱-1.42/L"' in src
+
+
+# ── figures in prose must be read, not typed ─────────────────────────────────
+
+def test_the_regional_note_reads_its_week_count_from_the_artifact():
+    """`regional_basis` states the anti-drift principle in its own docstring --
+    the multiplier count is read "because a number in prose drifts from the table
+    it describes" -- and the same sentence then hardcoded "294 weeks", which is
+    the accuracy result a panelist is told, sitting in `regional_accuracy.json`
+    two directories away."""
+    import json
+    from pathlib import Path
+    import ph_economic_ai
+    art = json.loads((Path(ph_economic_ai.__file__).parent / 'benchmark'
+                      / 'artifacts' / 'regional_accuracy.json').read_text(encoding='utf-8'))
+    assert f"over {art['n_weeks']} weeks" in honesty.regional_basis()
+
+
+def test_the_regional_note_reads_its_region_counts_from_the_roster():
+    from ph_economic_ai.engine.swarm import ALL_REGIONS, MEASURED_MULTIPLIERS
+    line = honesty.regional_basis()
+    debated = len(honesty.DEBATED_REGIONS)
+    assert f'{debated} region groups debated' in line
+    assert f'the other {len(ALL_REGIONS) - debated} figures' in line
+    assert f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions' in line
+
+
+def test_the_unvalidatable_note_reads_its_denominator_from_the_roster():
+    """Half the sentence derived its numbers and half typed them, which is the
+    arrangement that drifts silently: the derived half moves with the table and
+    the typed half does not."""
+    from ph_economic_ai.engine.swarm import ALL_REGIONS
+    assert f'of the {len(ALL_REGIONS)} rest' in honesty.unvalidatable_note()
+
+
+def test_the_regional_note_degrades_without_inventing_a_sample_size(monkeypatch):
+    """A missing artifact must not produce a confident week count."""
+    monkeypatch.setattr(honesty, '_regional_accuracy', dict)
+    line = honesty.regional_basis()
+    assert 'weeks' not in line
+    assert 'in a pre-registered test' in line

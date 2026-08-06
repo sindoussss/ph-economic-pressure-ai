@@ -462,15 +462,42 @@ def regional_basis() -> str:
     stops overreaching.
     """
     from ph_economic_ai.engine.swarm import ALL_REGIONS, MEASURED_MULTIPLIERS
-    return (f'4 region groups debated; the other 13 figures are scaled from them '
+    debated = len(DEBATED_REGIONS)
+    weeks = _regional_accuracy().get('n_weeks')
+    # Every figure here is read, none typed. The docstring above states that
+    # principle for the multiplier count and the same sentence then hardcoded
+    # "4", "13" and "294 weeks" -- the last of which is the accuracy result a
+    # panelist is told, and it sits in `regional_accuracy.json` two directories
+    # away. A note written to stop drift is the worst place to leave a figure
+    # that can drift.
+    over = f'over {weeks} weeks' if weeks else 'in a pre-registered test'
+    return (f'{debated} region groups debated; the other '
+            f'{len(ALL_REGIONS) - debated} figures are scaled from them '
             f'by a regional price premium measured against DOE prices for '
             f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. '
-            f'**Graded against DOE’s own regional prices over 294 weeks, '
+            f'**Graded against DOE’s own regional prices {over}, '
             f'this derivation is no more accurate than assuming no regional '
             f'change at all**, and applying the premium is measurably worse '
             f'than not applying it. Only the national figure is graded against a '
             f'real price, so treat the per-region numbers as derived rather than '
             f'forecast.')
+
+
+def _regional_accuracy() -> dict:
+    """The pre-registered regional accuracy result, read rather than restated.
+
+    Returns `{}` when the artifact is missing, so the caller degrades to naming
+    the test instead of inventing a sample size.
+    """
+    try:
+        import json
+        from pathlib import Path
+        import ph_economic_ai
+        return json.loads(
+            (Path(ph_economic_ai.__file__).parent / 'benchmark' / 'artifacts'
+             / 'regional_accuracy.json').read_text(encoding='utf-8'))
+    except Exception:
+        return {}
 
 
 #: Regions for which DOE publishes no retail price series, so their figures cannot
@@ -555,10 +582,16 @@ def unvalidatable_note() -> str:
     assumed. Reporting only the four understates it, which is why the wider count
     is stated first and the narrower one qualifies it.
     """
+    from ph_economic_ai.engine.swarm import ALL_REGIONS
+
     resting = regions_resting_on_an_assumption()
     debated = sorted(UNVALIDATABLE_REGIONS & set(DEBATED_REGIONS))
     n = len(UNVALIDATABLE_REGIONS)
-    base = (f'{len(resting)} of the 17 rest on a freight premium nobody has '
+    # `len(ALL_REGIONS)`, not a typed 17. Half this sentence derived its numbers
+    # and half typed them, which is the arrangement that drifts silently: the
+    # derived half moves with the table and the typed half does not.
+    base = (f'{len(resting)} of the {len(ALL_REGIONS)} rest on a freight '
+            f'premium nobody has '
             f'measured, {n} of them because DOE publishes no price series for '
             f'the region at all and the rest because they are scaled from one '
             f'that has none, so nothing published can confirm or contradict them')
