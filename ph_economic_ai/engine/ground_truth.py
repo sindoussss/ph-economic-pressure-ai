@@ -161,7 +161,6 @@ def grade_verdict(store: 'AgentTrustStore', run: dict) -> dict:
 def find_and_grade_runs(
     store: 'AgentTrustStore',
     current_price: float,
-    min_age_days: float = 5.0,
     grade: Optional[str] = None,
 ) -> int:
     """Grade every run whose forecast period has elapsed, each against a price
@@ -177,6 +176,17 @@ def find_and_grade_runs(
     it is recorded into the price history and is the natural match for runs whose
     target date is around today. Runs whose period has no observation close enough
     stay ungraded rather than being scored against a mismatched week.
+
+    **`min_age_days` is gone, and it had been dead since `RSK-018`.** It was
+    declared in this signature and never read: the switch from
+    `get_ungraded_runs(min_age_days)` to `get_due_runs()` replaced "the row is
+    old enough" with "the forecast period has elapsed", which is the better rule
+    and subsumes it -- a seven-day forecast is never due before it is seven days
+    old. The parameter stayed in the signature, so every caller reading it
+    believed a five-day age gate was in force, and thirty call sites passed
+    `min_age_days=0` to disable something that was not running.
+
+    `get_ungraded_runs` keeps the parameter, and honours it.
     """
     # WHICH PRODUCT, recorded with the price. A price with no product is not an
     # observation of this series: readings of Unleaded 91 and Premium 95 sat in
