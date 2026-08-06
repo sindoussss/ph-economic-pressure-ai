@@ -155,10 +155,26 @@ def test_each_sector_has_its_own_scale():
     assert gas != food and food != elec
 
 
-def test_an_unknown_sector_falls_back_without_crashing():
-    b = iv.band(1.0, [], 0.5, sector='mystery')
-    assert b['half_width'] > 0
-    assert b['calibrated'] is False
+def test_an_unknown_sector_is_refused_rather_than_given_another_unit():
+    """This asserted the opposite, by name: "falls back without crashing".
+
+    What it was protecting was a silent substitution. An unknown sector received
+    the `gas` prior, +/-0.60 PHP/L, and a card would render that beside whatever
+    unit the sector actually uses. The three real sectors differ by more than a
+    factor of two, so the substitution is a wrong number rather than a rough one.
+
+    `band` already refuses the mirror image -- it drops graded fuel errors for a
+    percentage sector, "so that is refused rather than trusted to call sites" --
+    and the fallback table was the same hazard left open. Both live call sites
+    pass a real sector, so nothing in the app changes; a typo now says so.
+    """
+    with pytest.raises(ValueError) as e:
+        iv.band(1.0, [], 0.5, sector='mystery')
+    assert 'wrong unit' in str(e.value)
+
+    for sector in ('gas', 'food', 'electricity'):
+        b = iv.band(1.0, [], 0.5, sector=sector)
+        assert b['half_width'] > 0 and b['calibrated'] is False
 
 
 def test_bands_passes_the_sector_through():
