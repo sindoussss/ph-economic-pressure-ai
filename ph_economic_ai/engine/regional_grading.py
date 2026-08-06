@@ -58,6 +58,14 @@ MIN_CITIES = 3
 #: against whatever is current.
 MAX_WEEK_GAP = dt.timedelta(days=7)
 
+#: A published city price outside this band is a parse artifact, not a market.
+#: The same sanity bound `swarm.fetch_live_retail_price_checked` applies to the
+#: live scrape, so a value the app would refuse to READ is not accepted from the
+#: archive either. Deliberately wide: DOE's RON 95 spans about 51 to 66 by
+#: region while the live aggregator reads near 90, and a narrow band here would
+#: silently discard whichever of the two turns out to be right.
+PLAUSIBLE_LEVEL = (20.0, 200.0)
+
 
 def _price(row: dict):
     """DOE's own common price, else the midpoint of the range it published.
@@ -75,16 +83,33 @@ def _price(row: dict):
     Merging them into one series is the `RSK-025` defect on the regional side: a
     number stored without recording what it is OF.
     """
-    if row.get('common'):
+    def parsed(text):
         try:
-            return float(row['common']), 'common'
+            return float(text) if text else None
         except ValueError:
-            pass
-    low, high = row.get('low'), row.get('high')
-    try:
-        return ((float(low) + float(high)) / 2, 'midpoint') if low and high             else (None, None)
-    except ValueError:
-        return None, None
+            return None
+
+    def plausible(value):
+        return value is not None and PLAUSIBLE_LEVEL[0] <= value <= PLAUSIBLE_LEVEL[1]
+
+    common = parsed(row.get('common'))
+    low, high = parsed(row.get('low')), parsed(row.get('high'))
+    midpoint = (low + high) / 2 if low is not None and high is not None else None
+
+    # `common` is preferred, but only when it is a possible retail price. The
+    # panel has eleven rows where it is not, and eight of those sit beside a
+    # perfectly sane range: Tacloban City on 2026-05-12 reads common 8.00 with a
+    # published range of 81.25 to 82.27. Preferring `common` unconditionally
+    # discarded the good number in favour of the broken one.
+    #
+    # The remaining three have no usable range either -- `457.0` to `49.0`
+    # transposed, `48.5` to `495.0` digit-shifted, `0.27` with no low -- and
+    # yield no price at all rather than a guess.
+    if plausible(common):
+        return common, 'common'
+    if plausible(midpoint):
+        return midpoint, 'midpoint'
+    return None, None
 
 
 def regional_levels(panel_path=PANEL, with_bases: bool = False):
