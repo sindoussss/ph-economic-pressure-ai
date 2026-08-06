@@ -693,8 +693,30 @@ class AgentTrustStore:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def count_graded_runs(self) -> int:
+        """How many runs carry a grade. A TOTAL, not a calibration window.
+
+        `len(get_graded_errors())` was used for this in three places and is
+        capped at 200, so past that many grades the screen would have reported
+        "200 of 5000 graded" and the backlog arithmetic
+        `count_runs() - due - len(errors)` would have silently dropped runs.
+
+        That is the "34 stored, 32 explained" defect returning at scale: the
+        symptom was fixed for the current data by counting runs still inside
+        their forecast week, and the cause -- deriving a total from a windowed
+        query -- was left in place.
+        """
+        with self._lock:
+            return int(self._conn.execute(
+                'SELECT COUNT(*) FROM runs WHERE accuracy_error IS NOT NULL'
+            ).fetchone()[0])
+
     def get_graded_errors(self, limit: int = 200) -> list[float]:
         """Absolute errors of graded runs, newest first.
+
+        **A calibration WINDOW, not a census.** `limit` caps it, so `len()` of
+        this is the size of the conformal calibration set and never the number of
+        graded runs. Use `count_graded_runs` for the total.
 
         These feed the conformal band in `engine/interval.py`. They are only
         meaningful because grading is cycle-aligned (`RSK-023`): each error

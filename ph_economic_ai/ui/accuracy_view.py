@@ -45,11 +45,15 @@ class AccuracyView(QWidget):
         run, which is also untrue.
         """
         lines = []
-        errors, runs, counts = [], 0, {}
+        # Initialised together, because the block below is wrapped in a bare
+        # `except: pass` and anything left unbound there surfaces as a NameError
+        # further down, where the real cause is no longer visible.
+        errors, graded, runs, counts = [], 0, 0, {}
         if self._store is not None:
             try:
                 from ph_economic_ai.engine.ground_truth import grade_verdict
                 errors = self._store.get_graded_errors()
+                graded = self._store.count_graded_runs()
                 runs = self._store.count_runs()
                 due = self._store.get_due_runs()
                 for run in due:
@@ -58,12 +62,12 @@ class AccuracyView(QWidget):
                         counts[key] = counts.get(key, 0) + 1
                 # Runs still inside their forecast week, so the reasons account
                 # for every stored run rather than leaving a reader to subtract.
-                pending = runs - len(due) - len(errors)
+                pending = runs - len(due) - graded
                 if pending > 0:
                     counts['not_due'] = pending
             except Exception:
                 pass
-        lines.append(_honesty.track_record_line(len(errors), runs))
+        lines.append(_honesty.track_record_line(graded, runs))
         backlog = _honesty.grade_backlog_line(counts)
         if backlog:
             lines.append(backlog)
