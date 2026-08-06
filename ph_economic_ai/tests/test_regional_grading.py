@@ -181,25 +181,67 @@ def test_the_level_construction_matches_the_premiums_module(tmp_path):
     test by 77 paired weeks.
 
     Pinned on a fixture rather than the committed panel, so the guard holds
-    without a 4 MB read."""
+    without a 4 MB read -- but the fixture has to REACH the paths where the two
+    can diverge, and the first one did not. It was a single region in a single
+    cycle with a common price on every row: no South Luzon filename fallback, no
+    NCR-by-area match, no week dropped for too few cities, no mixed price basis.
+
+    The 22-of-1798 disagreement this guard exists for was in the dedup AND the
+    South Luzon path, and the fixture exercised one of the two. A guard that
+    cannot fail on its own motivating case is the thing it guards against, so
+    the assertions at the end check that the fixture reaches each path rather
+    than taking the widening on faith.
+
+    Verified against the committed panel while widening this: the two agree on
+    all 2,346 shared week-values.
+    """
     import csv as _csv
+    import datetime as _dt
     from ph_economic_ai.tools.regional_level_premiums import (
         regional_levels_by_region)
 
     header = ('cycle,file_date,area,grain,province,province_raw,city,'
               'low,high,common,source_file\n')
-    rows = header + ''.join(
-        f'2026-01-06,2026-01-06,Visayas,city,Iloilo,Iloilo,C{i},60,60,{60 + i},b\n'
-        for i in range(3))
+    out = []
+
+    def row(cycle, area, province, city, low, high, common, src):
+        out.append(f'{cycle},{cycle},{area},city,{province},{province},{city},'
+                   f'{low},{high},{common},{src}\n')
+
+    for cycle in ('2026-01-06', '2026-01-13'):
+        for n in range(3):                      # NCR: matched by AREA, no province
+            row(cycle, 'NCR', '', f'N{n}', 60, 66, 61 + n, f'ncr-{cycle}')
+        for n in range(3):                      # matched by province
+            row(cycle, 'Visayas', 'Iloilo', f'I{n}', 60, 66, 62 + n, f'wv-{cycle}')
+        for n in range(3):                      # region named only in the FILENAME
+            row(cycle, 'South Luzon', '', f'M{n}', 60, 66, 63 + n,
+                f'mimaropa-{cycle}')
+        for n in range(3):                      # MIXED BASIS: range, no common
+            row(cycle, 'Mindanao', 'Davao del Sur', f'D{n}', 60, 66 + n, '',
+                f'dav-{cycle}')
+        # One city only, so the week is below MIN_CITIES and must be dropped.
+        row(cycle, 'Mindanao', 'Sulu', 'S0', 60, 66, 64, f'barmm-{cycle}')
+
     # The same city-week in two documents: dedup must keep the later filename.
-    rows += '2026-01-06,2026-01-06,Visayas,city,Iloilo,Iloilo,C0,60,60,99,a\n'
+    row('2026-01-06', 'NCR', '', 'N0', 60, 66, 99, 'aaa-earlier')
+
     path = tmp_path / 'panel.csv'
-    path.write_text(rows, encoding='utf-8')
+    path.write_text(header + ''.join(out), encoding='utf-8')
 
     mine = rg.regional_levels(path)
     with open(path, encoding='utf-8') as fh:
         theirs = regional_levels_by_region(list(_csv.DictReader(fh)))
     assert mine == theirs, 'the two level constructions have diverged again'
+
+    # The fixture reaches every path it was widened for.
+    assert 'NCR' in mine, 'NCR is matched by area'
+    assert 'Western Visayas' in mine, 'a province-matched region'
+    assert 'MIMAROPA' in mine, 'the South Luzon filename fallback'
+    assert 'Davao Region' in mine, 'a region priced from the range, not common'
+    assert 'BARMM' not in mine, 'one city is below MIN_CITIES and must drop'
+    assert len(mine['NCR']) == 2, 'two cycles'
+    assert mine['NCR'][_dt.date(2026, 1, 6)] == pytest.approx(62.0), (
+        'the later filename wins: 99 from aaa-earlier must not reach the median')
 
 
 # ── two price definitions in one series ──────────────────────────────────────
