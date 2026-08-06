@@ -237,3 +237,57 @@ def test_the_backlog_accounts_for_every_stored_run():
                                        'no_baseline': 2})
     assert line.startswith('34 ungraded:')
     assert line.index('2 still forecasting') < line.index('10 awaiting')
+
+
+# ── a census is not a calibration window ─────────────────────────────────────
+
+def _graded_store(tmp_path, n):
+    """`n` graded runs, built directly so the test is about counting, not grading."""
+    import sqlite3
+    from ph_economic_ai.engine.store import AgentTrustStore
+    s = AgentTrustStore(db_path=str(tmp_path / 'trust.db'))
+    con = sqlite3.connect(s._path)
+    for i in range(n):
+        con.execute(
+            "INSERT INTO runs (timestamp, scenario_json, final_estimate, "
+            "confidence_pct, actual_price_change, accuracy_error, graded_at, "
+            "target_date, horizon_days) VALUES (?, '{\"current_price\": 85.0}', "
+            "-0.5, 70, 0.1, 0.4, '2026-08-01T00:00:00+00:00', "
+            "'2026-08-01T00:00:00+00:00', 7.0)",
+            (f'2026-07-{(i % 28) + 1:02d}T00:00:00+00:00',))
+    con.commit()
+    con.close()
+    return s
+
+
+def test_the_graded_count_is_not_capped_by_the_calibration_window(tmp_path):
+    """`len(get_graded_errors())` was used as the number of graded runs in three
+    places and is capped at 200. Past that the screen would report "200 of 5000
+    graded" and the backlog arithmetic would silently drop runs.
+
+    Same defect as "34 stored, 32 explained": a total taken from a windowed
+    query. That symptom was fixed for the data of the day; this is the cause.
+    """
+    s = _graded_store(tmp_path, 250)
+    assert len(s.get_graded_errors()) == 200, 'the window is deliberate'
+    assert s.count_graded_runs() == 250, 'the census is not'
+    s.close()
+
+
+def test_the_backlog_still_accounts_for_every_run_past_the_window(tmp_path):
+    """The arithmetic `stored - due - graded` is what a reader checks by
+    subtracting, so it must not use the capped figure."""
+    s = _graded_store(tmp_path, 250)
+    stored, due, graded = s.count_runs(), len(s.get_due_runs()), s.count_graded_runs()
+    assert stored == 250 and due == 0
+    assert stored - due - graded == 0, 'nothing unexplained'
+    # With the capped figure this would have claimed 50 runs were still forecasting.
+    assert stored - due - len(s.get_graded_errors()) == 50
+    s.close()
+
+
+def test_the_track_record_line_reports_the_census(tmp_path):
+    s = _graded_store(tmp_path, 250)
+    line = honesty.track_record_line(s.count_graded_runs(), s.count_runs())
+    assert '250 of 250' in line
+    s.close()

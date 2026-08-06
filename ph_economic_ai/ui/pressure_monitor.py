@@ -618,6 +618,17 @@ class PressureMonitorPanel(QWidget):
         except Exception:
             return []
 
+    def _graded_count(self) -> int:
+        """How many runs carry a grade. NOT `len(self._graded_errors())`, which
+        is the conformal calibration window and is capped."""
+        store = self._store
+        if store is None:
+            return 0
+        try:
+            return int(store.count_graded_runs())
+        except Exception:
+            return 0
+
     def _run_count(self) -> int:
         """How many runs are stored, graded or not.
 
@@ -653,7 +664,7 @@ class PressureMonitorPanel(QWidget):
         head.setStyleSheet(_EYEBROW)
         lay.addWidget(head)
         for text, strong in ((_honesty.track_record_line(
-                                 len(self._graded_errors()), self._run_count()), True),
+                                 self._graded_count(), self._run_count()), True),
                              (_honesty.grade_backlog_line(self._grade_backlog()), False)):
             if not text:
                 continue
@@ -684,7 +695,7 @@ class PressureMonitorPanel(QWidget):
             # Runs whose forecast week has not closed yet. Without them the
             # counts do not add up to the stored total, and a reader who
             # subtracts finds runs the screen declined to account for.
-            pending = store.count_runs() - len(due) - len(store.get_graded_errors())
+            pending = store.count_runs() - len(due) - store.count_graded_runs()
             if pending > 0:
                 counts['not_due'] = pending
         except Exception:
