@@ -113,19 +113,37 @@ REFERENCE = 'NCR'
 MULTIPLIERS = {'NCR': 1.00, 'Western Visayas': 1.05, 'Davao Region': 1.05}
 
 
-def _price(row: dict) -> Optional[float]:
-    """DOE's own common price, else the midpoint of the range it published."""
-    for key in ('common',):
-        if row.get(key):
-            try:
-                return float(row[key])
-            except ValueError:
-                pass
+def _price(row: dict):
+    """DOE's own common price, else the midpoint of the range it published.
+
+    Returns `(price, basis)`, basis being `'common'` or `'midpoint'`.
+
+    **The basis has to travel with the number**, and it matters more here than
+    in `engine.regional_grading` where the same defect was fixed first. That
+    module measures a week-over-week CHANGE, and a constant offset between the
+    two definitions cancels in a difference; a MULTIPLIER is a ratio of levels,
+    and an offset does not cancel in a ratio.
+
+    Measured on the committed panel: the two definitions differ by a mean 0.758
+    PHP/L on a median level of 63.29, which is 1.20 percent. The mismatch is not
+    random -- NCR, the anchor for the South Luzon regions, is 15.6 percent
+    midpoint while CALABARZON is 82.3, MIMAROPA 72.3 and Bicol 84.8. That gap
+    INFLATES their measured ratio by roughly 0.7 to 0.8 percent.
+
+    Every correction this tool produced moved a multiplier DOWN by 3.8 to 8.6
+    percent, so the bias ran against the correction rather than producing it.
+    The corrections are not artifacts of this; they may be slightly understated.
+    """
+    if row.get('common'):
+        try:
+            return float(row['common']), 'common'
+        except ValueError:
+            pass
     low, high = row.get('low'), row.get('high')
     try:
-        return (float(low) + float(high)) / 2 if low and high else None
+        return ((float(low) + float(high)) / 2, 'midpoint') if low and high             else (None, None)
     except ValueError:
-        return None
+        return None, None
 
 
 def _deduplicated(rows: list[dict]) -> list[dict]:
@@ -137,7 +155,7 @@ def _deduplicated(rows: list[dict]) -> list[dict]:
     """
     latest: dict[tuple, dict] = {}
     for row in rows:
-        price = _price(row)
+        price, basis = _price(row)
         if price is None or not row['city']:
             continue
         # A metro-wide aggregate is not a city. Including it would put a whole
@@ -146,7 +164,7 @@ def _deduplicated(rows: list[dict]) -> list[dict]:
             continue
         key = (row['area'], row['province'], row['city'], row['cycle'])
         if key not in latest or row['source_file'] > latest[key]['source_file']:
-            latest[key] = {**row, '_price': price}
+            latest[key] = {**row, '_price': price, '_basis': basis}
     return list(latest.values())
 
 
