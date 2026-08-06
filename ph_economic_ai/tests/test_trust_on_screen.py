@@ -480,3 +480,21 @@ def test_every_declared_unvalidatable_region_has_no_measured_series():
     measured = set(art['per_region_mae'])
     assert not (honesty.UNVALIDATABLE_REGIONS & measured), (
         'a region declared unvalidatable now has a measured series')
+
+
+def test_the_regional_note_labels_a_result_that_predates_the_basis_guard():
+    """The published run merged DOE's `common` price with the midpoint of its
+    range. The guard now refuses a change measured across a switch between them,
+    which removes 9.2% of the region-week pairs that run used, so the artifact
+    describes a computation the code no longer performs."""
+    assert 'measured before the price-basis guard' in honesty.regional_basis()
+
+
+def test_the_label_disappears_when_the_test_is_rerun(monkeypatch):
+    """Self-removing, so nobody has to remember to delete it. An artifact from a
+    re-run carries `basis_guard` and the clause goes."""
+    monkeypatch.setattr(honesty, '_regional_accuracy',
+                        lambda: {'n_weeks': 271, 'basis_guard': True})
+    line = honesty.regional_basis()
+    assert 'over 271 weeks' in line
+    assert 'price-basis guard' not in line

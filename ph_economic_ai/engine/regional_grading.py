@@ -35,6 +35,7 @@ a second grader invents its own guards.
 """
 from __future__ import annotations
 
+import collections
 import csv
 import datetime as dt
 import statistics
@@ -58,21 +59,35 @@ MIN_CITIES = 3
 MAX_WEEK_GAP = dt.timedelta(days=7)
 
 
-def _price(row: dict) -> Optional[float]:
-    """DOE's own common price, else the midpoint of the range it published."""
+def _price(row: dict):
+    """DOE's own common price, else the midpoint of the range it published.
+
+    Returns `(price, basis)` where basis is `'common'` or `'midpoint'`, or
+    `(None, None)`.
+
+    **The basis has to travel with the number.** These are two different
+    quantities and the panel is 56 percent one and 39 percent the other: 20,933
+    rows carry a common price and 14,715 carry only a range. Where both exist
+    they differ by more than 0.50 PHP/L in 73.5 percent of rows, mean -0.758,
+    and the midpoint sits systematically higher because it is pulled up by the
+    top of the range while the common price is the prevailing one.
+
+    Merging them into one series is the `RSK-025` defect on the regional side: a
+    number stored without recording what it is OF.
+    """
     if row.get('common'):
         try:
-            return float(row['common'])
+            return float(row['common']), 'common'
         except ValueError:
             pass
     low, high = row.get('low'), row.get('high')
     try:
-        return (float(low) + float(high)) / 2 if low and high else None
+        return ((float(low) + float(high)) / 2, 'midpoint') if low and high             else (None, None)
     except ValueError:
-        return None
+        return None, None
 
 
-def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
+def regional_levels(panel_path=PANEL, with_bases: bool = False):
     """{region: {cycle: median city price}} from the committed panel.
 
     Only `grain='city'` rows. A metro-wide aggregate is not a city and averaging
@@ -93,12 +108,12 @@ def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
         for row in csv.DictReader(fh):
             if row.get('grain', 'city') != 'city' or not row['city']:
                 continue
-            price = _price(row)
+            price, basis = _price(row)
             if price is None:
                 continue
             key = (row['area'], row['province'], row['city'], row['cycle'])
             if key not in latest or row['source_file'] > latest[key]['source_file']:
-                latest[key] = {**row, '_price': price}
+                latest[key] = {**row, '_price': price, '_basis': basis}
 
     buckets: dict = {}
     for row in latest.values():
@@ -109,7 +124,7 @@ def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
             named = region_of_south_luzon_file(row['source_file'])
             if named:
                 buckets.setdefault(named, {}).setdefault(row['cycle'], []).append(
-                    row['_price'])
+                    (row['_price'], row['_basis']))
             continue
         for region, provinces in REGION_PROVINCES.items():
             if region == 'NCR':
@@ -118,15 +133,28 @@ def regional_levels(panel_path=PANEL) -> dict[str, dict[dt.date, float]]:
             elif not provinces or row['province'] not in provinces:
                 continue
             buckets.setdefault(region, {}).setdefault(row['cycle'], []).append(
-                row['_price'])
+                (row['_price'], row['_basis']))
 
-    return {region: {dt.date.fromisoformat(c): statistics.median(v)
-                     for c, v in weeks.items() if len(v) >= MIN_CITIES}
-            for region, weeks in buckets.items()}
+    levels, bases = {}, {}
+    for region, weeks in buckets.items():
+        for cycle, priced in weeks.items():
+            if len(priced) < MIN_CITIES:
+                continue
+            day = dt.date.fromisoformat(cycle)
+            levels.setdefault(region, {})[day] = statistics.median(
+                p for p, _ in priced)
+            # The basis the majority of this week's reporting cities used. A
+            # week whose cities are split carries the majority label; where a
+            # mixed basis does damage is a CHANGE measured across two different
+            # labels, which `regional_actual` refuses.
+            bases.setdefault(region, {})[day] = collections.Counter(
+                b for _, b in priced).most_common(1)[0][0]
+    return (levels, bases) if with_bases else levels
 
 
 def regional_actual(region: str, target: dt.date,
-                    levels: Optional[dict] = None) -> Optional[float]:
+                    levels: Optional[dict] = None,
+                    bases: Optional[dict] = None) -> Optional[float]:
     """The published price CHANGE for `region` over the week containing `target`.
 
     None when the region has no series, when the target week is not covered, or
@@ -135,7 +163,8 @@ def regional_actual(region: str, target: dt.date,
     move as a one-week move, which is `ADR-003`'s defect and the reason the Phase
     2 panel refuses to bridge one.
     """
-    levels = levels if levels is not None else regional_levels()
+    if levels is None:
+        levels, bases = regional_levels(with_bases=True)
     weeks = levels.get(region) or {}
     if not weeks:
         return None
@@ -146,6 +175,22 @@ def regional_actual(region: str, target: dt.date,
     prev = day - dt.timedelta(days=7)
     if prev not in weeks:
         return None
+    # The basis is consulted only for the series this module built. A caller
+    # that supplied its own levels carries no basis, and absence is not
+    # contradiction -- the same rule `ground_truth` applies to a run whose own
+    # week has no observation.
+    own = (bases or {}).get(region, {})
+    now_basis, then_basis = own.get(day), own.get(prev)
+    if now_basis is not None and then_basis is not None and now_basis != then_basis:
+        # A change measured from a midpoint to a common price, or the reverse,
+        # is a change of DEFINITION carrying a change of price. Measured on the
+        # panel: the two differ by a mean 0.758 PHP/L, which is larger than
+        # every effect size the accuracy test compares, and 4.8 percent of
+        # consecutive region-week pairs switch between them.
+        #
+        # The same rule `ground_truth` applies to a run whose baseline came from
+        # another price series: refuse rather than measure a relabelling.
+        return None
     change = weeks[day] - weeks[prev]
     # An outcome the app would refuse as an estimate cannot be the truth it is
     # graded against. `ground_truth` applies this nationally; a regional grader
@@ -155,7 +200,8 @@ def regional_actual(region: str, target: dt.date,
 
 
 def grade_regional(estimates: dict[str, float], target: dt.date,
-                   levels: Optional[dict] = None) -> dict:
+                   levels: Optional[dict] = None,
+                   bases: Optional[dict] = None) -> dict:
     """Score each region's forecast against its published change.
 
     Returns the graded scores AND the regions that could not be graded, by name
@@ -164,12 +210,13 @@ def grade_regional(estimates: dict[str, float], target: dt.date,
     """
     from ph_economic_ai.engine.swarm import ASSUMED_MULTIPLIERS
 
-    levels = levels if levels is not None else regional_levels()
+    if levels is None:
+        levels, bases = regional_levels(with_bases=True)
     scored: dict[str, dict] = {}
     ungraded: dict[str, str] = {}
 
     for region, estimate in estimates.items():
-        actual = regional_actual(region, target, levels)
+        actual = regional_actual(region, target, levels, bases)
         if actual is None:
             ungraded[region] = ('no DOE series for this region'
                                 if not levels.get(region)
