@@ -288,3 +288,54 @@ def test_price_near_returns_none_when_only_another_product_is_near(tmp_path):
                                grade='RON 91')
     assert s.price_near((_WEEK + timedelta(days=2)).isoformat()) is None
     s.close()
+
+
+# ── an instant is not a string ───────────────────────────────────────────────
+
+def test_the_migration_compares_instants_not_wall_clocks(tmp_path):
+    """`observed_at` carries an offset, so comparing ISO strings compares wall
+    clocks. A row written `2026-07-31T05:00+08:00` is 2026-07-30T21:00Z --
+    genuinely before the selection fix -- and string order puts it after, so it
+    would be stamped RON 95. That is precisely the mislabelling this migration
+    exists to prevent."""
+    path = str(tmp_path / 'trust.db')
+    con = sqlite3.connect(path)
+    con.executescript('CREATE TABLE price_observations ('
+                      ' observed_at TEXT PRIMARY KEY, price REAL NOT NULL);')
+    con.executemany('INSERT INTO price_observations VALUES (?, ?)', [
+        ('2026-07-31T05:00:00+08:00', 84.38),   # 07-30T21:00Z, before the fix
+        ('2026-07-31T12:00:00+08:00', 89.51),   # 07-31T04:00Z, after it
+    ])
+    con.commit()
+    con.close()
+
+    AgentTrustStore(db_path=path).close()
+    rows = dict(sqlite3.connect(path).execute(
+        'SELECT observed_at, grade FROM price_observations').fetchall())
+    assert rows['2026-07-31T05:00:00+08:00'] == 'unknown'
+    assert rows['2026-07-31T12:00:00+08:00'] == FORECAST_GRADE
+
+
+def test_the_same_instant_in_two_offsets_is_one_observation(tmp_path):
+    """`substr(observed_at, 1, 10)` is the writer's LOCAL date, so one instant
+    recorded in two offsets landed on two different "days" and both survived."""
+    s = _store(tmp_path)
+    s.record_price_observation(89.51, observed_at='2026-07-30T22:00:00+00:00')
+    s.record_price_observation(89.51, observed_at='2026-07-31T06:00:00+08:00')
+    n = sqlite3.connect(s._path).execute(
+        'SELECT COUNT(*) FROM price_observations').fetchone()[0]
+    assert n == 1, 'the same instant, written twice'
+    s.close()
+
+
+def test_deduplication_groups_by_the_real_day(tmp_path):
+    """Two readings sixteen hours apart could share a local-date string while
+    belonging to different days, and one was dropped."""
+    s = _store(tmp_path)
+    for stamp in ('2026-07-30T02:00:00+00:00',      # 07-30
+                  '2026-07-30T18:00:00-08:00'):     # 07-31 in UTC
+        s.record_price_observation(89.51, observed_at=stamp)
+    assert sqlite3.connect(s._path).execute(
+        'SELECT COUNT(*) FROM price_observations').fetchone()[0] == 2
+    assert s.deduplicate_price_observations() == 0, 'different days, not duplicates'
+    s.close()
