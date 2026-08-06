@@ -319,3 +319,60 @@ def test_a_caller_supplying_its_own_levels_is_not_judged_on_a_basis(tmp_path):
     levels = {'NCR': {_dt.date(2026, 1, 6): 61.0, _dt.date(2026, 1, 13): 62.0}}
     assert rg.regional_actual('NCR', _dt.date(2026, 1, 13),
                               levels) == pytest.approx(1.0)
+
+
+# ── a published price that is not a price ────────────────────────────────────
+
+def test_a_broken_common_price_falls_back_to_a_sane_range():
+    """The panel has eleven rows where `common` is not a possible retail price,
+    and eight of them sit beside a perfectly good range.
+
+    Tacloban City on 2026-05-12 reads common 8.00 with a published range of
+    81.25 to 82.27. Preferring `common` unconditionally discarded the good
+    number in favour of the broken one, and fed 8.00 into that region-week's
+    median.
+    """
+    row = {'common': '8.0', 'low': '81.25', 'high': '82.27'}
+    price, basis = rg._price(row)
+    assert price == pytest.approx(81.76)
+    assert basis == 'midpoint', 'the broken common must not set the basis either'
+
+
+def test_a_row_with_no_usable_number_yields_no_price():
+    """The other three: `457.0` to `49.0` transposed, `48.5` to `495.0`
+    digit-shifted, `0.27` with no low. No price is the honest answer."""
+    for row in ({'common': '', 'low': '457.0', 'high': '49.0'},
+                {'common': '', 'low': '48.5', 'high': '495.0'},
+                {'common': '0.27', 'low': '', 'high': '37.0'}):
+        assert rg._price(row) == (None, None), row
+
+
+def test_a_plausible_common_still_wins():
+    """Narrowed, not dissolved. DOE's own figure is preferred whenever it is
+    a possible price."""
+    assert rg._price({'common': '61.0', 'low': '60.0', 'high': '66.0'}) \
+        == (61.0, 'common')
+
+
+def test_the_bound_matches_the_one_the_scraper_applies():
+    """A value the app would refuse to READ from the live source must not be
+    accepted from the archive. Two bounds that drift apart would let one path
+    admit what the other rejects."""
+    import inspect
+    from ph_economic_ai.engine import swarm
+    src = inspect.getsource(swarm.fetch_live_retail_price_checked)
+    lo, hi = rg.PLAUSIBLE_LEVEL
+    assert f'{lo} <= value <= {hi}' in src
+
+
+def test_the_two_price_implementations_are_one():
+    """They diverged twice: the basis fix reached one of them, and before that
+    the level constructions disagreed on 22 of 1798 week-values. The tool now
+    delegates, and one implementation cannot diverge from itself."""
+    from ph_economic_ai.tools import regional_multiplier_backtest as bt
+    assert bt._price.__module__ == 'ph_economic_ai.tools.regional_multiplier_backtest'
+    for row in ({'common': '61.0', 'low': '60.0', 'high': '66.0'},
+                {'common': '8.0', 'low': '81.25', 'high': '82.27'},
+                {'common': '', 'low': '457.0', 'high': '49.0'},
+                {'common': '', 'low': '', 'high': ''}):
+        assert bt._price(row) == rg._price(row), row
