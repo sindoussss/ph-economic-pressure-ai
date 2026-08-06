@@ -89,8 +89,16 @@ def regional_levels_by_region(rows: list[dict]) -> dict[str, dict[dt.date, float
 
     out: dict = {}
     for region, weeks in buckets.items():
-        out[region] = {dt.date.fromisoformat(c): statistics.median(v)
-                       for c, v in weeks.items() if len(v) >= MIN_CITIES}
+        priced = {dt.date.fromisoformat(c): statistics.median(v)
+                  for c, v in weeks.items() if len(v) >= MIN_CITIES}
+        # A region whose every week fell below `MIN_CITIES` is not a region the
+        # panel reaches, and emitting `{}` for it made this construction disagree
+        # with `engine.regional_grading`, which omits the key. Inert for the
+        # callers here, which all use `.get(region, {})` -- but `len(levels)` and
+        # `region in levels` are different answers, and the two constructions of
+        # one quantity have diverged once before, on 22 of 1798 week-values.
+        if priced:
+            out[region] = priced
     return out
 
 
