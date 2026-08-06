@@ -403,7 +403,7 @@ def test_a_run_whose_own_week_has_two_prices_is_not_graded(due_run):
 
     # Control: the same run grades while only the target week has a price.
     s, run_id = due_run(baseline=84.38, estimate=-1.28, price=89.51)
-    assert find_and_grade_runs(s, current_price=89.51, min_age_days=0) == 1
+    assert find_and_grade_runs(s, current_price=89.51) == 1
 
     # Now the run's OWN week carries both readings, and the change from it has
     # no single value.
@@ -413,7 +413,7 @@ def test_a_run_whose_own_week_has_two_prices_is_not_graded(due_run):
     s2.record_price_observation(84.38, observed_at=own_week + timedelta(days=1))
     s2.record_price_observation(89.51, observed_at=own_week + timedelta(days=3))
     assert s2.cycle_prices(made)[0] == {84.38, 89.51}
-    assert find_and_grade_runs(s2, current_price=89.51, min_age_days=0) == 0
+    assert find_and_grade_runs(s2, current_price=89.51) == 0
 
 
 def test_a_baseline_week_with_no_observation_still_grades(due_run):
@@ -425,4 +425,51 @@ def test_a_baseline_week_with_no_observation_still_grades(due_run):
     """
     s, run_id = due_run(baseline=98.82, estimate=1.42, price=100.22)
     assert s.cycle_prices(dict(s.get_run(run_id))['timestamp'])[0] == set()
-    assert find_and_grade_runs(s, current_price=100.22, min_age_days=0) == 1
+    assert find_and_grade_runs(s, current_price=100.22) == 1
+
+
+# ── the age gate that was declared and never ran ─────────────────────────────
+
+def test_the_grader_takes_no_age_parameter():
+    """`min_age_days` sat in this signature and was never read.
+
+    It went dead at `RSK-018`, when `get_ungraded_runs(min_age_days)` was
+    replaced by `get_due_runs()`: "the row is old enough" became "the forecast
+    period has elapsed", which is the better rule and subsumes it. The parameter
+    stayed, so a caller reading the signature believed a five-day age gate was in
+    force, and thirty call sites passed `min_age_days=0` to disable something
+    that was not running.
+
+    Pinned by signature so it cannot be reintroduced as a parameter that lies.
+    """
+    import inspect
+    params = inspect.signature(find_and_grade_runs).parameters
+    assert 'min_age_days' not in params
+    with pytest.raises(TypeError):
+        find_and_grade_runs(None, current_price=1.0, min_age_days=0)
+
+
+def test_get_ungraded_runs_still_honours_the_age_filter(due_run):
+    """The parameter is real on the method that reads it, and removing it from
+    the grader must not be read as removing it everywhere."""
+    s, _ = due_run(baseline=98.82, estimate=1.42)
+    assert len(s.get_ungraded_runs(min_age_days=0.0)) == 1
+    assert s.get_ungraded_runs(min_age_days=365.0) == []
+
+
+def test_a_short_horizon_run_grades_as_soon_as_its_week_settles(due_run):
+    """The case that separates the two rules.
+
+    A run made minutes before an adjustment has a horizon of hours, so its
+    forecast week closes almost immediately. Under the declared five-day age gate
+    it would have waited five days; under the rule that actually governs it
+    grades as soon as that week has a price. Two runs in the stored record were
+    made this way, with horizons of 0.021 and 0.006 days.
+    """
+    from datetime import timedelta
+
+    s, run_id = due_run(baseline=85.00, estimate=-0.5, horizon_days=0.02,
+                        weeks_ago=2)
+    week = s.target_cycle(dict(s.get_run(run_id)))
+    s.record_price_observation(84.38, observed_at=week + timedelta(days=2))
+    assert find_and_grade_runs(s, current_price=84.38) == 1

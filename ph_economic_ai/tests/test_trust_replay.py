@@ -80,7 +80,7 @@ def test_a_correct_grade_survives_a_withdrawal_pass(due_run):
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
     store.save_agent_responses(run_id, _responses(['A'], estimate=-0.6))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert find_and_grade_runs(store, current_price=84.38) == 1
     graded = store.get_all_trust()
 
     assert store.withdraw_cross_cycle_grades() == []
@@ -235,7 +235,7 @@ def test_reconstruction_grades_each_agent_once_on_its_final_word(due_run):
          'model_used': 'm'} for r in (1, 2, 3)])
     store.update_trust('A', internal_score=0.7)   # as the swarm does, at run time
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert find_and_grade_runs(store, current_price=84.38) == 1
     live = store.get_trust('A')
 
     con = sqlite3.connect(store._path)
@@ -292,7 +292,7 @@ def test_scoring_after_a_reset_is_fully_derivable(due_run):
     store.save_agent_responses(run_id, _responses(['A'], estimate=-0.6))
     store.update_trust('A', internal_score=0.7)
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert find_and_grade_runs(store, current_price=84.38) == 1
     live = store.get_trust('A')
 
     # Replaying from the prior over only the post-reset events reproduces it.
@@ -341,7 +341,7 @@ def test_the_basis_counts_the_events_behind_the_scores(due_run):
     store.save_agent_responses(run_id, _responses(['A'], estimate=-0.6))
     store.update_trust('A', internal_score=0.7)
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
 
     prov = store.trust_provenance()
     assert prov['response'] == 1 and prov['grade'] == 1
@@ -389,7 +389,7 @@ def test_an_agent_that_spoke_twice_is_graded_once(due_run):
     store.save_agent_responses(run_id, _rounds('A', [(1, -0.2), (2, -0.6)])
                                + _rounds('B', [(1, -0.6)]))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert find_and_grade_runs(store, current_price=84.38) == 1
 
     events = sqlite3.connect(store._path).execute(
         "SELECT agent_name, COUNT(*) FROM trust_events WHERE kind='grade' "
@@ -411,7 +411,7 @@ def test_a_revised_estimate_is_not_graded(due_run):
     # agent withdrew would reward it.
     store.save_agent_responses(run_id, _rounds('A', [(1, -0.62), (2, 2.50)]))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
 
     acc = sqlite3.connect(store._path).execute(
         "SELECT accuracy_score FROM trust_events WHERE kind='grade'").fetchall()
@@ -425,7 +425,7 @@ def test_the_highest_round_wins_regardless_of_insert_order(due_run):
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
     store.save_agent_responses(run_id, _rounds('A', [(3, -0.62), (1, 2.50)]))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
     acc = sqlite3.connect(store._path).execute(
         "SELECT accuracy_score FROM trust_events WHERE kind='grade'").fetchone()
     assert acc[0] == pytest.approx(1.0), 'round 3 was exactly right'
@@ -439,7 +439,7 @@ def test_rebuilding_grade_events_applies_the_current_rule(due_run):
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
     store.save_agent_responses(run_id, _rounds('A', [(1, -0.2), (2, -0.6)]))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
 
     con = sqlite3.connect(store._path)
     # Simulate a log written under the old per-response rule.
@@ -474,7 +474,7 @@ def test_runs_participated_counts_runs_not_trust_updates(due_run):
     store.save_agent_responses(run_id, _responses(['A'], estimate=-0.6))
     store.update_trust('A', internal_score=0.7)
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
 
     row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
     assert row['runs_participated'] == 1, 'one run, two trust updates'
@@ -513,7 +513,7 @@ def test_avg_accuracy_error_is_an_error_in_pesos_not_a_score(due_run):
     # Actual change is -0.62; this agent said +1.00, so it missed by 1.62.
     store.save_agent_responses(run_id, _responses(['A'], estimate=1.0))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    assert find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert find_and_grade_runs(store, current_price=84.38) == 1
 
     row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
     assert row['avg_accuracy_error'] == pytest.approx(1.62, abs=0.01)
@@ -528,7 +528,7 @@ def test_the_error_survives_the_score_flooring(due_run):
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38)
     store.save_agent_responses(run_id, _responses(['A'], estimate=6.0))
     from ph_economic_ai.engine.ground_truth import find_and_grade_runs
-    find_and_grade_runs(store, current_price=84.38, min_age_days=0)
+    find_and_grade_runs(store, current_price=84.38)
 
     row = [r for r in store.get_all_trust_rows() if r['agent_name'] == 'A'][0]
     assert row['avg_accuracy_error'] == pytest.approx(6.62, abs=0.01)

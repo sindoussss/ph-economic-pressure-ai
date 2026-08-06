@@ -246,7 +246,7 @@ def test_an_implausible_outcome_is_refused(due_run):
     from ph_economic_ai.engine import ground_truth as gt
     store, run_id = due_run(baseline=98.82, estimate=-1.0, price=84.38,
                             confidence_pct=50)
-    assert gt.find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 0
+    assert gt.find_and_grade_runs(store, current_price=84.38) == 0
     assert store.get_run(run_id)['actual_price_change'] is None
 
 
@@ -255,7 +255,7 @@ def test_a_real_outcome_is_still_graded(due_run):
     from ph_economic_ai.engine import ground_truth as gt
     store, run_id = due_run(baseline=85.00, estimate=-0.5, price=84.38,
                             confidence_pct=50)
-    assert gt.find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 1
+    assert gt.find_and_grade_runs(store, current_price=84.38) == 1
     row = store.get_run(run_id)
     assert row['actual_price_change'] == pytest.approx(-0.62)
     assert row['accuracy_error'] == pytest.approx(0.12, abs=0.01)
@@ -335,7 +335,7 @@ def test_a_run_with_no_baseline_is_never_graded(tmp_path):
     store = AgentTrustStore(db_path=str(tmp_path / 't.db'))
     run_id = store.save_run(scenario={'oil_pct': -3.0}, final_estimate=-1.0,
                             confidence_pct=50, horizon_days=-1.0)
-    assert gt.find_and_grade_runs(store, current_price=84.38, min_age_days=0) == 0
+    assert gt.find_and_grade_runs(store, current_price=84.38) == 0
     assert store.get_run(run_id)['actual_price_change'] is None
     store.close()
 
