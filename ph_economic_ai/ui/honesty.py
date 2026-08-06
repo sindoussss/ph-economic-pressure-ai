@@ -543,14 +543,33 @@ def regions_resting_on_an_assumption() -> frozenset:
     """
     from ph_economic_ai.engine.swarm import ALL_REGIONS, ASSUMED_MULTIPLIERS
 
+    # Which region anchors each group. Three things were wrong with how this was
+    # built, none of which changed today's answer:
+    #
+    # * `g['name'] == g.get('name')` is a tautology, the `n == n` shape `DEC-060`
+    #   already recorded once as a defect class.
+    # * `DEBATED_REGIONS` was typed out again as a literal tuple, five lines
+    #   below the module constant holding the same four names. A literal copy
+    #   does not follow the constant.
+    # * `anchors.get(...)` returning None dropped a region from the result
+    #   SILENTLY. That understates a figure the map prints as "N of the 17 rest
+    #   on a freight premium nobody has measured", and understating is the
+    #   dangerous direction for that sentence.
     anchors = {g['anchor']: g['name'] for g in ALL_REGIONS
-               if g['name'] == g.get('name') and g['anchor'] is not None
-               and g['name'] in ('NCR', 'Central Luzon', 'Western Visayas',
-                                 'Davao Region')}
-    return frozenset(
-        g['name'] for g in ALL_REGIONS
-        if g['name'] in ASSUMED_MULTIPLIERS
-        or anchors.get(g['anchor']) in ASSUMED_MULTIPLIERS)
+               if g['name'] in DEBATED_REGIONS and g['anchor'] is not None}
+
+    def rests(group: dict) -> bool:
+        if group['name'] in ASSUMED_MULTIPLIERS:
+            return True
+        anchoring = anchors.get(group['anchor'])
+        if anchoring is None:
+            # No identifiable anchor means its provenance cannot be established,
+            # which is exactly what this set is counting. Fail toward the larger
+            # count rather than out of it.
+            return True
+        return anchoring in ASSUMED_MULTIPLIERS
+
+    return frozenset(g['name'] for g in ALL_REGIONS if rests(g))
 
 
 def regional_tooltip_note(region: str) -> str:
