@@ -402,3 +402,81 @@ def test_the_regional_note_degrades_without_inventing_a_sample_size(monkeypatch)
     line = honesty.regional_basis()
     assert 'weeks' not in line
     assert 'in a pre-registered test' in line
+
+
+# ── the assumption count must not shrink by accident ─────────────────────────
+
+def _resting_ast():
+    """The function's parsed body, comments excluded.
+
+    Grepping the source text cannot tell code from prose: the first version of
+    these two tests matched the comment that EXPLAINS the tautology and failed
+    on a correct function. The AST carries no comments, so it answers the
+    question actually being asked.
+    """
+    import ast
+    import inspect
+    import textwrap
+    src = textwrap.dedent(
+        inspect.getsource(honesty.regions_resting_on_an_assumption))
+    return ast.parse(src)
+
+
+def test_the_resting_set_uses_the_debated_constant_not_a_copy():
+    """`DEBATED_REGIONS` was typed out again as a literal tuple five lines below
+    the module constant holding the same four names. A literal copy does not
+    follow the constant."""
+    import ast
+    tree = _resting_ast()
+    literals = {n.value for n in ast.walk(tree)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    assert not (set(honesty.DEBATED_REGIONS) & literals), (
+        'a debated region name is written into the code rather than read')
+    assert any(isinstance(n, ast.Name) and n.id == 'DEBATED_REGIONS'
+               for n in ast.walk(tree))
+
+
+def test_the_resting_set_has_no_self_comparison():
+    """`g['name'] == g.get('name')` is always True. `DEC-060` recorded that exact
+    shape once already, from `attempts == _TRENDS_ATTEMPTS`."""
+    import ast
+    for node in ast.walk(_resting_ast()):
+        if isinstance(node, ast.Compare) and len(node.comparators) == 1:
+            left = ast.dump(node.left)
+            right = ast.dump(node.comparators[0])
+            assert left != right, f'comparison of a value with itself: {left}'
+
+
+def test_an_unresolvable_anchor_counts_as_resting(monkeypatch):
+    """`anchors.get(...)` returning None used to drop the region SILENTLY, which
+    understates a figure the map prints as "N of the 17 rest on a freight
+    premium nobody has measured". Understating is the dangerous direction for
+    that sentence, so an unidentifiable anchor now counts as resting."""
+    from ph_economic_ai.engine import swarm
+    roster = [{'name': 'NCR', 'anchor': 0},
+              {'name': 'Orphan', 'anchor': 99}]     # anchor group with no debated region
+    monkeypatch.setattr(swarm, 'ALL_REGIONS', roster)
+    monkeypatch.setattr(swarm, 'ASSUMED_MULTIPLIERS', frozenset())
+    assert 'Orphan' in honesty.regions_resting_on_an_assumption()
+
+
+def test_the_live_roster_still_reports_eight():
+    """The rewrite must not move today's answer; it removes ways it could move
+    without anyone noticing."""
+    resting = honesty.regions_resting_on_an_assumption()
+    assert len(resting) == 8
+    assert {'BARMM', 'CALABARZON', 'MIMAROPA', 'Bicol Region'} <= resting
+
+
+def test_every_declared_unvalidatable_region_has_no_measured_series():
+    """The four are a claim about DOE's archive. `regional_accuracy.json` lists
+    every region with a measured per-region MAE, so the claim is checkable and
+    a data refresh that gave one of them a series would contradict it."""
+    import json
+    from pathlib import Path
+    import ph_economic_ai
+    art = json.loads((Path(ph_economic_ai.__file__).parent / 'benchmark'
+                      / 'artifacts' / 'regional_accuracy.json').read_text(encoding='utf-8'))
+    measured = set(art['per_region_mae'])
+    assert not (honesty.UNVALIDATABLE_REGIONS & measured), (
+        'a region declared unvalidatable now has a measured series')
