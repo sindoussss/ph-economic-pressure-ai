@@ -513,6 +513,7 @@ Rules:
 - label: node title, 5 words max
 - mechanism: one sentence explaining the causal link to the next step
 - magnitude: quantified effect using actual numbers from the verdicts (e.g. "+₱1.42/L", "+2.1%", "+0.34 ppt CPI")
+- the SIGN must match the direction the verdicts give. The worked example below is an entirely rising scenario, so it shows no negative magnitude; on an easing week write "-₱1.42/L", never "+₱-1.42/L"
 - Last step must state the BSP policy signal; if an AUTHORITATIVE PROJECTED CPI is given, cite that exact figure and do not recompute it
 
 Example output:
