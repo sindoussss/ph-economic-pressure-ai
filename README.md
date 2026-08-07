@@ -47,7 +47,7 @@ This runs the full walk-forward audit — including the baseline size study, the
 
 ## Run the app (interactive simulator)
 
-The app adds a 20-agent swarm + a MiroFish-style knowledge-graph simulation on top of the benchmark. It runs **fully offline on a local [Ollama](https://ollama.com)** — no API key, no quota, no internet:
+The app adds a 20-agent swarm + a MiroFish-style knowledge-graph simulation on top of the benchmark. The language models run **fully offline on a local [Ollama](https://ollama.com)** — no API key, no quota — in this default configuration; the `STRATA_LLM_*` env vars below can opt a tier into a hosted provider instead. A live run also fetches the current retail fuel price from a public price-tracking site over the network, falling back to a stored constant if that fails; nothing else touches the network in the default, all-local configuration:
 
 ```bash
 pip install -r requirements-app.txt

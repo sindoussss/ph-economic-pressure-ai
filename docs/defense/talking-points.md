@@ -45,7 +45,7 @@ All skill = **% RMSE improvement over the strongest naive baseline**, walk-forwa
 
 **The map is uniformly negative, and that is the finding.**
 
-**The money line:** *"An earlier version of this audit reported four significant positives. The strongest — a +28.3% electricity driver edge, DM p = 0.0011 — passed every guard I had: significance, sub-sample stability, a real-time-data robustness re-test, a Bonferroni correction, and a mechanism that is institutionally accurate. It was still an artifact. The model was worse than predicting a constant, and the entire edge was the gap between the random walk and the mean on a mean-reverting target. I found it, I published the refutation, and I derived the condition under which it happens."*
+**The money line:** *"An earlier version of this audit reported four significant positives. The strongest — a +28.3% electricity driver edge, DM p = 0.0011 — passed every guard I had: significance, sub-sample stability, a trailing-preliminary-months robustness re-test, a Bonferroni correction, and a mechanism that is institutionally accurate. It was still an artifact. The model was worse than predicting a constant, and the entire edge was the gap between the random walk and the mean on a mean-reverting target. I found it, I published the refutation, and I derived the condition under which it happens."*
 
 **The closed form (know this cold).** For a stationary target with lag-1 autocorrelation ρ, a forecaster carrying *no information beyond the unconditional mean* scores
 
