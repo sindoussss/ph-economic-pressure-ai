@@ -1,5 +1,19 @@
 # Reviewer's-Eye Critique — Strata / PH Predictability Audit
 
+> ⚠️ **Superseded (2026-08-07, found and flagged under `RSK-014`).** This document
+> predates the 2026-07-28 baseline correction and was never updated or marked stale
+> afterward, unlike every other pre-correction document in this repository. It treats
+> electricity as "your headline positive" and "a true positive," and the Multiple
+> Comparisons section (M1) analyzes "the four headline positives" surviving Bonferroni
+> — **all four were withdrawn.** M2's "no method beats a random walk" framing and R3's
+> "the anchoring's headline is only marginal" section are unaffected and still apply.
+> The rest of the content, especially the "Lead with these" section and M1, must not be
+> rehearsed as written. For current, correct defense preparation, use
+> [`talking-points.md`](talking-points.md), which was rewritten for exactly this
+> correction, and [`mean-baseline-finding.md`](mean-baseline-finding.md) for the finding
+> itself. Kept as a record of the original pre-submission review; do not cite its
+> "survives Bonferroni" or "true positive" language.
+
 **Purpose.** An adversarial pre-read: where a tough reviewer at an international
 journal (or a sharp defense panelist) will attack, whether each attack is fatal
 or fixable, and the defense or the action to take *before* submission. Ordered
