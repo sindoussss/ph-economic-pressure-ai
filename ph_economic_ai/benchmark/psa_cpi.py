@@ -187,7 +187,7 @@ def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
         .sort_values('date')
     )
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
+    df.to_csv(out_csv, index=False, lineterminator='\n')
     write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 07 Transport',
                  params={'coicop_prefix': '07', 'base_year': '2018=100',
                          'endpoints': 'backcast + current PX-Web tables'},
@@ -224,7 +224,7 @@ def fetch_food_cpi(out_csv: Path = FOOD_CSV) -> None:
     df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'food_cpi'])
           .sort_values('date'))
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
+    df.to_csv(out_csv, index=False, lineterminator='\n')
     write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 01 Food and non-alcoholic beverages',
                  params={'coicop_prefix': '01', 'base_year': '2018=100',
                          'endpoints': 'backcast + current PX-Web tables'},
@@ -271,7 +271,7 @@ def fetch_electricity_cpi(out_csv: Path = ELECTRICITY_CSV) -> None:
     df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'electricity_cpi'])
           .sort_values('date'))
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
+    df.to_csv(out_csv, index=False, lineterminator='\n')
     write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 04.5.1 Electricity',
                  params={'coicop_prefix': '04.5.1', 'base_year': '2018=100',
                          'endpoints': 'backcast + current PX-Web tables'},

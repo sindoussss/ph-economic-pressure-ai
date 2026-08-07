@@ -41,7 +41,7 @@ def refresh(url: str = URL, out=OUT) -> int:
         print('fredmd: unexpected layout (no Transform: row) — nothing written')
         return 0
     out.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out, index=False)
+    df.to_csv(out, index=False, lineterminator='\n')
     write_record(out, source='FRED-MD monthly database (McCracken and Ng 2016)',
                  params={'vintage': 'current'},
                  transformations=['keep the tcode header row',

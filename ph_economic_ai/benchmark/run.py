@@ -221,7 +221,8 @@ def main():
 
     pd.DataFrame({'date': bt_dates, 'y_true': yt, 'y_pred': yp,
                   'low90': yp - qhat90, 'high90': yp + qhat90}
-                 ).to_csv(report.ARTIFACTS / 'backtest_predictions.csv', index=False)
+                 ).to_csv(report.ARTIFACTS / 'backtest_predictions.csv', index=False,
+                          lineterminator='\n')
 
     import json as _json
     (report.ARTIFACTS / 'ablation_table.json').write_text(
