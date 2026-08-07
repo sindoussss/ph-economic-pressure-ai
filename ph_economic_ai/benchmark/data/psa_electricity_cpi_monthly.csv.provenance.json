@@ -16,7 +16,7 @@
   "units": "CPI index (2018=100)",
   "notes": "PSA gold target for the electricity nowcast.",
   "retrieved_at": "2026-07-27T19:40:13+00:00",
-  "sha256": "c9698a124e9f19ac5147b637a7bf287500fe6a95b98b53f8e3e00896965e4d17",
+  "sha256": "7b813e0b6a78a49f34ecadd3b8c420c845f0e3b77f02496ac6c2df34045a746c",
   "rows": 390,
   "first_month": "1994-01",
   "last_month": "2026-06",

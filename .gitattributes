@@ -1,0 +1,6 @@
+# Data files are checksummed byte-for-byte by ph_economic_ai/benchmark/provenance.py.
+# Without this, core.autocrlf differences between platforms silently change what a
+# checkout produces, so the same commit hashes differently on Windows and Linux CI --
+# the file's actual content never changed, but the platform doing the checkout did.
+*.csv text eol=lf
+*.provenance.json text eol=lf

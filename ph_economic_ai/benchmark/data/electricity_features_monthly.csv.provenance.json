@@ -23,7 +23,7 @@
   "units": "USD/bbl, USD/MMBtu, PHP per USD",
   "notes": "Electricity-CPI predictor panel.",
   "retrieved_at": "2026-07-27T19:29:43+00:00",
-  "sha256": "73b224064e9836c90bd170233c08c36a140ab92a0dc6426b3fa08076cc0eca68",
+  "sha256": "9bf45bd705825325b2250216dd6680d4ffdf3a54b01f4b90d3fc58a3d3e3ab83",
   "rows": 229,
   "first_month": "2007-07",
   "last_month": "2026-07",

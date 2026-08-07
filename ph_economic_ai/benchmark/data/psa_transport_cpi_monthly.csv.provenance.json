@@ -16,7 +16,7 @@
   "units": "CPI index (2018=100)",
   "notes": "PSA gold target for the transport nowcast.",
   "retrieved_at": "2026-07-27T19:40:11+00:00",
-  "sha256": "f0f88fc55f603b6a6e31eb5cc56ec35145e737facfcb0e7fb069cbdb81611d72",
+  "sha256": "bc37475de29ab1cff942a5cd81a3542f82e92864ad7bb14bdaa8c3af1b3eebab",
   "rows": 390,
   "first_month": "1994-01",
   "last_month": "2026-06",

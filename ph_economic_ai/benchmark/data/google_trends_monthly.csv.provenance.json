@@ -14,7 +14,7 @@
   "units": "Google Trends interest index (0-100 per term)",
   "notes": "Sentiment nowcast input. Never pass retries= to TrendReq: urllib3 v2 removed Retry(method_whitelist=).",
   "retrieved_at": "2026-08-01T06:08:51+00:00",
-  "sha256": "705835bc6d65155596f99db0ad14a6b0a74cf1cc0e7daad4f9185b3aa947c6a6",
+  "sha256": "c6bad0c5f8a1cac26027e667af2b7200906194ec62f8509b0b3fe54ac41e18d6",
   "rows": 128,
   "first_month": "2016-01",
   "last_month": "2026-08",

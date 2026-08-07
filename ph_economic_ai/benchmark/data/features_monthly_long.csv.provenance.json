@@ -25,7 +25,7 @@
   "units": "USD/bbl, PHP per USD, PHP per litre",
   "notes": "Long-window panel.",
   "retrieved_at": "2026-07-27T19:29:28+00:00",
-  "sha256": "f88fabaf1d9a4f17cd1f28b3e225c51b8c428933d863209d9b015a2fd9264138",
+  "sha256": "51cdcff0b965ef93aec676cbf7184542084a2afe8e106b0c776422b822dad5f6",
   "rows": 229,
   "first_month": "2007-07",
   "last_month": "2026-07",
