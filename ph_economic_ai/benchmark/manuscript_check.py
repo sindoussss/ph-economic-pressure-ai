@@ -66,9 +66,17 @@ def artifact_sample_sizes(report: dict) -> set[int]:
 
 
 def scan_sample_sizes(text: str) -> list[dict]:
-    """Every `n = <int>` a manuscript asserts, with its line and context."""
+    """Every `n = <int>` a manuscript asserts, with its line and context.
+
+    A line inside a markdown blockquote (leading `>`) is skipped. This
+    manuscript uses blockquotes only for the ARTIFACT-DIVERGENCE notice, which
+    documents a past correction by naming the old number -- "n = 51/52 -> 72"
+    -- and that historical mention is not a live claim to check.
+    """
     out = []
     for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.lstrip().startswith('>'):
+            continue
         for match in _N_PATTERN.finditer(line):
             out.append({'line': lineno, 'n': int(match.group(1)),
                         'context': line.strip()[:160]})
@@ -124,9 +132,28 @@ def check_verdicts(text: str, report: dict) -> list[dict]:
     return findings
 
 
-def check_manuscript(path: Path, report: dict) -> dict:
+def all_committed_artifacts(exclude: Path = None, artifacts_dir: Path = None) -> list[dict]:
+    """Every committed artifact JSON, parsed, for pooling sample sizes across
+    all of them rather than reading `accuracy_report.json` alone. A manuscript
+    number is flagged only if no artifact anywhere reports it -- narrower
+    coverage here only produces false positives, such as `sentiment_nowcast.json`
+    reporting food's n = 102 while `accuracy_report.json` never mentions it.
+    """
+    directory = artifacts_dir or ACCURACY_REPORT.parent
+    out = []
+    for path in sorted(directory.glob('*.json')):
+        if exclude is not None and path == exclude:
+            continue
+        try:
+            out.append(json.loads(path.read_text(encoding='utf-8')))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return out
+
+
+def check_manuscript(path: Path, verdict_report: dict, size_pool: list) -> dict:
     text = path.read_text(encoding='utf-8')
-    findings = check_sample_sizes(text, report) + check_verdicts(text, report)
+    findings = check_sample_sizes(text, size_pool) + check_verdicts(text, verdict_report)
     mismatches = [f for f in findings if f['severity'] == 'mismatch']
     return {
         'manuscript': path.name,
@@ -139,13 +166,22 @@ def check_manuscript(path: Path, report: dict) -> dict:
 
 
 def run(manuscripts=MANUSCRIPTS, report_path: Path = None) -> dict:
-    report = json.loads(Path(report_path or ACCURACY_REPORT).read_text(encoding='utf-8'))
-    results = [check_manuscript(p, report) for p in manuscripts if p.exists()]
+    accuracy_path = Path(report_path or ACCURACY_REPORT)
+    verdict_report = json.loads(accuracy_path.read_text(encoding='utf-8'))
+    # Verdicts (efficient/predictable) are specific to the audit panel in
+    # accuracy_report.json and stay scoped to it. Sample sizes are pooled
+    # across every committed artifact so a number correct in one file is not
+    # flagged for being absent from another.
+    if report_path is None:
+        size_pool = [verdict_report] + all_committed_artifacts(exclude=accuracy_path)
+    else:
+        size_pool = [verdict_report]
+    results = [check_manuscript(p, verdict_report, size_pool) for p in manuscripts if p.exists()]
     total = sum(r['n_mismatches'] for r in results)
     undeclared = [r['manuscript'] for r in results
                   if r['n_mismatches'] and not r['declares_divergence']]
     return {
-        'artifact_sample_sizes': sorted(artifact_sample_sizes(report)),
+        'artifact_sample_sizes': sorted(artifact_sample_sizes(size_pool)),
         'manuscripts': results,
         'total_mismatches': total,
         'undeclared_divergence': undeclared,

@@ -61,6 +61,39 @@ def test_a_verdict_that_agrees_is_not_flagged():
     assert mc.check_verdicts('The fuel target is predictable.', REPORT) == []
 
 
+def test_blockquote_lines_are_not_scanned_for_sample_sizes():
+    """The ARTIFACT-DIVERGENCE notice documents a past correction by naming the
+    old number -- 'n = 51/52 -> 72' -- inside a blockquote. That historical
+    mention is not a live claim to re-check."""
+    text = '> Reconciled: n = 51/52 became n = 72.'
+    assert mc.check_sample_sizes(text, REPORT) == []
+
+
+def test_a_sample_size_a_different_artifact_reports_is_accepted():
+    """sentiment_nowcast.json reports food's n = 102 while accuracy_report.json
+    never mentions it. Pooling across artifacts must not flag a number just
+    because one file happens to omit it."""
+    other_report = {'targets': {'food': {'n': 102}}}
+    pool = [REPORT, other_report]
+    assert mc.check_sample_sizes('Food MoM (n = 102).', pool) == []
+
+
+def test_all_committed_artifacts_pools_every_json_file(tmp_path):
+    (tmp_path / 'a.json').write_text(json.dumps({'n': 42}), encoding='utf-8')
+    (tmp_path / 'b.json').write_text(json.dumps({'thing': {'n': 99}}), encoding='utf-8')
+    (tmp_path / 'not_json.txt').write_text('n = 1', encoding='utf-8')
+    reports = mc.all_committed_artifacts(artifacts_dir=tmp_path)
+    assert mc.artifact_sample_sizes(reports) == {42, 99}
+
+
+def test_all_committed_artifacts_excludes_the_given_path(tmp_path):
+    excluded = tmp_path / 'accuracy_report.json'
+    excluded.write_text(json.dumps({'n': 1}), encoding='utf-8')
+    (tmp_path / 'other.json').write_text(json.dumps({'n': 2}), encoding='utf-8')
+    reports = mc.all_committed_artifacts(exclude=excluded, artifacts_dir=tmp_path)
+    assert mc.artifact_sample_sizes(reports) == {2}
+
+
 def test_run_reports_the_marker(tmp_path):
     report = tmp_path / 'r.json'
     report.write_text(json.dumps(REPORT), encoding='utf-8')
