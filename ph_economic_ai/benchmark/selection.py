@@ -147,10 +147,30 @@ def run_selection_holdout(frame, methods, baseline_pool, min_train: int = 24,
 
 
 def run() -> dict:
-    """Selection-honest re-test of the targets whose verdicts depend on a choice."""
+    """Selection-honest re-test of the targets whose verdicts depend on a choice.
+
+    `RSK-004`: this covered only `headline_mom` and `fuel_audit` until
+    `docs/preregistration/2026-08-08-selection-holdout-remaining-headline-verdicts.md`
+    pre-registered the other nine. Every frame and candidate/baseline-pool
+    choice below matches that document and `corrected_audit.py`'s own
+    construction -- nothing here is new methodology, only the same protocol
+    applied to targets it had not yet reached.
+    """
+    from ph_economic_ai.benchmark.electricity_nowcast import (
+        _build_electricity_frame, load_electricity_features)
+    from ph_economic_ai.benchmark.food_nowcast import _build_food_frame, load_food_features
+    from ph_economic_ai.benchmark.longsample import load_long_features
     from ph_economic_ai.benchmark.nowcast import (
         BASELINE_POOL, PANEL_METHODS, build_nowcast_frame)
+    from ph_economic_ai.benchmark.psa_cpi import load_transport_mom
     from ph_economic_ai.benchmark.targets import TARGETS, load_inflation_mom
+
+    # Driver-only ablations exclude arima/ets, matching corrected_audit.py's
+    # DRV_OLD -- own-dynamics methods have nothing to fit without prev_mom.
+    DRIVER_ONLY_METHODS = ['random_walk', 'seasonal_naive', 'drift', 'ridge', 'hgb']
+
+    def driver_only(frame):
+        return frame.drop(columns=['prev_mom'], errors='ignore')
 
     out = {}
     frame = build_nowcast_frame(target_loader=load_inflation_mom, prev_col='prev_mom')
@@ -161,6 +181,33 @@ def run() -> dict:
     fuel = TARGETS['fuel'].build_frame()
     out['fuel_audit'] = run_selection_holdout(
         fuel, PANEL_METHODS, ('random_walk', 'drift', 'seasonal_naive', 'mean'))
+
+    # The nine pre-registered 2026-08-08.
+    out['fx_forecast'] = run_selection_holdout(
+        TARGETS['fx'].build_frame(), PANEL_METHODS, BASELINE_POOL)
+    out['yoy_forecast'] = run_selection_holdout(
+        TARGETS['inflation'].build_frame(), PANEL_METHODS, BASELINE_POOL)
+
+    headline_long = build_nowcast_frame(target_loader=load_inflation_mom, prev_col='prev_mom',
+                                        features=load_long_features())
+    out['headline_mom_long'] = run_selection_holdout(headline_long, PANEL_METHODS, BASELINE_POOL)
+
+    food = _build_food_frame(load_food_features())
+    out['food_mom_full'] = run_selection_holdout(food, PANEL_METHODS, BASELINE_POOL)
+    out['food_mom_driver_only'] = run_selection_holdout(
+        driver_only(food), DRIVER_ONLY_METHODS, BASELINE_POOL)
+
+    elec = _build_electricity_frame(load_electricity_features())
+    out['electricity_mom_full'] = run_selection_holdout(elec, PANEL_METHODS, BASELINE_POOL)
+    out['electricity_mom_driver_only'] = run_selection_holdout(
+        driver_only(elec), DRIVER_ONLY_METHODS, BASELINE_POOL)
+
+    transport = build_nowcast_frame(target_loader=load_transport_mom, prev_col='prev_mom',
+                                    features=load_long_features())
+    out['transport_mom_full'] = run_selection_holdout(transport, PANEL_METHODS, BASELINE_POOL)
+    out['transport_mom_driver_only'] = run_selection_holdout(
+        driver_only(transport), DRIVER_ONLY_METHODS, BASELINE_POOL)
+
     return out
 
 

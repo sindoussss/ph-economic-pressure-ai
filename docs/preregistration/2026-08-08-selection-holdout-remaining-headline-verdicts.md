@@ -130,3 +130,41 @@ than treating the new nine differently.
    `headline_mom`/`fuel_audit`'s two-stage numbers) should be extended to
    show all eleven, that is a wording/scope decision for the owner, not
    assumed here.
+
+## Result, run 2026-08-08
+
+**All nine came back `not_confirmed_on_holdout`, exactly the expected outcome.**
+No verdict changes; the manuscript's published null and withdrawn claims all
+hold under the selection-honest re-test.
+
+| Target | n | Selection skill | Holdout skill | Shrinkage | Holdout DM p | n holdout |
+|---|---|---|---|---|---|---|
+| USD/PHP forecast | 105 | +0.0023 | -0.0448 | +0.0471 | 0.4632 | 31 |
+| YoY inflation forecast | 104 | +0.2049 | +0.0433 | +0.1616 | 0.7122 | 31 |
+| Headline MoM (long) | 214 | +0.0651 | +0.0253 | +0.0398 | 0.6679 | 64 |
+| Food MoM, full nowcast | 227 | +0.0964 | +0.0004 | +0.0960 | 0.9949 | 68 |
+| Food MoM, driver-only | 227 | -0.1038 | -0.0239 | -0.0799 | 0.5090 | 68 |
+| Electricity MoM, full nowcast | 227 | -0.0492 | -0.0065 | -0.0427 | 0.7325 | 68 |
+| Electricity MoM, driver-only | 227 | -0.0300 | -0.0003 | -0.0296 | 0.9905 | 68 |
+| Transport MoM, full nowcast | 227 | +0.0559 | -0.0360 | +0.0919 | 0.8465 | 68 |
+| Transport MoM, driver-only | 227 | -0.0435 | +0.0083 | -0.0517 | 0.9284 | 68 |
+
+Frame sizes matched the feasibility check above exactly (105/104/214/227),
+confirming nothing shifted between this document being written and the run.
+Every holdout comfortably cleared `MIN_HOLDOUT_PREDICTIONS` (31-68 rows
+against a floor of 12); no target returned `insufficient_data`.
+
+**Worth noting rather than skipping past: YoY inflation's selection-stage
+skill (+20.5%) was the largest of any target in either the original two or
+these nine, and it fully evaporates on the holdout (+4.3%, DM p=0.71) --
+the single cleanest illustration in this dataset of exactly the selection
+bias `RSK-004` exists to catch. Electricity's driver-only row, the withdrawn
+flagship, shows the smallest shrinkage of the nine (-0.0296, i.e. the holdout
+is marginally less negative than selection) precisely because there was
+never an edge to shrink away from -- both stages sit at essentially zero,
+consistent with `mean-baseline-finding.md`'s account of what the +28.3%
+artifact actually was.
+
+`selection_holdout.json` now carries all eleven targets. `RSK-004` closes on
+this evidence: every headline verdict the manuscript reports has now been
+run through the selection-holdout protocol, and none of them changes.
