@@ -27,9 +27,15 @@ from pathlib import Path
 from ph_economic_ai.benchmark.paths import ACCURACY_REPORT, BENCHMARK_DIR
 
 DOCS = BENCHMARK_DIR.parent.parent / 'docs'
+REPO_ROOT = DOCS.parent
 MANUSCRIPTS = (
     DOCS / 'manuscript' / '2026-06-10-thesis-manuscript.md',
     DOCS / 'manuscript' / '2026-07-26-baseline-specification-note.md',
+    # README.md makes the same kind of claims (verdicts, sample sizes) to a far
+    # larger audience than either manuscript, and had never been checked: its own
+    # "fuel: efficient" row was never caught by this tool, unlike the identical
+    # claim in the manuscript, because README.md was simply never in this tuple.
+    REPO_ROOT / 'README.md',
 )
 
 # `n = 24` is min_train, a design parameter, not a sample size. Simulation cells

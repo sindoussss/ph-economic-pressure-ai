@@ -111,6 +111,16 @@ def test_run_reports_the_marker(tmp_path):
     assert result['undeclared_divergence'] == []
 
 
+def test_readme_is_in_scope():
+    """README.md makes the same kind of claims (verdicts, sample sizes) to a far
+    larger audience than either manuscript, and was not checked until 2026-08-07:
+    its own "fuel: efficient" row was never caught here, only in the manuscript,
+    because README.md was simply never in MANUSCRIPTS. Pinned so it cannot be
+    dropped from scope silently."""
+    assert any(p.name == 'README.md' for p in mc.MANUSCRIPTS)
+    assert (mc.REPO_ROOT / 'README.md').exists()
+
+
 def test_no_shipped_manuscript_diverges_without_saying_so():
     """The invariant. A manuscript may be ahead of or behind the artifacts -- drafts
     legitimately are -- but it may not claim agreement it does not have.

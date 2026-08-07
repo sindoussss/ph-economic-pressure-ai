@@ -8,13 +8,16 @@ Most "AI predicts the economy" claims are never tested against a hard baseline. 
 > - **Validated:** the **benchmark** (`ph_economic_ai/benchmark`) — strictly-causal walk-forward backtests, Diebold–Mariano tests against the *strongest* naive baseline, and split-conformal prediction intervals. Fully reproducible **without any LLM**.
 > - **Exploratory:** the **multi-agent app** (the swarm, the knowledge-graph simulation, the "agent agreement" %). It's an interface and explanation layer — *not* a validated predictor. Agent agreement varies run-to-run and is **not** a calibrated probability.
 
+> **ARTIFACT-DIVERGENCE (2026-08-07).** The fuel row below says "efficient." A later audit found fuel's own 1-month panel shows a +12.1% Ridge edge over the random walk (`predictable`, DM p = 0.0337) — registered as `CLM-FUEL-EXPLORATORY-001`, exploratory rather than confirmed: it fails the audit family's Bonferroni threshold and was never predeclared. Whether to promote it into this table is the same authorial decision [`2026-06-10-thesis-manuscript.md`](docs/manuscript/2026-06-10-thesis-manuscript.md)'s own divergence notice defers — left to the author, not resolved here. Checked by `python -m ph_economic_ai.benchmark.manuscript_check`, which now covers this file too.
+
 ## Findings — the predictability map
 
 ![Predictability map — skill vs the strongest naive baseline per target: with the historical mean in the baseline pool, no target shows a detectable edge.](docs/img/predictability_map.png)
 
 | Target | Setup | Verdict |
 |---|---|---|
-| RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **efficient** — no method beats a random walk (skill ≈ −0.01 vs RW) |
+| RON95 fuel | 1-month forecast | **efficient** — the deployed model does not beat a random walk (skill −7.3% vs RW) |
+| USD/PHP · YoY inflation | 1-month forecast | **efficient** — no method beats a random walk (skill ≈ 0% vs RW) |
 | MoM inflation (headline) | nowcast, pre-release | **no better than naive** — ARIMA +4.1% vs the mean (p = 0.36) |
 | MoM inflation (food) | nowcast, pre-release | **no better than naive** — ARIMA +3.7% vs the mean (p = 0.46) |
 | Electricity-CPI | nowcast, driver-only | **no better than naive** — Ridge **−1.8%** vs the mean (p = 0.37) |
