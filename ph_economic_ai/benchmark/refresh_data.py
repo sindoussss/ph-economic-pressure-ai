@@ -136,7 +136,7 @@ def build_world_bank_csv() -> None:
     })
     out = out[~out['date'].duplicated(keep='last')].sort_values('date')
     WB_OUT.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(WB_OUT, index=False)
+    out.to_csv(WB_OUT, index=False, lineterminator='\n')
     write_record(WB_OUT, source='World Bank Global Fuel Prices Database workbook '
                                  '(datacatalog.worldbank.org/search/dataset/0066829/'
                                  'global-fuel-prices-database), Open Database License (ODbL)',
@@ -279,7 +279,7 @@ def build_features_csv() -> None:
     # month lags.
     assert_complete_months(base['date'], 'features_monthly.csv')
     FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
-    base.to_csv(FEATURES_OUT, index=False)
+    base.to_csv(FEATURES_OUT, index=False, lineterminator='\n')
     write_record(FEATURES_OUT, source=YAHOO_CHART,
                  params={'tickers': {'BZ=F': 'oil_price', 'PHP=X': 'usd_php', 'RB=F': 'rbob'},
                          'interval': '1d', 'range': '10y'},
@@ -313,7 +313,7 @@ def build_fx_csv() -> None:
     df.columns = ['date', 'usd_php']
     assert_complete_months(df['date'], 'usd_php_monthly.csv')
     FX_OUT.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(FX_OUT, index=False)
+    df.to_csv(FX_OUT, index=False, lineterminator='\n')
     write_record(FX_OUT, source=YAHOO_CHART,
                  params={'ticker': 'PHP=X', 'interval': '1d', 'range': '10y'},
                  transformations=DAILY_TRANSFORMS,
@@ -373,7 +373,7 @@ def build_cpi_csv() -> None:
     frame = frame[~frame['date'].duplicated(keep='last')].sort_values('date')
     assert_complete_months(frame['date'], 'ph_cpi_monthly.csv')
     CPI_OUT.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(CPI_OUT, index=False)
+    frame.to_csv(CPI_OUT, index=False, lineterminator='\n')
     write_record(CPI_OUT, source=source, params=params,
                  transformations=['take the observations array',
                                   'drop non-numeric observations',
@@ -406,7 +406,7 @@ def build_long_features(rng: str = 'max') -> None:
     base = base.sort_values('date')
     assert_complete_months(base['date'], 'features_monthly_long.csv')
     LONG_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
-    base.to_csv(LONG_FEATURES_OUT, index=False)
+    base.to_csv(LONG_FEATURES_OUT, index=False, lineterminator='\n')
     write_record(LONG_FEATURES_OUT, source=YAHOO_CHART,
                  params={'tickers': {'BZ=F': 'oil_price', 'PHP=X': 'usd_php', 'RB=F': 'rbob'},
                          'interval': '1d', 'window': 'five-year epoch chunks'},
@@ -432,7 +432,7 @@ def build_food_features(rng: str = 'max') -> None:
     base = base.sort_values('date')
     assert_complete_months(base['date'], 'food_features_monthly.csv')
     FOOD_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
-    base.to_csv(FOOD_FEATURES_OUT, index=False)
+    base.to_csv(FOOD_FEATURES_OUT, index=False, lineterminator='\n')
     write_record(FOOD_FEATURES_OUT, source=YAHOO_CHART,
                  params={'tickers': {'ZR=F': 'rice', 'ZW=F': 'wheat', 'ZC=F': 'corn',
                                      'ZS=F': 'soybean', 'BZ=F': 'oil_price', 'PHP=X': 'usd_php'},
@@ -456,7 +456,7 @@ def build_electricity_features(rng: str = 'max') -> None:
     base = base.sort_values('date')
     assert_complete_months(base['date'], 'electricity_features_monthly.csv')
     ELECTRICITY_FEATURES_OUT.parent.mkdir(parents=True, exist_ok=True)
-    base.to_csv(ELECTRICITY_FEATURES_OUT, index=False)
+    base.to_csv(ELECTRICITY_FEATURES_OUT, index=False, lineterminator='\n')
     write_record(ELECTRICITY_FEATURES_OUT, source=YAHOO_CHART,
                  params={'tickers': {'BZ=F': 'oil_price', 'NG=F': 'natgas', 'PHP=X': 'usd_php'},
                          'interval': '1d', 'window': 'five-year epoch chunks'},

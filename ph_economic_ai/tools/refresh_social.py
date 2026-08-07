@@ -98,7 +98,7 @@ def refresh_trends(terms=_TRENDS_TERMS, geo: str = 'PH', out: Path = _TRENDS_CSV
     monthly.index = monthly.index.strftime('%Y-%m')
     monthly.index.name = 'date'
     out.parent.mkdir(parents=True, exist_ok=True)
-    monthly.to_csv(out)
+    monthly.to_csv(out, lineterminator='\n')
     write_record(out, source='Google Trends via pytrends',
                  params={'geo': 'PH', 'granularity': 'monthly',
                          'payload': 'one term per request'},
