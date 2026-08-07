@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "file": "world_bank_ron95.csv",
-  "source": "World Bank Global Fuel Prices Database workbook",
+  "source": "World Bank Global Fuel Prices Database workbook (datacatalog.worldbank.org/search/dataset/0066829/global-fuel-prices-database), Open Database License (ODbL)",
   "request_params": {
-    "workbook_url": "not configured; built from a local copy",
+    "workbook_url": "not configured; built from the committed copy",
     "workbook_path": "C:\\Users\\user\\PycharmProjects\\PythonProject\\ph_economic_ai\\benchmark\\global_fuel_prices.xlsx",
     "sheet": "Premium Gasoline RON95 or above"
   },
@@ -14,9 +14,9 @@
     "drop duplicate months keeping last"
   ],
   "units": "PHP per litre",
-  "notes": "RON95 gold target. RSK-007: the workbook itself is not committed, so this record identifies it but does not make it retrievable.",
-  "retrieved_at": "2026-07-27T19:29:44+00:00",
-  "sha256": "d53285c9c12eb14bae31ae150b325da72f0f344398482bf31ffdf1fde87a6aee",
+  "notes": "RON95 gold target. RSK-007: the workbook is now committed at ph_economic_ai/benchmark/global_fuel_prices.xlsx, so this record both identifies and makes it retrievable. ODbL requires attribution on redistribution -- given here and in the manuscript References.",
+  "retrieved_at": "2026-08-07T10:40:30+00:00",
+  "sha256": "83ac471435019ab55ae4573d5aefcb870bb8e08c45b2d6fa7e536841ab278d55",
   "rows": 99,
   "first_month": "2017-01",
   "last_month": "2025-03",
