@@ -97,6 +97,41 @@ region's `n_weeks` falls under `MIN_WEEKS` because of pairs the guard now
 refuses, it moves from a measured verdict to INSUFFICIENT, and that is reported
 as a coverage loss, not folded into "consistent."
 
+## Result, run 2026-08-07
+
+**No code defect found here**, unlike its sibling re-run the same day. This
+script's estimator is a same-week ratio (`level_R(t) / level_NCR(t)`), not a
+week-over-week change, so `regional_grading.basis_consistent`'s switch-refusal
+(built for cross-week differencing) does not apply to its methodology. The
+only relevant fix is `regional_grading._price`'s own plausibility bound
+(`RSK-036`), reached automatically through the existing import chain
+(`regional_level_premiums` imports from `regional_multiplier_backtest`, which
+delegates to `regional_grading._price`).
+
+**Verified rather than assumed that the fix is live**: counted rows across the
+full 33,592-row deduplicated panel where the pre-fix logic would have used an
+implausible `common` price. 41 rows, 0.12 percent of the panel. `basis_guard:
+true` is written on every run from this commit onward regardless, since the
+fixed `_price` is always what a run reads through -- the field records that,
+not a conditional outcome.
+
+**Every one of the eleven testable regions' median ratios is numerically
+identical to the 2026-08-01 run, to the full precision stored (6+ decimal
+places).** Verified by diffing the two artifacts' `median_ratio` fields
+directly rather than trusting visual similarity, after an earlier scare the
+same session where an apparently-unchanged result turned out to be a bypassed
+guard. Here it is not: 41 corrected rows against a two-stage median (per city
+per week, then across 79 to 220 weeks per region) is exactly the regime where
+a handful of outlier corrections would not be expected to move a median
+unless one of them happened to sit at the rank the median reads from, and
+none did for these eleven regions.
+
+**VERDICT: no multiplier is refuted by the corrected interval. Unchanged from
+the original.** All eleven testable regions CONSISTENT, including the two
+positive controls (MIMAROPA 1.092, Bicol Region 1.049, both unmoved). Per the
+decision rule's first row: leave every multiplier alone. Nothing in
+`swarm.ALL_REGIONS` changes.
+
 ## Mechanical steps, fixed here
 
 1. `tools/regional_level_premiums.py` gains a `basis_guard: true` field in its

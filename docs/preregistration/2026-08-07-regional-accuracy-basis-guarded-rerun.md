@@ -97,6 +97,47 @@ about 27 pairs, leaving well over 60 -- but it is stated in advance because it
 is exactly the kind of thing that gets rationalized away after the fact if it
 is not.
 
+## Result, run 2026-08-07
+
+**One code defect found before the run could be trusted, fixed first, in its
+own commit.** `tools/regional_accuracy.py::build_arms` computed
+`weekly[day] - weekly[before]` directly from raw `regional_levels()` output
+and never called `regional_actual` or consulted a basis at all. Running the
+script unmodified reproduced the pre-fix numbers to three decimals (294
+weeks, identical MAE) -- not because the guard had no effect, but because it
+was never exercised. The switch-refusal rule was extracted into
+`regional_grading.basis_consistent`, shared by `regional_actual` and a
+corrected `build_arms`, rather than re-implemented a third time (`RSK-034`
+and `RSK-036` are the first two divergences of this exact rule). Day-matching
+was kept exact rather than routed through `regional_actual`'s
+nearest-within-a-week snapping, so only the one pre-registered variable
+changed. Both scripts now write `basis_guard: true` on write, as this
+document's mechanical steps specified.
+
+**284 paired weeks (was 294), 1476 region-week errors (was 1680).**
+
+| comparison | diff | 99.83% CI | verdict |
+|---|---|---|---|
+| DERIVATION vs ZERO | +0.087 | [-0.124, +0.309] | contains 0, no measurable difference |
+| DERIVATION vs DELTA-EQUAL | +0.019 | [+0.014, +0.025] | excludes 0, derivation measurably worse |
+| DERIVATION vs PERSISTENCE | -0.457 | [-0.689, -0.223] | excludes 0, derivation beats persistence |
+
+**VERDICT: NO MEASURABLE DIFFERENCE. Unchanged from the original.** Per the
+decision rule's second row: keep presenting the labelled state already
+shipped (derived figures marked no better than assuming no regional change);
+the "predates the guard" clause clears on its own now that `basis_guard` is
+present.
+
+Every comparison's direction and significance held; only the magnitude moved,
+by less than the width of any interval. The 9.2 percent pair-level estimate
+from `RSK-034` translated to a 3.4 percent drop in paired weeks at the
+national level, because a week is only dropped from the panel entirely when
+every region loses it (`if not actuals: continue`); a region can lose a week
+individually without the week itself dropping.
+
+None of the "what would make this uninformative" conditions triggered: 284
+weeks is well clear of `MIN_WEEKS` (60).
+
 ## Mechanical steps, fixed here
 
 1. `tools/regional_accuracy.py` gains a `basis_guard: true` field in its
