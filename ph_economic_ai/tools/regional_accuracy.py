@@ -178,6 +178,13 @@ def main() -> int:
         'verdict': call, 'action': action,
         'per_region_mae': {r: statistics.mean(v) for r, v in per_region.items()},
         'ungradable': ungradable,
+        # RSK-034: the basis fix in `regional_grading._price` is applied by every
+        # run of this script from the commit that added it onward, so this is not
+        # a flag to set conditionally -- it records that the run reads through
+        # the fix. `honesty.regional_basis` clears its "predates the guard"
+        # caveat the moment this field is present, which is the point of writing
+        # it: the label is derived from the artifact, not typed into prose.
+        'basis_guard': True,
     }, indent=2) + '\n', encoding='utf-8')
     print(f'\nartifact {args.json}')
     return 0

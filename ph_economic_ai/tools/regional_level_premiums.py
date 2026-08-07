@@ -225,6 +225,13 @@ def main() -> int:
         'seen_before_preregistration': list(SEEN_BEFORE),
         'corrections': corrections,
         'results': results,
+        # RSK-034: this script imports its price function from
+        # `regional_multiplier_backtest`, which now delegates to the fixed
+        # `regional_grading._price` (RSK-036), so every run from that commit
+        # onward reads through the basis guard. `honesty.regional_basis` clears
+        # its "predates the guard" caveat on this field alone -- derived from the
+        # artifact, not typed into prose.
+        'basis_guard': True,
     }, indent=2) + '\n', encoding='utf-8')
     print(f'\nartifact {args.json}')
     return 0
