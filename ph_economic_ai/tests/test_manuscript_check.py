@@ -121,6 +121,15 @@ def test_readme_is_in_scope():
     assert (mc.REPO_ROOT / 'README.md').exists()
 
 
+def test_talking_points_is_in_scope():
+    """talking-points.md carries the identical undisclosed "fuel: efficient" row
+    and untraceable skill number README's had before RSK-017, found under RSK-020
+    the same way -- neither the manuscript's fix nor README's reached this sibling.
+    Pinned so it cannot be dropped from scope silently."""
+    assert any(p.name == 'talking-points.md' for p in mc.MANUSCRIPTS)
+    assert (mc.DOCS / 'defense' / 'talking-points.md').exists()
+
+
 def test_no_shipped_manuscript_diverges_without_saying_so():
     """The invariant. A manuscript may be ahead of or behind the artifacts -- drafts
     legitimately are -- but it may not claim agreement it does not have.
