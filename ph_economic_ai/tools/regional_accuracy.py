@@ -22,7 +22,7 @@ import statistics
 from pathlib import Path
 
 from ph_economic_ai.benchmark.paths import artifact
-from ph_economic_ai.engine.regional_grading import regional_levels
+from ph_economic_ai.engine.regional_grading import basis_consistent, regional_levels
 from ph_economic_ai.engine.swarm import (
     ASSUMED_MULTIPLIERS, MEASURED_MULTIPLIERS, derive_regional_estimates,
 )
@@ -39,15 +39,27 @@ MIN_WEEKS = 60
 MAX_MOVE = 8.0
 
 
-def build_arms(levels: dict) -> dict[dt.date, dict[str, dict[str, float]]]:
-    """{week: {arm: {region: error}}}, every arm seeing identical actuals."""
+def build_arms(levels: dict, bases: dict) -> dict[dt.date, dict[str, dict[str, float]]]:
+    """{week: {arm: {region: error}}}, every arm seeing identical actuals.
+
+    A change is refused, for the reference region as much as any other, when
+    its price basis (DOE's `common` field versus the midpoint of its range)
+    switches between the two weeks being differenced (`RSK-034`). Day-matching
+    stays exact -- `day in weekly and before in weekly` -- deliberately not
+    routed through `regional_actual`'s nearest-within-a-week snapping, so this
+    re-run isolates the one variable it is pre-registered to change and does
+    not also loosen which weeks count as a pair.
+    """
     ref = levels[REFERENCE]
     weeks = [d for d in sorted(ref) if d - dt.timedelta(days=7) in ref]
     prev_actual: dict[str, float] = {}
     out: dict = {}
 
     for day in weeks:
-        national = ref[day] - ref[day - dt.timedelta(days=7)]
+        before = day - dt.timedelta(days=7)
+        if not basis_consistent(bases, REFERENCE, day, before):
+            continue
+        national = ref[day] - ref[before]
         if abs(national) > MAX_MOVE:
             continue
         derived = derive_regional_estimates(national, {0: national})
@@ -56,8 +68,8 @@ def build_arms(levels: dict) -> dict[dt.date, dict[str, dict[str, float]]]:
         for region, weekly in levels.items():
             if region == REFERENCE:
                 continue
-            before = day - dt.timedelta(days=7)
-            if day in weekly and before in weekly:
+            if (day in weekly and before in weekly
+                    and basis_consistent(bases, region, day, before)):
                 change = weekly[day] - weekly[before]
                 if abs(change) <= MAX_MOVE:
                     actuals[region] = change
@@ -107,8 +119,8 @@ def main() -> int:
     ap.add_argument('--json', type=Path, default=ARTIFACT)
     args = ap.parse_args()
 
-    levels = regional_levels()
-    by_week = build_arms(levels)
+    levels, bases = regional_levels(with_bases=True)
+    by_week = build_arms(levels, bases)
     weeks = list(by_week.values())
     print(f'Pre-registered at {PREREGISTRATION}')
     print(f'{len(weeks)} paired weeks, reference {REFERENCE}\n')

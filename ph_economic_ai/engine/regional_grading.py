@@ -177,6 +177,25 @@ def regional_levels(panel_path=PANEL, with_bases: bool = False):
     return (levels, bases) if with_bases else levels
 
 
+def basis_consistent(bases: Optional[dict], region: str, day: dt.date,
+                     prev: dt.date) -> bool:
+    """Whether `region`'s price basis (DOE's `common` field, or the midpoint of
+    its published range when `common` is absent) is the SAME on `day` and on
+    `prev`. A caller that supplies no bases carries no basis and is not judged
+    on one: absence is not contradiction, the same rule `ground_truth` applies
+    to a run whose own week has no observation.
+
+    Shared by `regional_actual` and every other caller that measures a change
+    across two specific weeks, so the switch-refusal rule has exactly one
+    definition. It has already diverged into two independent copies twice
+    (`RSK-034`, `RSK-036`) -- a third would be the same defect at a third size.
+    """
+    own = (bases or {}).get(region, {})
+    now_basis, then_basis = own.get(day), own.get(prev)
+    return not (now_basis is not None and then_basis is not None
+                and now_basis != then_basis)
+
+
 def regional_actual(region: str, target: dt.date,
                     levels: Optional[dict] = None,
                     bases: Optional[dict] = None) -> Optional[float]:
@@ -200,13 +219,7 @@ def regional_actual(region: str, target: dt.date,
     prev = day - dt.timedelta(days=7)
     if prev not in weeks:
         return None
-    # The basis is consulted only for the series this module built. A caller
-    # that supplied its own levels carries no basis, and absence is not
-    # contradiction -- the same rule `ground_truth` applies to a run whose own
-    # week has no observation.
-    own = (bases or {}).get(region, {})
-    now_basis, then_basis = own.get(day), own.get(prev)
-    if now_basis is not None and then_basis is not None and now_basis != then_basis:
+    if not basis_consistent(bases, region, day, prev):
         # A change measured from a midpoint to a common price, or the reverse,
         # is a change of DEFINITION carrying a change of price. Measured on the
         # panel: the two differ by a mean 0.758 PHP/L, which is larger than

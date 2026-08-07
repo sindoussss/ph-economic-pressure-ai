@@ -224,5 +224,6 @@
       "multiplier": 1.1,
       "n_weeks": 0
     }
-  }
+  },
+  "basis_guard": true
 }

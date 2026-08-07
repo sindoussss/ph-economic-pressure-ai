@@ -482,23 +482,31 @@ def test_every_declared_unvalidatable_region_has_no_measured_series():
         'a region declared unvalidatable now has a measured series')
 
 
-def test_the_regional_note_labels_a_result_that_predates_the_basis_guard():
-    """The published run merged DOE's `common` price with the midpoint of its
-    range. The guard now refuses a change measured across a switch between them,
-    which removes 9.2% of the region-week pairs that run used, so the artifact
-    describes a computation the code no longer performs."""
-    assert 'measured before the price-basis guard' in honesty.regional_basis()
+def test_a_result_that_predates_the_basis_guard_is_labelled(monkeypatch):
+    """Both regional_accuracy.json and regional_level_premiums.json carried this
+    caveat until the pre-registered re-runs of 2026-08-07 (`RSK-034`): DOE's
+    `common` price merged with the midpoint of its range with no record of
+    which, and a computation from before the fix is not the computation the
+    code now performs. The real artifacts now carry `basis_guard: true` and no
+    longer show it (`test_the_real_regional_artifacts_have_been_rerun` pins
+    that), so the labelling behaviour itself is tested against a simulated
+    stale artifact rather than against current reality."""
+    monkeypatch.setattr(honesty, '_regional_accuracy',
+                        lambda: {'n_weeks': 271})
+    line = honesty.regional_basis()
+    assert 'over 271 weeks' in line
+    assert 'measured before the price-basis guard' in line
 
 
-def test_the_multiplier_backtest_also_labels_as_predating_the_basis_guard():
+def test_the_multiplier_result_is_labelled_independently(monkeypatch):
     """`regional_level_premiums.json` (Phase 2b, the nine corrected medians in
-    `swarm.MEASURED_MULTIPLIERS`) has the same defect as the accuracy result
-    beside it (`RSK-034` follow-up): measured on the same mixed-basis panel and
-    never re-derived. Distinct from `regional_multiplier_backtest.json`, the
-    withdrawn and permanently infeasible Phase 2 test, which this caveat is not
-    about. Distinct from the accuracy caveat too, checked against its own
-    artifact."""
-    assert 'that measurement also predates the price-basis guard' in honesty.regional_basis()
+    `swarm.MEASURED_MULTIPLIERS`) carries its own caveat, distinct from the
+    accuracy result's. Distinct too from `regional_multiplier_backtest.json`,
+    the withdrawn and permanently infeasible Phase 2 test, which this caveat
+    is not about."""
+    monkeypatch.setattr(honesty, '_regional_level_premiums', lambda: {})
+    line = honesty.regional_basis()
+    assert 'that measurement also predates the price-basis guard' in line
 
 
 def test_the_label_disappears_when_the_test_is_rerun(monkeypatch):
@@ -519,7 +527,18 @@ def test_the_two_basis_guard_labels_are_independent(monkeypatch):
     caveat must survive on its own."""
     monkeypatch.setattr(honesty, '_regional_accuracy',
                         lambda: {'n_weeks': 271, 'basis_guard': True})
+    monkeypatch.setattr(honesty, '_regional_level_premiums', lambda: {})
     line = honesty.regional_basis()
     assert 'over 271 weeks' in line
     assert 'measured before the price-basis guard' not in line
     assert 'that measurement also predates the price-basis guard' in line
+
+
+def test_the_real_regional_artifacts_have_been_rerun():
+    """`RSK-034` closed 2026-08-07: both pre-registered tests were re-run on the
+    basis-guarded panel per the owner's decision, and the committed artifacts
+    are from those runs, not the originals. If this ever fails, either a stale
+    artifact was committed by mistake or the field name drifted from what
+    `honesty.py` reads."""
+    assert honesty._regional_accuracy().get('basis_guard') is True
+    assert honesty._regional_level_premiums().get('basis_guard') is True
