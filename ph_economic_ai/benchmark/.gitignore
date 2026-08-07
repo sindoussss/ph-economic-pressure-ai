@@ -1,3 +1,3 @@
-# Raw World Bank workbook (5+ MB, reproducible via refresh_data download).
-# The extracted gold series lives in data/world_bank_ron95.csv, which IS tracked.
-global_fuel_prices.xlsx
+# global_fuel_prices.xlsx (World Bank Global Fuel Prices Database, ODbL) is
+# committed as of RSK-007's closure -- it's the raw source RSK-007 flagged as
+# un-archived, and its own license (ODbL) permits redistribution with attribution.

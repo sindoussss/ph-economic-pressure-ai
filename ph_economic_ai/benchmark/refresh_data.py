@@ -137,17 +137,21 @@ def build_world_bank_csv() -> None:
     out = out[~out['date'].duplicated(keep='last')].sort_values('date')
     WB_OUT.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(WB_OUT, index=False)
-    write_record(WB_OUT, source='World Bank Global Fuel Prices Database workbook',
+    write_record(WB_OUT, source='World Bank Global Fuel Prices Database workbook '
+                                 '(datacatalog.worldbank.org/search/dataset/0066829/'
+                                 'global-fuel-prices-database), Open Database License (ODbL)',
                  params={'workbook_url': os.environ.get('PH_ECON_WB_XLSX_URL') or WB_XLSX_URL
-                                         or 'not configured; built from a local copy',
+                                         or 'not configured; built from the committed copy',
                          'workbook_path': str(xlsx), 'sheet': sheet},
                  transformations=['parse the LCU premium-gasoline (RON95+) sheet',
                                   'select the Philippines row with the most observed months',
                                   'label months YYYY-MM, round to 2dp',
                                   'drop duplicate months keeping last'],
                  units='PHP per litre',
-                 notes='RON95 gold target. RSK-007: the workbook itself is not committed, '
-                       'so this record identifies it but does not make it retrievable.')
+                 notes='RON95 gold target. RSK-007: the workbook is now committed at '
+                       'ph_economic_ai/benchmark/global_fuel_prices.xlsx, so this record '
+                       'both identifies and makes it retrievable. ODbL requires attribution '
+                       'on redistribution -- given here and in the manuscript References.')
     if len(out):
         print(f'Wrote {len(out)} rows to {WB_OUT} '
               f'({out["date"].iloc[0]}..{out["date"].iloc[-1]})')
