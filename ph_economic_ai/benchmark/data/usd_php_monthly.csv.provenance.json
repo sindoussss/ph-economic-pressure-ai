@@ -17,7 +17,7 @@
   "units": "PHP per USD",
   "notes": "Before 2026-07-28 this file was built from interval=1mo and was missing all ten Octobers.",
   "retrieved_at": "2026-07-27T19:29:23+00:00",
-  "sha256": "4545ad4831ead9883092f005279f8200349753bd17eda2496e9df411bf9c63b6",
+  "sha256": "0d0f3211ad5d801d29d1f6899ec85c40d98a29bd2f75ce5688313ec6e0ac6d99",
   "rows": 121,
   "first_month": "2016-07",
   "last_month": "2026-07",

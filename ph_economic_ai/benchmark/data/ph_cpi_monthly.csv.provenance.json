@@ -18,7 +18,7 @@
   "units": "CPI index",
   "notes": "RSK-002 RESOLVED 2026-07-28. Verified byte-identical to the previously committed file over all 821 months.",
   "retrieved_at": "2026-07-27T19:31:04+00:00",
-  "sha256": "613b1333ed41263b35cd12852faa4871c561d382723916d786d510739738fbfd",
+  "sha256": "46ae5839bf1866ca8c5530623d9774b2a716ac36abcda101be54f10618aa45d1",
   "rows": 821,
   "first_month": "1957-01",
   "last_month": "2025-05",

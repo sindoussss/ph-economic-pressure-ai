@@ -16,7 +16,7 @@
   "units": "CPI index (2018=100)",
   "notes": "PSA gold target for the food nowcast.",
   "retrieved_at": "2026-07-27T19:40:12+00:00",
-  "sha256": "8624fc7a3b3994e3a080fb81929eca041311a8fa5fc7437fadc7cf096c1e1af1",
+  "sha256": "d4a6a8135f62a2c18536bcd2668d82c2b051f2f98abbeafb17b3143ee1b4ea00",
   "rows": 390,
   "first_month": "1994-01",
   "last_month": "2026-06",

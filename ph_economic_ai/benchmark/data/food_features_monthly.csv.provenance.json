@@ -26,7 +26,7 @@
   "units": "futures settlement, PHP per USD",
   "notes": "Food-CPI predictor panel.",
   "retrieved_at": "2026-07-27T19:29:38+00:00",
-  "sha256": "af6aeddce7e84f126fd5de393f7d1bd806bbf2b179b55eb38db1c4121165ab75",
+  "sha256": "02e7c426b4483bc705dab8c7510b43a7ce4ac693b368fd36925e6433276d0cb5",
   "rows": 229,
   "first_month": "2007-07",
   "last_month": "2026-07",
