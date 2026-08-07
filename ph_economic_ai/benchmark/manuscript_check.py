@@ -36,6 +36,11 @@ MANUSCRIPTS = (
     # "fuel: efficient" row was never caught by this tool, unlike the identical
     # claim in the manuscript, because README.md was simply never in this tuple.
     REPO_ROOT / 'README.md',
+    # Same defect, third sibling: talking-points.md carries its own verdict table
+    # with the identical undisclosed "fuel: efficient" row and an untraceable
+    # skill number, found under RSK-020 the same way README's was found under
+    # RSK-017 -- neither the manuscript's fix nor README's reached it.
+    DOCS / 'defense' / 'talking-points.md',
 )
 
 # `n = 24` is min_train, a design parameter, not a sample size. Simulation cells

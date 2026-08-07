@@ -33,9 +33,12 @@ The boundary is enforced in code, not just asserted: `tests/test_benchmark_isola
 
 All skill = **% RMSE improvement over the strongest naive baseline**, walk-forward, DM-tested. The naive pool is {random walk, drift, seasonal naive, **historical mean**}.
 
+> **ARTIFACT-DIVERGENCE (2026-08-07). Be ready for this question.** The fuel row below says "efficient." The manuscript's own divergence notice (top of `2026-06-10-thesis-manuscript.md`) flags that fuel's 1-month panel now shows a +12.1% Ridge edge over the random walk (`predictable`, DM p = 0.0337, §5.2.1) — exploratory, not confirmed: it fails the audit family's Bonferroni threshold and was never predeclared (`CLM-FUEL-EXPLORATORY-001`). Whether to promote it is an authorial decision the manuscript deliberately leaves open, not resolved here. If asked "is the map really uniform, then?": yes, within the confirmatory family reported below; the one exploratory exception is disclosed, not hidden, and is exactly the kind of finding the audit's own discipline (§6.3) says to report and not promote. Checked by `python -m ph_economic_ai.benchmark.manuscript_check`, which now covers this file too.
+
 | Target | Setup | Verdict |
 |---|---|---|
-| RON95 fuel · USD/PHP · YoY inflation | 1-month forecast | **Efficient** — no method beats a random walk (skill ≈ −0.01) |
+| RON95 fuel | 1-month forecast | **Efficient** — the deployed model does not beat a random walk (skill −7.3% vs RW) |
+| USD/PHP · YoY inflation | 1-month forecast | **Efficient** — no method beats a random walk (skill ≈ 0% vs RW) |
 | MoM inflation (headline) | nowcast | **No better than naive** — ARIMA +4.1% vs the mean, p = 0.36 |
 | MoM inflation (food) | nowcast | **No better than naive** — ARIMA +3.7% vs the mean, p = 0.46 |
 | Electricity-CPI | nowcast, driver-only | **No better than naive** — Ridge **−1.8%** vs the mean, p = 0.37 |
@@ -43,7 +46,7 @@ All skill = **% RMSE improvement over the strongest naive baseline**, walk-forwa
 | Food-CPI | nowcast, driver-only | **Clean null** — Ridge −1.9% vs the mean |
 | Google Trends search interest | nowcast | **No better than naive** — adds nothing on either target |
 
-**The map is uniformly negative, and that is the finding.**
+**The map is uniformly negative within the confirmatory family, and that is the finding.**
 
 **The money line:** *"An earlier version of this audit reported four significant positives. The strongest — a +28.3% electricity driver edge, DM p = 0.0011 — passed every guard I had: significance, sub-sample stability, a trailing-preliminary-months robustness re-test, a Bonferroni correction, and a mechanism that is institutionally accurate. It was still an artifact. The model was worse than predicting a constant, and the entire edge was the gap between the random walk and the mean on a mean-reverting target. I found it, I published the refutation, and I derived the condition under which it happens."*
 
