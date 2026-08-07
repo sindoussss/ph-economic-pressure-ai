@@ -482,10 +482,22 @@ def regional_basis() -> str:
     # `DEC-010`, so it is not done here and the result is labelled instead.
     if weeks and not _regional_accuracy().get('basis_guard'):
         over += ' (measured before the price-basis guard, on a pool 9% larger)'
+    # The multiplier VALUES have the same defect as the accuracy result they sit
+    # beside, found the same week (`RSK-034` follow-up): `regional_level_premiums.json`
+    # (Phase 2b, `tools/regional_level_premiums.py`, the nine corrected medians) also
+    # predates the basis guard and was never re-derived on the corrected panel, for the
+    # same DEC-010 reason. Distinct from `regional_multiplier_backtest.json`, which is
+    # the withdrawn Phase 2 CHANGE-vs-LEVEL regression and permanently infeasible for an
+    # unrelated reason -- confusing the two here would point this caveat at the wrong
+    # artifact. This one carries no `basis_guard` field either, so the caveat is derived
+    # the same way and disappears the same way once a re-run adds one.
+    measured_caveat = ('; that measurement also predates the price-basis guard'
+                        if not _regional_level_premiums().get('basis_guard') else '')
     return (f'{debated} region groups debated; the other '
             f'{len(ALL_REGIONS) - debated} figures are scaled from them '
             f'by a regional price premium measured against DOE prices for '
-            f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions. '
+            f'{len(MEASURED_MULTIPLIERS)} of {len(ALL_REGIONS)} regions'
+            f'{measured_caveat}. '
             f'**Graded against DOE’s own regional prices {over}, '
             f'this derivation is no more accurate than assuming no regional '
             f'change at all**, and applying the premium is measurably worse '
@@ -507,6 +519,28 @@ def _regional_accuracy() -> dict:
         return json.loads(
             (Path(ph_economic_ai.__file__).parent / 'benchmark' / 'artifacts'
              / 'regional_accuracy.json').read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+
+def _regional_level_premiums() -> dict:
+    """The pre-registered freight-multiplier correction, read rather than restated.
+
+    This is `regional_level_premiums.json` (Phase 2b), which backs the nine
+    corrected medians in `swarm.MEASURED_MULTIPLIERS`. Not to be confused with
+    `regional_multiplier_backtest.json` (Phase 2), the withdrawn CHANGE-vs-LEVEL
+    regression that closed as permanently infeasible for an unrelated reason.
+
+    Returns `{}` when the artifact is missing, so the caller degrades to no
+    caveat rather than inventing a claim about it.
+    """
+    try:
+        import json
+        from pathlib import Path
+        import ph_economic_ai
+        return json.loads(
+            (Path(ph_economic_ai.__file__).parent / 'benchmark' / 'artifacts'
+             / 'regional_level_premiums.json').read_text(encoding='utf-8'))
     except Exception:
         return {}
 

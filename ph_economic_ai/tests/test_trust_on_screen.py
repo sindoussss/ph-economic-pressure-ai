@@ -490,11 +490,36 @@ def test_the_regional_note_labels_a_result_that_predates_the_basis_guard():
     assert 'measured before the price-basis guard' in honesty.regional_basis()
 
 
+def test_the_multiplier_backtest_also_labels_as_predating_the_basis_guard():
+    """`regional_level_premiums.json` (Phase 2b, the nine corrected medians in
+    `swarm.MEASURED_MULTIPLIERS`) has the same defect as the accuracy result
+    beside it (`RSK-034` follow-up): measured on the same mixed-basis panel and
+    never re-derived. Distinct from `regional_multiplier_backtest.json`, the
+    withdrawn and permanently infeasible Phase 2 test, which this caveat is not
+    about. Distinct from the accuracy caveat too, checked against its own
+    artifact."""
+    assert 'that measurement also predates the price-basis guard' in honesty.regional_basis()
+
+
 def test_the_label_disappears_when_the_test_is_rerun(monkeypatch):
     """Self-removing, so nobody has to remember to delete it. An artifact from a
     re-run carries `basis_guard` and the clause goes."""
     monkeypatch.setattr(honesty, '_regional_accuracy',
                         lambda: {'n_weeks': 271, 'basis_guard': True})
+    monkeypatch.setattr(honesty, '_regional_level_premiums',
+                        lambda: {'basis_guard': True})
     line = honesty.regional_basis()
     assert 'over 271 weeks' in line
     assert 'price-basis guard' not in line
+
+
+def test_the_two_basis_guard_labels_are_independent(monkeypatch):
+    """A re-run of one pre-registered test must not silently clear the other's
+    caveat. Only the accuracy artifact is re-run here; the multiplier backtest's
+    caveat must survive on its own."""
+    monkeypatch.setattr(honesty, '_regional_accuracy',
+                        lambda: {'n_weeks': 271, 'basis_guard': True})
+    line = honesty.regional_basis()
+    assert 'over 271 weeks' in line
+    assert 'measured before the price-basis guard' not in line
+    assert 'that measurement also predates the price-basis guard' in line
