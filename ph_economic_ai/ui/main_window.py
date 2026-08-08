@@ -223,12 +223,11 @@ def _format_gas_verdict(
 
 class SimMainWindow(QMainWindow):
     def __init__(self, df, regressor, data_source: str = 'Live Data',
-                 cv_rmse: float = 0.0, regressors: dict | None = None,
+                 cv_rmse: float = 0.0,
                  store: AgentTrustStore | None = None, parent=None):
         super().__init__(parent)
         self._df = df
         self._regressor = regressor
-        self._regressors = regressors or {'gas': regressor}
         self._cv_rmse = cv_rmse
         self._rag = RagEngine()
         self._agents = list(DEFAULT_AGENTS)

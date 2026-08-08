@@ -14,12 +14,12 @@ FETCH_TIMEOUT = 8
 #: What `_fetch_all` always produces. A cache file has no schema version of its
 #: own, so a file written before a column existed (`food_price_idx`,
 #: `electricity_rate`) reads back as valid JSON with the wrong shape, and
-#: nothing downstream checks for that until `build_food_features`/
-#: `build_electricity_features` raise a `KeyError` two call frames away from
-#: this file, on a machine with no network to notice the real cause. `main.py`
-#: catches that `KeyError` and silently drops the sector's regressor from
-#: `regressors`, so a stale cache degrades food and electricity forecasting
-#: to nothing with no message shown anywhere.
+#: nothing downstream checked for that until this validation existed: a caller
+#: building food or electricity features off it would hit a `KeyError` inside
+#: `build_food_features`/`build_electricity_features`, two call frames away
+#: from the real cause, and only on a machine with no network to notice it --
+#: a live fetch always produces every column, so the gap only ever showed up
+#: behind a failed connection.
 REQUIRED_COLUMNS = ('date', 'oil_price', 'usd_php', 'demand_index', 'gas_price',
                     'psei', 'cpi', 'bsp_rate', 'remittances', 'rainfall_mm',
                     'temp_c', 'food_price_idx', 'electricity_rate')
