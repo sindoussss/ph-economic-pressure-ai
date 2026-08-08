@@ -220,6 +220,12 @@ Where an audit conducts several confirmatory Diebold–Mariano tests — each of
 
 Under the corrected baseline pool (§4.7) this family is **empty**, and the machinery reports `n_tests = 0`. The procedure is retained, and unit-tested against synthetic families, for two reasons: a future genuine positive must still be corrected, and the earlier draft's experience is itself instructive. That draft ran six confirmatory tests and reported that four survived Bonferroni — arithmetically correct, and completely uninformative about the actual error, because a family-wise correction guards against testing *many* hypotheses and offers no protection when every hypothesis is measured against an unsuitable baseline. Multiple-comparison control is not a substitute for baseline specification (§5.8).
 
+### 4.9.1 Selection-honest re-test (post-selection inference)
+
+A Diebold–Mariano verdict computed on the same sample used to choose which candidate to report is optimistic even when the chosen candidate turns out to be a naive-losing null: the act of picking the best of several candidates on a fixed sample inflates the apparent skill of whichever one is picked. `benchmark/selection.py` guards against this directly rather than by correction. For each target, the candidate model is chosen on a chronological **selection segment** (`min_train = 24` months, the initial `holdout_frac = 0.30` reserved) using the same panel and naive pool as the target's headline verdict, then re-scored, unchanged, on a **holdout segment** the selection step never saw. A run is scored `confirmed_on_holdout` only if the holdout skill is positive, the holdout Diebold–Mariano test rejects at α = 0.05, and the sign is a genuine win (`dm_stat < 0`); every holdout segment is required to clear `MIN_HOLDOUT_PREDICTIONS = 12` or the run is reported as underpowered rather than folded into a verdict. This is a stricter, non-overlapping counterpart to §4.9's family-wise correction: multiple-comparison control corrects for testing many hypotheses, while this protocol corrects for choosing the best of several candidates on the sample that also scores it.
+
+The protocol originally covered two of the manuscript's targets, the fuel efficiency edge (§5.2.1) and the headline MoM nowcast (§5.3). It was extended to the remaining nine headline verdicts the predictability map reports — USD/PHP and YoY inflation forecasts, the long-sample headline MoM nowcast, and food, electricity and transport MoM in both full-nowcast and driver-only form — pre-registered in `docs/preregistration/2026-08-08-selection-holdout-remaining-headline-verdicts.md` before being run, using the same frame-building calls the audit itself already uses. Results for all eleven are reported together in §5.8.1.
+
 ### 4.10 Integrity infrastructure
 The fabricated "90% confidence" from the original application was removed and replaced with the conformal interval. The frozen `accuracy_report.json` this benchmark writes makes the reported numbers tamper-evident and quotable. A hash-chained, two-phase track-record class (`engine/track_record.py`) also exists in the repository for the application's own run history; it is implemented and tested but not wired into normal application runs, so it does not currently make any application result tamper-evident (`CLM-TRACK-RECORD-001`, `RSK-012`).
 
@@ -250,7 +256,7 @@ Every method except Ridge is statistically *indistinguishable* from the random w
 
 It is reported here and deliberately not promoted, for reasons that are recorded rather than asserted.
 
-**What supports it.** It is not the baseline artifact of §4.7: fuel's lag-1 autocorrelation is ρ = +0.9475, far above the ½ crossover, and the closed form predicts the mean should score −2.087 against the random walk here against a measured −2.263. Against 400 surrogates built by circularly rotating each driver column — destroying alignment while preserving each driver's own autocorrelation, scale and trend — the observed skill has empirical p = 0.0000 (null mean −0.152, null maximum −0.031). It also survives selection: with the model and the naive both fixed on the first 70% of rows and scored only on the remaining 29 predictions, skill moves +0.1233 → +0.1187, a shrinkage of 0.005, where headline MoM on the same protocol collapses +0.0329 → −0.0057. The mechanism is an interaction, not a single driver: own-lag alone scores −0.030 and drivers alone −0.118, and only the combination beats the random walk, which is error correction toward the RBOB/FX-implied level and is consistent with the measured pass-through (β_total = 0.596, R² = 0.490).
+**What supports it.** It is not the baseline artifact of §4.7: fuel's lag-1 autocorrelation is ρ = +0.9475, far above the ½ crossover, and the closed form predicts the mean should score −2.087 against the random walk here against a measured −2.263. Against 400 surrogates built by circularly rotating each driver column — destroying alignment while preserving each driver's own autocorrelation, scale and trend — the observed skill has empirical p = 0.0000 (null mean −0.152, null maximum −0.031). It also survives selection: with the model and the naive both fixed on the first 70% of rows and scored only on the remaining 29 predictions, skill moves +0.1233 → +0.1187, a shrinkage of 0.005 (DM p = 0.0296), where headline MoM on the same protocol collapses +0.0329 → −0.0057. §5.8.1 reports this protocol (§4.9.1) run against all eleven of the manuscript's headline verdicts, not only these two. The mechanism is an interaction, not a single driver: own-lag alone scores −0.030 and drivers alone −0.118, and only the combination beats the random walk, which is error correction toward the RBOB/FX-implied level and is consistent with the measured pass-through (β_total = 0.596, R² = 0.490).
 
 **Why it is not claimed.** The audit family is three targets, so Bonferroni gives α = 0.0167 against an observed 0.0337 in sample and 0.0296 on the holdout. The holdout carries only 29 predictions. Most importantly it was never predeclared: it emerged from a data correction, which is precisely the pattern the size study of §5.10 exists to distrust. It is registered as `CLM-FUEL-EXPLORATORY-001` and is a candidate for preregistered confirmation, not a result.
 
@@ -394,7 +400,7 @@ This is the single largest change the correction produces, and it removes the th
 | Transport-CPI MoM | nowcast, driver-only | rejected twice — preliminary-data artifact *and* fails vs mean | 12.5% |
 | **Electricity-CPI MoM** | **nowcast, driver-only** | no better than naive — Ridge **−1.8% vs mean** (p = 0.37) | **5.8%** |
 
-Every target in the audit now returns the same verdict: **no detectable edge over a properly-chosen naive baseline.** The map is uniform.
+Every target in the audit now returns the same verdict: **no detectable edge over a properly-chosen naive baseline.** The map is uniform. §5.8.1 re-tests every verdict above under a selection-honest protocol that separates model choice from the score it is reported against; none flips.
 
 **Each null is bounded (§5.11).** The final column is the minimum skill over the *binding* baseline that a Diebold–Mariano test could have detected at 80% power — the honest scope of each "no". Two readings matter. The headline and food nulls are **loose**: at 10–15% MDE against observed edges of 3–5%, they rule out an economically large edge but cannot exclude a modest one. The **electricity driver null is tight**: a 5.8% MDE against an observed −1.8% means the test had ample power and still found the model performing worse than a constant. That is worth stating plainly, because electricity is the target whose +28.3% "edge" this thesis withdraws — the replacement null is the best-powered result in the map, not a shrug.
 
@@ -409,6 +415,32 @@ This is a weaker set of claims than the earlier draft made, and a stronger thesi
 **Figure 4.** Audit verdicts by target. The same protocol that previously produced a three-way split (positive / null / rejected) returns a uniform null once the baseline pool is corrected.
 
 **Multiple-comparison correction (§4.9).** The confirmatory family is defined as the tests returning `beats_best_naive` with a computable p-value. Under the corrected pool that family is **empty**: there are no positives left to correct, and `multiple_testing.json` records `n_tests = 0`. This is worth stating explicitly rather than silently dropping the section, because it inverts the earlier finding. The previous draft reported that four of six confirmatory tests survived the strict Bonferroni threshold — and that was arithmetically correct. A family-wise correction controls for testing *many hypotheses*; it offers no protection whatever against every hypothesis being measured against the wrong baseline. The correction machinery is retained and unit-tested against synthetic families so that a future genuine positive would still be classified correctly.
+
+### 5.8.1 Selection-honest re-test: all eleven headline verdicts
+
+§4.9.1 describes the protocol; two targets (fuel, headline MoM short-sample) had already been run through it. The remaining nine — every other headline verdict in §5.8's map — were pre-registered on 2026-08-08 before being run, with the expectation that all nine would return `not_confirmed_on_holdout`, matching their published null or withdrawn status. `selection_holdout.json` now reports all eleven:
+
+| Target | n | Selection cut | Holdout n | Selection skill | Holdout skill | Shrinkage | Holdout DM p | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| Fuel (RON95) efficiency | 96 | 67 | 29 | +12.3% | +11.9% | 0.005 | 0.0296 | **confirmed_on_holdout** |
+| Headline MoM, nowcast | 106 | 74 | 32 | +3.3% | −0.6% | 0.039 | 0.948 | not_confirmed_on_holdout |
+| USD/PHP forecast | 105 | 74 | 31 | +0.2% | −4.5% | 0.047 | 0.463 | not_confirmed_on_holdout |
+| YoY inflation forecast | 104 | 73 | 31 | +20.5% | +4.3% | 0.162 | 0.712 | not_confirmed_on_holdout |
+| Headline MoM, long sample | 214 | 150 | 64 | +6.5% | +2.5% | 0.040 | 0.668 | not_confirmed_on_holdout |
+| Food MoM, full nowcast | 227 | 159 | 68 | +9.6% | +0.0% | 0.096 | 0.995 | not_confirmed_on_holdout |
+| Food MoM, driver-only | 227 | 159 | 68 | −10.4% | −2.4% | −0.080 | 0.509 | not_confirmed_on_holdout |
+| Electricity MoM, full nowcast | 227 | 159 | 68 | −4.9% | −0.7% | −0.043 | 0.733 | not_confirmed_on_holdout |
+| Electricity MoM, driver-only | 227 | 159 | 68 | −3.0% | −0.0% | −0.030 | 0.991 | not_confirmed_on_holdout |
+| Transport MoM, full nowcast | 227 | 159 | 68 | +5.6% | −3.6% | 0.092 | 0.847 | not_confirmed_on_holdout |
+| Transport MoM, driver-only | 227 | 159 | 68 | −4.3% | +0.8% | −0.052 | 0.928 | not_confirmed_on_holdout |
+
+**Ten of eleven do not survive.** Only the fuel efficiency edge is `confirmed_on_holdout`; it is still reported as exploratory rather than a finding, for the reasons given in §5.2.1 (the audit family's Bonferroni threshold, and the fact that it was never predeclared). Every other target's holdout skill either collapses toward zero or reverses sign, so none of the ten changes the verdict already reported for it in §5.1–§5.8: the map remains uniformly null in the confirmatory sense.
+
+**The clearest single illustration of the bias this protocol exists to catch is YoY inflation.** Its selection-stage skill, +20.5%, is the largest of any target across all eleven, selected or not — and it fully evaporates on the holdout (+4.3%, DM p = 0.71). A verdict built only from the selection segment would have reported a strong edge; the same model on data selection never touched shows almost none.
+
+**Electricity's driver-only row — the withdrawn +28.3% flagship of §5.7 — shows the smallest shrinkage of the nine newly-run targets** (−0.030, i.e. the holdout skill is marginally less negative than selection). That is consistent with, not in tension with, §4.7's account of what the +28.3% figure actually was: both stages sit at essentially zero because there was never a real edge to shrink away from, only a mean-reverting target measured against the wrong baseline.
+
+Frame sizes at run time matched the pre-registration's feasibility check exactly (105/104/214/227 rows for the four newly-run frame shapes), and every holdout segment cleared `MIN_HOLDOUT_PREDICTIONS` by at least 2.5×, so none of the nine is reported as underpowered.
 
 ### 5.9 Search interest does not nowcast inflation
 
