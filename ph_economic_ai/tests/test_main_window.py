@@ -73,6 +73,101 @@ def test_home_run_chains_monitor_then_swarm(window, monkeypatch):
     assert calls.get('swarm_mode') is True          # ... now the tournament runs
 
 
+class _FakeDebateEngine:
+    """Stands in for DebateEngine.consensus() without running any model calls."""
+    def __init__(self, consensus_dict):
+        self._c = consensus_dict
+
+    def consensus(self):
+        return self._c
+
+
+def test_format_gas_verdict_names_distinct_values_when_estimates_given():
+    """Same honesty treatment as food/electricity: given the raw agent
+    estimates, a bare 'agent agreement N%' becomes a checkable distinct-value
+    and span breakdown, with the collapse caveat when the room has narrowed.
+    This text feeds an LLM prompt directly and, via stage5_interact, the
+    user's own screen, so it gets the same treatment on all three sectors."""
+    from ph_economic_ai.ui.main_window import _format_gas_verdict
+    v = _format_gas_verdict(estimate=-0.5, agreement_pct=100,
+                            estimates=[-0.5, -0.5, -0.49])
+    assert '2 distinct values' in v
+    assert 'agent agreement 100%' not in v
+    assert 'room has narrowed' in v
+
+
+def test_format_gas_verdict_falls_back_to_bare_percentage_without_estimates():
+    """Backward compatible: a caller with only the percentage (no raw
+    estimates available) still gets a verdict string, not a crash."""
+    from ph_economic_ai.ui.main_window import _format_gas_verdict
+    v = _format_gas_verdict(estimate=-0.5, agreement_pct=84, estimates=None)
+    assert 'agent agreement 84%' in v
+
+
+def test_food_verdict_names_distinct_values_not_bare_percentage(window):
+    """Food's confidence has none of swarm.py's collapse/echo detection
+    (ADR-009), so the verdict string must lead with the distinct-value count
+    and spread (`honesty.spread_line`), the same honesty treatment fuel's
+    card already gets, rather than a bare 'confidence N%' a reader cannot
+    check against anything."""
+    window._last_scenario = {'oil_pct': 1.0, 'usd_pct': 0.0}
+    window._food_engine = _FakeDebateEngine({
+        'weighted_avg': 0.3, 'confidence_pct': 100,
+        'verdicts': [
+            {'agent': 'A', 'estimate': 0.30, 'statement': 'x'},
+            {'agent': 'B', 'estimate': 0.30, 'statement': 'x'},
+            {'agent': 'C', 'estimate': 0.31, 'statement': 'x'},
+        ],
+    })
+    window._on_food_complete([1, 2, 3])
+    assert '2 distinct values' in window._food_verdict
+    assert 'confidence 100%' not in window._food_verdict
+    # Collapsed room (2 distinct among 3): the same caveat fuel's card shows.
+    assert 'room has narrowed' in window._food_verdict
+
+
+def test_food_verdict_on_failed_debate_falls_back_honestly(window):
+    """No responses at all must still produce a grounded, honest verdict
+    (the persistence anchor), not a crash and not a bare 'confidence 0%'."""
+    window._last_scenario = {}
+    window._food_engine = None
+    window._on_food_complete([])
+    assert 'no agent produced a usable estimate' in window._food_verdict
+
+
+def test_electricity_verdict_names_distinct_values(window):
+    window._last_scenario = {'oil_pct': 1.0, 'usd_pct': 0.0}
+    window._elec_engine = _FakeDebateEngine({
+        'weighted_avg': 0.05, 'confidence_pct': 62,
+        'verdicts': [
+            {'agent': 'A', 'estimate': 0.03, 'statement': 'x'},
+            {'agent': 'B', 'estimate': 0.07, 'statement': 'x'},
+        ],
+    })
+    window._on_elec_complete([1, 2])
+    assert '2 distinct values' in window._elec_verdict
+    assert 'confidence 62%' not in window._elec_verdict
+    # `agreement_caveat`'s own distinct-count rounding (2dp) must match what
+    # spread_line just printed for the same estimates -- the two must never
+    # tell a reader a different distinct count for one set of numbers.
+    import re
+    m = re.search(r'(\d+) distinct values', window._elec_verdict)
+    assert m and f'only {m.group(1)} distinct value' in window._elec_verdict
+
+
+def test_electricity_anchor_not_claimed_as_validated_predictor(window):
+    """Regression guard for the withdrawn-finding overclaim this fix removed:
+    the electricity anchor must never again be described as a 'validated
+    signal' or 'genuinely predictive' -- both manuscript S5.7 and
+    anchoring.electricity_passthrough_anchor's own docstring say the
+    opposite (a magnitude guard only, corr ~0.03-0.13)."""
+    import inspect
+    from ph_economic_ai.ui import main_window as mw
+    src = inspect.getsource(mw.SimMainWindow._on_elec_complete)
+    assert 'genuinely predictive' not in src
+    assert 'validated signal' not in src
+
+
 def test_learning_tab_present_and_refreshes(window):
     from ph_economic_ai.ui.main_window import _TopNavBar
     from ph_economic_ai.ui.learning_view import LearningView
