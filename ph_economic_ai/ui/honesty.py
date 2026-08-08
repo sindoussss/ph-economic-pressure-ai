@@ -26,6 +26,23 @@ COLLAPSE_DISTINCT = 3
 COLLAPSE_DIVERSITY = 0.5
 
 
+def tile_narrow_marker(n: int, distinct: int) -> str:
+    """A three-word flag for a space-constrained tile, not the full caveat.
+
+    `agreement_caveat`'s sentence does not fit a 180px history tile without
+    overflowing it, and the tile already wraps a longer obstacle phrase once
+    (`grade_status_label`) rather than clip mid-word. This is the same
+    signal at the size the tile actually has: a reader who wants the reason
+    can still open the run, which shows the fully-guarded report card.
+
+    Empty string when there is nothing to flag, same convention as
+    `agreement_caveat`.
+    """
+    if 0 < distinct < COLLAPSE_DISTINCT:
+        return 'narrow room'
+    return ''
+
+
 def agreement_caveat(n: int, distinct: int = 0, diversity: float = 0.0) -> str:
     """The sentence that stops a high percentage being read as strong consensus.
 

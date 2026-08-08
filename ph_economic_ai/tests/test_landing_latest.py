@@ -12,11 +12,15 @@ def app():
 
 
 class _FakeStore:
-    def __init__(self, runs):
+    def __init__(self, runs, responses_by_run=None):
         self._runs = runs
+        self._responses_by_run = responses_by_run or {}
 
     def get_recent_runs(self, limit=20):
         return self._runs[:limit]
+
+    def get_agent_responses(self, run_id):
+        return self._responses_by_run.get(run_id, [])
 
 
 def test_landing_latest_shows_three_sectors(app):
@@ -104,3 +108,55 @@ def test_single_run_track_record_placeholder(app):
     text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
     assert 'LATEST FORECAST' in text
     assert 'No simulations on record yet.' in text
+
+
+def test_narrow_room_tile_flags_it(app):
+    """RSK-038 follow-up: a history tile's bare 'N% agreement' gets the same
+    signal the main report card gives for a collapsed room, sized for the
+    tile (a few words, not the full spread_line sentence). Tiles render for
+    runs after the latest one (see test_track_record_excludes_latest_run),
+    so a second run is needed to reach _build_run_tile at all."""
+    from ph_economic_ai.ui.landing import LandingPanel
+    runs = [_run(6, '2026-06-10T00:00:00+00:00', -1.8, 60),
+            _run(5, '2026-06-09T00:00:00+00:00', -1.5, 100)]
+    responses = {5: [
+        {'estimate': -1.50}, {'estimate': -1.50}, {'estimate': -1.51},
+    ]}
+    panel = LandingPanel(store=_FakeStore(runs, responses_by_run=responses))
+    panel.refresh_recent()
+    text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert '100% agreement (narrow room)' in text
+
+
+def test_wide_room_tile_is_not_flagged(app):
+    from ph_economic_ai.ui.landing import LandingPanel
+    runs = [_run(6, '2026-06-10T00:00:00+00:00', -1.8, 60),
+            _run(5, '2026-06-09T00:00:00+00:00', -1.5, 72)]
+    responses = {5: [
+        {'estimate': -1.80}, {'estimate': -1.20}, {'estimate': -2.10},
+        {'estimate': -0.90},
+    ]}
+    panel = LandingPanel(store=_FakeStore(runs, responses_by_run=responses))
+    panel.refresh_recent()
+    text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert '72% agreement' in text
+    assert 'narrow room' not in text
+
+
+def test_tile_survives_a_store_with_no_get_agent_responses(app):
+    """A store implementation missing get_agent_responses (e.g. an older test
+    double) must not break the tile -- the percentage alone still renders."""
+    class _BareStore:
+        def __init__(self, runs):
+            self._runs = runs
+
+        def get_recent_runs(self, limit=20):
+            return self._runs[:limit]
+
+    from ph_economic_ai.ui.landing import LandingPanel
+    runs = [_run(6, '2026-06-10T00:00:00+00:00', -1.8, 60),
+            _run(5, '2026-06-09T00:00:00+00:00', -1.5, 72)]
+    panel = LandingPanel(store=_BareStore(runs))
+    panel.refresh_recent()  # must not raise
+    text = ' || '.join(l.text() for l in panel.findChildren(QLabel))
+    assert '72% agreement' in text

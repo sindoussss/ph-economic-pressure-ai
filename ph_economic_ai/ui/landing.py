@@ -782,6 +782,23 @@ class LandingPanel(QWidget):
         except Exception:
             return 'unknown'
 
+    def _narrow_marker(self, run_id) -> str:
+        """`honesty.tile_narrow_marker` for this run's stored agent responses.
+
+        Silent (empty string, never an exception) rather than let a query
+        failure or a run with no stored responses break the tile -- the
+        percentage still renders either way, this only adds to it.
+        """
+        if self._store is None or run_id is None:
+            return ''
+        try:
+            responses = self._store.get_agent_responses(int(run_id))
+            estimates = [r.get('estimate') for r in responses if r.get('estimate') is not None]
+            distinct = len({round(e, 2) for e in estimates})
+            return _honesty.tile_narrow_marker(len(estimates), distinct)
+        except Exception:
+            return ''
+
     def _build_run_tile(self, run: dict) -> QWidget:
         tile = QWidget()
         tile.setStyleSheet('background:transparent;')
@@ -822,7 +839,16 @@ class LandingPanel(QWidget):
 
         sub_parts = []
         if conf is not None:
-            sub_parts.append(f'{conf}% agreement')
+            piece = f'{conf}% agreement'
+            # Same signal `agreement_caveat` gives the main report card, sized
+            # for a 180px tile: the tile has no per-run distinct-value count
+            # of its own, so this queries the responses for the small,
+            # bounded number of tiles actually shown (at most 4) rather than
+            # storing a column nothing else needs.
+            marker = self._narrow_marker(run.get('run_id'))
+            if marker:
+                piece += f' ({marker})'
+            sub_parts.append(piece)
         actual = run.get('actual_price_change')
         if actual is not None:
             # The OUTCOME, not a tick. A tile showing "+0.95 ₱/L · graded ✓"
