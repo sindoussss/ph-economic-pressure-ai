@@ -644,6 +644,23 @@ class PressureMonitorPanel(QWidget):
         except Exception:
             return 0
 
+    def _chain_integrity_text(self) -> str:
+        """Whether the hash-chained prediction log still verifies, for the strip.
+
+        Separate from `_graded_count`/`_run_count`, which read `trust.db` --
+        the mutable, correctable store. This reads `track_record.jsonl`, the
+        append-only counterpart, so a reader gets both: how many forecasts
+        have been graded, and whether the log of what was predicted can prove
+        it has not been rewritten since.
+        """
+        store = self._store
+        if store is None or not hasattr(store, 'track_record'):
+            return ''
+        try:
+            return _honesty.chain_integrity_line(store.track_record)
+        except Exception:
+            return ''
+
     def _record_strip(self) -> QFrame:
         """What this app's forecasts have actually been checked against.
 
@@ -665,6 +682,7 @@ class PressureMonitorPanel(QWidget):
         lay.addWidget(head)
         for text, strong in ((_honesty.track_record_line(
                                  self._graded_count(), self._run_count()), True),
+                             (self._chain_integrity_text(), False),
                              (_honesty.grade_backlog_line(self._grade_backlog()), False)):
             if not text:
                 continue

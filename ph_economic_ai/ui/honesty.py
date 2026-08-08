@@ -149,6 +149,45 @@ def _MIN_GRADED() -> int:
     return MIN_GRADED_FOR_CALIBRATION
 
 
+def chain_integrity_line(track_record) -> str:
+    """Whether this app's own prediction log can prove it has not been edited.
+
+    `track_record_line` reports how many forecasts have been GRADED, from
+    `trust.db` -- the mutable store, corrected when a grade turns out to
+    compare the wrong week (`RSK-023`). This is a different and stronger
+    claim: `track_record.jsonl` is append-only and hash-chained, so a reader
+    does not have to trust that no row was quietly edited after the fact --
+    `verify_chain()` checks it. `False` here would mean the file on disk does
+    not match its own hashes, which is worth surfacing loudly rather than
+    silently trusting the mutable numbers next to it.
+
+    Silent when nothing has been filed yet, matching `track_record_line`'s own
+    "none yet" phrasing rather than asserting integrity over an empty log.
+    """
+    try:
+        rows = track_record.all_rows()
+    except Exception:
+        return ''
+    if not rows:
+        return ''
+    n_pred = sum(1 for r in rows if r.get('kind') == 'prediction')
+    n_withdrawn = sum(1 for r in rows if r.get('kind') == 'withdrawal')
+    intact = track_record.verify_chain()
+    if not intact:
+        return (f'tamper check FAILED on this app’s own {n_pred}-prediction '
+                f'hash-chained log — do not trust any number derived from it '
+                f'until this is investigated')
+    sc = track_record.scorecard()
+    withdrawn = f', {n_withdrawn} withdrawn' if n_withdrawn else ''
+    if sc['n_matured']:
+        return (f'hash-chain verified across {n_pred} locked-in predictions{withdrawn} '
+                f'— {sc["n_matured"]} matured at {sc["mae"]:.2f} PHP/L mean '
+                f'absolute error, {sc["coverage_90"]:.0%} landed inside their stated band')
+    return (f'hash-chain verified across {n_pred} locked-in predictions{withdrawn}, '
+           f'none matured yet — each is locked in before its outcome is known, '
+           f'so this log cannot be edited with hindsight')
+
+
 def track_record_line(n_graded: int, n_runs: int = 0) -> str:
     """How many of the app's own forecasts have been checked against a price.
 
