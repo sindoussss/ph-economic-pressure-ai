@@ -168,6 +168,28 @@ def test_electricity_anchor_not_claimed_as_validated_predictor(window):
     assert 'validated signal' not in src
 
 
+def test_close_waits_for_a_still_running_kg_worker(window):
+    """Qt's contract: destroying a QThread while it's still running is
+    undefined behavior (some builds hard-abort the process). closeEvent
+    already joins _doe_checker this way; _kg_worker (entity enrichment,
+    spawned by stage3_swarm_canvas.py after a swarm run) had no such guard,
+    so closing the app moments after a run finished could hit that abort
+    mid-enrichment."""
+    from unittest.mock import MagicMock
+    from PyQt6.QtGui import QCloseEvent
+    fake_worker = MagicMock()
+    fake_worker.isRunning.return_value = True
+    window._stage3_swarm._kg_worker = fake_worker
+    window.closeEvent(QCloseEvent())
+    fake_worker.wait.assert_called_once()
+
+
+def test_close_is_a_noop_when_no_kg_worker_has_run_yet(window):
+    from PyQt6.QtGui import QCloseEvent
+    assert not hasattr(window._stage3_swarm, '_kg_worker')
+    window.closeEvent(QCloseEvent())   # must not raise
+
+
 def test_learning_tab_present_and_refreshes(window):
     from ph_economic_ai.ui.main_window import _TopNavBar
     from ph_economic_ai.ui.learning_view import LearningView

@@ -1478,6 +1478,33 @@ class _SwarmCanvas(QGraphicsView):
                 y += DOT_SPACING
             x += DOT_SPACING
 
+    # ── Real graph stats for the overlay cards ─────────────────────────────────
+    # These four fields were literal strings ('37', '110+', '0.087', '4.21')
+    # that never changed regardless of the actual scene, so the card always
+    # claimed the same graph size no matter what had actually been built or how
+    # many evidence chunks a run had pulled in. Density/avg-degree only need
+    # the two counts (2E/N(N-1), 2E/N); edges here don't carry endpoint
+    # references (they're drawn from raw coordinates, not node objects), so an
+    # honest diameter would need a real adjacency structure this canvas never
+    # built -- 'evidence attached' (real _EvidenceNode count) replaces it as a
+    # metric that's actually derivable from what's on screen.
+    _NODE_TYPES = (_AgentNode, _RegionalNode, _MasterNode, _RagNode,
+                   _SectorAgentNode, _SectorVerdictNode, _EvidenceNode)
+
+    def _graph_metrics(self) -> dict:
+        items = self._scene.items()
+        nodes = [it for it in items if isinstance(it, self._NODE_TYPES)]
+        edges = [it for it in items if isinstance(it, _Edge)]
+        evidence = [it for it in items if isinstance(it, _EvidenceNode)]
+        n, e = len(nodes), len(edges)
+        density = (2 * e) / (n * (n - 1)) if n > 1 else 0.0
+        avg_deg = (2 * e) / n if n > 0 else 0.0
+        # CLUSTER_IDS also carries a 'master' key that _build() never actually
+        # draws a boundary for -- only the 4 regions + food + elec get one.
+        clusters = len(REGIONS) + 2
+        return {'nodes': n, 'edges': e, 'clusters': clusters,
+                'density': density, 'avg_deg': avg_deg, 'evidence': len(evidence)}
+
     # ── Foreground overlay: corner UI drawn in viewport pixels ─────────────────
     # This avoids being scaled by fitInView — text stays sharp and at consistent
     # readable sizes regardless of scene zoom.
@@ -1516,11 +1543,12 @@ class _SwarmCanvas(QGraphicsView):
         painter.setFont(f_title)
         painter.drawText(QPointF(TL_X + 14, TL_Y + 22), 'GRAPH VISUALIZATION')
 
+        _gm = self._graph_metrics()
         meta_rows = [
             ('LAYOUT',   'force-directed-v2'),
-            ('NODES',    '37'),
-            ('EDGES',    '110+'),
-            ('CLUSTERS', '6'),
+            ('NODES',    str(_gm['nodes'])),
+            ('EDGES',    str(_gm['edges'])),
+            ('CLUSTERS', str(_gm['clusters'])),
         ]
         for i, (k, v) in enumerate(meta_rows):
             row_y = TL_Y + 48 + i * 17
@@ -1615,10 +1643,10 @@ class _SwarmCanvas(QGraphicsView):
         painter.drawText(QRectF(BR_X + 14, BR_Y + 8, BR_W - 28, 18),
                          Qt.AlignmentFlag.AlignRight, 'METRICS')
         metric_rows = [
-            ('density',  '0.087'),
-            ('avg_deg',  '4.21'),
-            ('clusters', '6'),
-            ('diameter', '4'),
+            ('density',  f"{_gm['density']:.3f}"),
+            ('avg_deg',  f"{_gm['avg_deg']:.2f}"),
+            ('clusters', str(_gm['clusters'])),
+            ('evidence', str(_gm['evidence'])),
         ]
         for i, (k, v) in enumerate(metric_rows):
             row_y = BR_Y + 44 + i * 16
@@ -2485,7 +2513,23 @@ class Stage3SwarmPanel(QWidget):
         self._gas_val.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{N_DONE};'
         )
-        self._gas_sub.setText(f'{master_verdict.confidence_pct}% confidence')
+        # Same signal the Stage 4 report card gives this number (agreement_
+        # basis/agreement_caveat) -- this canvas label stays on screen after
+        # the run completes and was showing the bare percentage with none of
+        # it, the same gap RSK-038 found and fixed on four other surfaces.
+        # `master_verdict.confidence_pct` is already the robust, guarded
+        # number here (unlike those four); only the collapse marker was
+        # missing from this particular label. Short form: this is a
+        # single-line canvas label, not a card with room for the full
+        # sentence -- same reasoning as the landing-page history tile.
+        from ph_economic_ai.ui import honesty as _honesty
+        _marker = _honesty.tile_narrow_marker(
+            getattr(master_verdict, 'agreement_n', 0),
+            getattr(master_verdict, 'agreement_distinct', 0))
+        _conf_text = f'{master_verdict.confidence_pct}% confidence'
+        if _marker:
+            _conf_text += f' ({_marker})'
+        self._gas_sub.setText(_conf_text)
         self._gas_sub.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:9px;color:{N_DONE};'
         )
@@ -2505,8 +2549,10 @@ class Stage3SwarmPanel(QWidget):
             pass
         try:
             _conf = getattr(master_verdict, 'confidence_pct', None)
-            _bits = [b for b in (self._master_estimate,
-                                 f'{_conf}% confidence' if _conf is not None else '')
+            _conf_bit = f'{_conf}% confidence' if _conf is not None else ''
+            if _conf_bit and _marker:
+                _conf_bit += f' ({_marker})'
+            _bits = [b for b in (self._master_estimate, _conf_bit)
                      if b and b != '—']
             _sub = '  ·  '.join(_bits) or 'master verdict ready'
         except Exception:
@@ -2567,7 +2613,12 @@ class Stage3SwarmPanel(QWidget):
         self._food_val.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
         )
-        self._food_sub.setText('consensus reached')
+        # Same RSK-038 gap as the gas label above: 'consensus reached' claimed
+        # agreement with no distinct-value check behind it.
+        from ph_economic_ai.ui import honesty as _honesty
+        distinct = len({round(e, 2) for e in estimates})
+        marker = _honesty.tile_narrow_marker(len(estimates), distinct)
+        self._food_sub.setText(f'consensus reached ({marker})' if marker else 'consensus reached')
         self._food_sub.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
@@ -2612,7 +2663,10 @@ class Stage3SwarmPanel(QWidget):
         self._elec_val.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
         )
-        self._elec_sub.setText('consensus reached')
+        from ph_economic_ai.ui import honesty as _honesty
+        distinct = len({round(e, 2) for e in estimates})
+        marker = _honesty.tile_narrow_marker(len(estimates), distinct)
+        self._elec_sub.setText(f'consensus reached ({marker})' if marker else 'consensus reached')
         self._elec_sub.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
@@ -2631,10 +2685,14 @@ class Stage3SwarmPanel(QWidget):
         total = len(meta) or TOTAL_AGENTS
         self._alive_count = total
         self._alive_val.setText(str(total))
+        session_id = f'session_{uuid.uuid4().hex[:12]}'
         self._sync_session(
             alive=total, total=total, phase='initialize',
             parallel=int(getattr(thread, '_parallel_n', 0) or len(REGIONS)),
-            session_id=f'session_{uuid.uuid4().hex[:12]}')
+            session_id=session_id)
+        # The console header showed its own fixed 'swarm_session_001' next to
+        # this real id, so the two never matched after the first run.
+        self._console_id.setText(session_id)
         self._begin_live_graph(getattr(thread, '_rag', None),
                                getattr(thread, '_scenario', {}), meta)
         thread.agent_typing.connect(self._on_agent_typing)

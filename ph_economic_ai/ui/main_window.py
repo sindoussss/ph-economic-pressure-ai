@@ -389,6 +389,13 @@ class SimMainWindow(QMainWindow):
     def closeEvent(self, event):
         self._doe_checker.stop()
         self._doe_checker.wait()
+        # Qt aborts the process if a QThread is destroyed while still running.
+        # _kg_worker (entity enrichment, spawned in Stage3SwarmPanel after a
+        # swarm run) has no owner-level join anywhere else -- closing the app
+        # moments after a run completes could hit that abort mid-enrichment.
+        kg_worker = getattr(self._stage3_swarm, '_kg_worker', None)
+        if kg_worker is not None and kg_worker.isRunning():
+            kg_worker.wait()
         super().closeEvent(event)
 
     def _on_stage_changed(self, idx: int):
