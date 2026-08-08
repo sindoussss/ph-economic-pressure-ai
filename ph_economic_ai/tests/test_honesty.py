@@ -14,6 +14,15 @@ def test_honesty_constants():
     assert 'exploratory' in honesty.interact_caption().lower()
 
 
+def test_tile_narrow_marker_fires_below_collapse_distinct():
+    assert honesty.tile_narrow_marker(3, 2) == 'narrow room'
+    assert honesty.tile_narrow_marker(3, honesty.COLLAPSE_DISTINCT) == ''
+
+
+def test_tile_narrow_marker_silent_with_no_estimates():
+    assert honesty.tile_narrow_marker(0, 0) == ''
+
+
 def test_chain_integrity_line_empty_log_is_silent(tmp_path):
     from ph_economic_ai.engine.track_record import TrackRecord
     tr = TrackRecord(tmp_path / 'log.jsonl')
