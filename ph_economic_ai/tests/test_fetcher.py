@@ -16,6 +16,7 @@ from ph_economic_ai.fetcher import (
     _parse_world_bank_response, _forward_fill_annual,
     _fetch_open_meteo, _seasonal_weather_fallback,
     _fetch_fao_food, _derive_food_from_gas, _derive_electricity,
+    _safe_psei,
 )
 
 
@@ -85,30 +86,72 @@ def test_stale_cache_is_not_fresh(tmp_path):
     assert not is_fresh
 
 
-def test_cache_missing_required_columns_is_a_miss(tmp_path):
-    """A cache written before `food_price_idx`/`electricity_rate` existed in
-    the schema is not a cache to serve, fresh timestamp or not: reading it
-    back and calling it usable is what let a stale, schema-incompatible cache
-    reach `build_food_features` and fail two frames away from the real cause,
-    with `main.py`'s broad except silently dropping food/electricity
-    forecasting and telling nobody."""
+def test_cache_missing_a_gas_column_is_a_miss(tmp_path):
+    """A cache that cannot even build the gas features `main.py`'s startup
+    path needs is not a cache to serve, fresh timestamp or not."""
     cache_file = tmp_path / 'data.json'
-    old_schema_df = pd.DataFrame({
+    incomplete_df = pd.DataFrame({
         'date': ['2024-01', '2024-02'],
         'oil_price': [80.0, 82.0],
         'usd_php': [56.0, 56.5],
-        'demand_index': [72.0, 68.0],
+        # demand_index missing -- build_gas_features cannot run without it.
         'gas_price': [65.0, 66.0],
-        # everything after this point post-dates the cache format that wrote it
     })
     payload = {
-        'fetched_at': datetime.now(timezone.utc).isoformat(),  # freshly "written"
-        'data': old_schema_df.to_dict(orient='records'),
+        'fetched_at': datetime.now(timezone.utc).isoformat(),
+        'data': incomplete_df.to_dict(orient='records'),
     }
     cache_file.write_text(json.dumps(payload), encoding='utf-8')
     df, is_fresh = _load_cache(cache_path=cache_file)
     assert df is None
     assert is_fresh is False
+
+
+def test_cache_missing_only_food_and_electricity_columns_is_usable(tmp_path):
+    """A cache written before `food_price_idx`/`electricity_rate` existed in
+    the schema, but with every gas-required column present, must still be
+    served. Regression test: an earlier version of this gate required the
+    FULL column set, which meant a real cache exactly this shape -- gas-
+    complete, pre-dating food/electricity -- was rejected outright, turning
+    a real but narrow gap (no food/electricity data) into a total outage on
+    a machine with this cache and no network. `build_gas_features` already
+    treats `psei`/`cpi`/`bsp_rate`/`remittances` as optional extras, and
+    food/electricity are read later, live, each already guarded with
+    `if 'x' in self._df.columns` (main_window.py) -- nothing in the startup
+    path needed the columns this cache lacks."""
+    cache_file = tmp_path / 'data.json'
+    gas_only_df = pd.DataFrame({
+        'date': ['2024-01', '2024-02'],
+        'oil_price': [80.0, 82.0],
+        'usd_php': [56.0, 56.5],
+        'demand_index': [72.0, 68.0],
+        'gas_price': [65.0, 66.0],
+    })
+    payload = {
+        'fetched_at': datetime.now(timezone.utc).isoformat(),
+        'data': gas_only_df.to_dict(orient='records'),
+    }
+    cache_file.write_text(json.dumps(payload), encoding='utf-8')
+    df, is_fresh = _load_cache(cache_path=cache_file)
+    assert df is not None
+    assert is_fresh is True
+    assert 'food_price_idx' not in df.columns
+
+
+def test_safe_psei_falls_back_to_empty_series_on_failure():
+    """A dead or renamed ticker must not take the whole fetch down with it --
+    the same fallback shape _fetch_all already gives weather and food."""
+    with patch('ph_economic_ai.fetcher._fetch_psei', side_effect=Exception('HTTP 404')):
+        result = _safe_psei()
+    assert isinstance(result, pd.Series)
+    assert len(result) == 0
+
+
+def test_safe_psei_passes_through_a_real_result():
+    fake = pd.Series({'2024-01': 6500.0, '2024-02': 6600.0})
+    with patch('ph_economic_ai.fetcher._fetch_psei', return_value=fake):
+        result = _safe_psei()
+    pd.testing.assert_series_equal(result, fake)
 
 
 def test_forward_fill_annual_basic():

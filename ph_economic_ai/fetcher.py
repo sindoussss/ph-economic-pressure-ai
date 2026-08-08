@@ -11,18 +11,28 @@ CACHE_PATH = Path(__file__).parent / 'cache' / 'data.json'
 CACHE_TTL_HOURS = 24
 FETCH_TIMEOUT = 8
 
-#: What `_fetch_all` always produces. A cache file has no schema version of its
-#: own, so a file written before a column existed (`food_price_idx`,
-#: `electricity_rate`) reads back as valid JSON with the wrong shape, and
-#: nothing downstream checked for that until this validation existed: a caller
-#: building food or electricity features off it would hit a `KeyError` inside
-#: `build_food_features`/`build_electricity_features`, two call frames away
-#: from the real cause, and only on a machine with no network to notice it --
-#: a live fetch always produces every column, so the gap only ever showed up
-#: behind a failed connection.
-REQUIRED_COLUMNS = ('date', 'oil_price', 'usd_php', 'demand_index', 'gas_price',
-                    'psei', 'cpi', 'bsp_rate', 'remittances', 'rainfall_mm',
-                    'temp_c', 'food_price_idx', 'electricity_rate')
+#: What `_fetch_all` always produces, for reference -- not the cache-validity
+#: gate. A cache missing any of these is not stale so much as pre-dating a
+#: column, and this is the complete list a fresh fetch always writes.
+FULL_COLUMNS = ('date', 'oil_price', 'usd_php', 'demand_index', 'gas_price',
+               'psei', 'cpi', 'bsp_rate', 'remittances', 'rainfall_mm',
+               'temp_c', 'food_price_idx', 'electricity_rate')
+
+#: What a cache must have to be served at all. Deliberately narrower than
+#: `FULL_COLUMNS`: `main.py`'s startup path only ever calls
+#: `build_gas_features` on the cached frame, which itself treats `psei`,
+#: `cpi`, `bsp_rate` and `remittances` as optional extras (`available = [c
+#: for c in extra_cols if c in df.columns]`) and never touches
+#: `food_price_idx`/`electricity_rate`/`rainfall_mm`/`temp_c` at all -- those
+#: are read later, live, directly off `self._df`, and every read of them is
+#: already guarded with `if 'x' in self._df.columns` (main_window.py). Gating
+#: on `FULL_COLUMNS` blocked gas -- which needs none of the missing columns
+#: -- for want of columns nothing in the startup path was going to read,
+#: turning a real but narrow gap (a stale cache missing food/electricity
+#: data) into a total outage on any machine with both an old cache and no
+#: network. Confirmed live: a cache from before `food_price_idx` existed has
+#: every column this tuple names.
+REQUIRED_COLUMNS = ('date', 'oil_price', 'usd_php', 'demand_index', 'gas_price')
 
 _YAHOO_HEADERS = {
     'User-Agent': (
@@ -237,11 +247,27 @@ def _derive_electricity(gas_series: pd.Series, monthly_index: list[str]) -> pd.S
     return rate
 
 
+def _safe_psei() -> pd.Series:
+    """PSEi with a fallback, the same shape weather and food already have.
+
+    `build_gas_features` includes `psei` only `if 'psei' in df.columns` --
+    it is an optional extra, unlike oil/usd/gas, which the base panel cannot
+    be built without. It had no fallback, so a single dead or renamed Yahoo
+    ticker (`^PSEi` returning HTTP 404, seen directly on a real machine)
+    failed the entire fetch -- oil, USD and gas included, blocking gas
+    forecasting for a feature gas does not require.
+    """
+    try:
+        return _fetch_psei()
+    except Exception:
+        return pd.Series(dtype=float)
+
+
 def _fetch_all() -> pd.DataFrame:
     oil  = _fetch_yahoo('BZ=F')
     usd  = _fetch_yahoo('PHP=X')
     gas  = _fetch_doe_prices(usd_php=usd)
-    psei = _fetch_psei()
+    psei = _safe_psei()
 
     cpi_annual = _fetch_world_bank('FP.CPI.TOTL.ZG')
     bsp_annual = _fetch_world_bank('FR.INR.LEND')
