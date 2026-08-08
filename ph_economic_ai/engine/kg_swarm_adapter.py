@@ -26,7 +26,7 @@ def build_inputs(master_verdict, agents, scenario: dict, rag, top_k: int = 3) ->
             region_for[rn] = key
 
     text = _scenario_text(scenario)
-    agent_dicts, retrievals = [], {}
+    agent_dicts, retrievals, preserved = [], {}, {}
     for ag in agents:
         r = resp_by_name.get(ag.name)
         region = region_for.get(getattr(ag, 'region_name', ''), getattr(ag, 'region_name', ''))
@@ -35,17 +35,28 @@ def build_inputs(master_verdict, agents, scenario: dict, rag, top_k: int = 3) ->
             'estimate': getattr(r, 'price_estimate', None) if r else None,
             'statement': getattr(r, 'statement', '') if r else '',
         })
-        try:
-            chunks = rag.query(text, top_k=top_k, sources=getattr(ag, 'rag_sources', None))
-        except Exception:
-            chunks = []
+        # Prefer what the agent actually read (RSK-019, matching kg_live.
+        # add_round exactly): re-querying answers "what would this agent
+        # retrieve now", which diverges from "what did it read" as soon as the
+        # corpus, embeddings, or top_k move. This always re-queried and never
+        # looked at the response's own preserved retrieval, so every edge this
+        # builder produced was mislabelled 'retrieved' when it was always a
+        # reconstruction.
+        chunks = list(getattr(r, 'retrieval', None) or []) if r else []
+        was_preserved = bool(chunks)
+        preserved[ag.name] = was_preserved
+        if not was_preserved:
+            try:
+                chunks = rag.query(text, top_k=top_k, sources=getattr(ag, 'rag_sources', None))
+            except Exception:
+                chunks = []
         retrievals[ag.name] = [
             {'source': c.get('source', '?'), 'idx': i, 'text': c.get('text', '')}
             for i, c in enumerate(chunks or [])
         ]
 
     return dict(sources=sources, data_inputs=data_inputs, regionals=regionals,
-                agents=agent_dicts, retrievals=retrievals,
+                agents=agent_dicts, retrievals=retrievals, preserved=preserved,
                 master_estimate=getattr(master_verdict, 'final_estimate', None))
 
 

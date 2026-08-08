@@ -1033,7 +1033,7 @@ class Stage4ReportPanel(QWidget):
             ]
             avg = self._consensus.get('weighted_avg')
             if avg is not None:
-                story.append(Paragraph(f'Consensus: +{avg:.2f}/L', styles['Heading2']))
+                story.append(Paragraph(f'Consensus: {_signed_php(avg)}/L', styles['Heading2']))
             for resp in self._responses:
                 story.append(Paragraph(
                     f"Round {resp.round_num} - {resp.agent_name}: {resp.statement[:500]}",

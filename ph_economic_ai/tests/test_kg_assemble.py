@@ -45,4 +45,19 @@ def test_apply_extraction_grounds_entities():
     assert b.node('ent:diesel').payload['provenance'][0] == {'chunk_id': ev, 'source': 'DOE'}
     ek = {(e.src, e.dst, e.kind) for e in b.edges_of('ent:diesel')}
     assert ('ent:diesel', ev, 'mentions') in ek
+    # The extracted relation TYPE must survive, not collapse to the generic
+    # default: apply_extraction used to call add_relation(a, b) with no third
+    # argument, discarding whatever kind the extractor actually found.
+    assert ('ent:diesel', 'ent:pump', 'drives') in ek
+    assert ('ent:diesel', 'ent:pump', 'relates') not in ek
+
+
+def test_apply_extraction_defaults_kind_when_extractor_gave_none():
+    b = KnowledgeGraphBuilder()
+    ev = b.add_evidence('DOE', 1, 'diesel down')
+    apply_extraction(b, ev, 'DOE', {
+        'entities': [],
+        'relations': [{'a': 'diesel', 'b': 'pump'}],
+    })
+    ek = {(e.src, e.dst, e.kind) for e in b.edges_of('ent:diesel')}
     assert ('ent:diesel', 'ent:pump', 'relates') in ek
