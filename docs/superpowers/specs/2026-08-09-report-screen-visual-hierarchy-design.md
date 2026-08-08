@@ -27,8 +27,11 @@ The user's own words, screenshot in hand: "looks good, it works" on layout direc
 ### Out of scope
 - Any other screen (`landing.py`, `stage3_swarm_canvas.py`, `stage3_canvas.py`, `accuracy_view.py`, etc. — later SP2d slices, per the original program).
 - The "Interact" tab (`stage5_interact.py`) — not shown in the approved mockups, different content type (Q&A, not a stat display).
-- Any change to what's computed: `honesty.py`'s caveat/marker logic, `DebateEngine.consensus()`, conformal interval math, the CPI projection formula — none of it changes. Only how existing values are laid out and styled.
+- Any change to what's *computed*: `honesty.py`'s caveat/marker logic, `DebateEngine.consensus()`, conformal interval math, the CPI projection formula — none of it changes.
 - Re-litigating SP2d-1's approved tokens (palette, `SERIF`/`MONO` fonts) — reused as-is throughout.
+
+### One small, deliberate scope addition (not pure styling)
+The approved mockup shows all three sector cards (gas/food/electricity) with an agreement percentage. Checked against the real code: gas already gets one, via the separate Swarm Consensus panel's `master_verdict.confidence_pct`. Food and electricity's confidence is *also* already computed -- `main_window.py::_on_food_complete`/`_on_elec_complete` already call `self._food_engine.consensus()`/`self._elec_engine.consensus()` and store the result in `self._food_agreement`/`self._elec_agreement` -- but neither value is currently passed into `Stage4ReportPanel.set_sector_forecasts()`, which only ever receives the three point estimates. This plan wires the three already-computed agreement values through so all three top-row cards show one, matching the mockup. This is a genuine (if small) display addition, not styling -- flagged explicitly per the project's own convention of never letting a scope decision hide inside an unrelated commit.
 
 ### Non-negotiable
 - No regressions: the Report still builds, all `stage4`/`causal_chain_widget`/`main_window` tests stay green (updated where they assert on structure that's genuinely changing, e.g. `BSPAlertBanner`'s box styling — never by deleting a coverage-losing assertion without replacing it).
@@ -66,11 +69,15 @@ All three follow SP2d-1's existing convention: pure-ish factories returning styl
 
 ### 3.2 `stage4_report.py` migration
 
-- Sector-forecast section (gas/food/electricity): replace today's three ad-hoc `QFrame`s with `theme.stat_card(...)` in a `QHBoxLayout`/grid, each populated from the same data (`master_verdict`/`consensus` dicts) already flowing into the old widgets — no new data sourcing.
+- Sector-forecast section (`set_sector_forecasts`, currently a compact row-list built from `sector_forecast_rows()` in `ui/sector_forecast.py`, which carries no confidence field): replace the row-list with `theme.stat_card(...)` per sector, now also given each sector's agreement percentage via a new `gas_agreement`/`food_agreement`/`elec_agreement` parameter (see 3.3 below for where the values come from).
 - Final Outputs / Validated Accuracy: migrate onto `theme.card()` (already used elsewhere) with `theme.eyebrow`/`theme.muted`/`theme.hairline` throughout, replacing the remaining 44 stray `setStyleSheet` calls this file carries.
 - Regional Verdicts: currently separate cards per region (`rv_card`/`rvfl` loop around line 680-730); replaced with a compact `theme.eyebrow`-labelled table inside the Validated Accuracy card, one row per region (name, signed estimate). `Agent agreement: {pct}%` per region moves from its own line to a table column or a shared caption — exact placement is an implementation-plan-level detail, not a design constraint, as long as the per-region agreement percentage is still visibly present (not dropped).
 
-### 3.3 `causal_chain_widget.py`
+### 3.3 `main_window.py` (the scope addition)
+
+- `_push_sector_forecasts()` currently calls `self._stage4.set_sector_forecasts(self._gas_estimate, self._food_estimate, self._elec_estimate)`. Extended to also pass `self._gas_agreement, self._food_agreement, self._elec_agreement` -- all three already exist and are already populated by the existing completion handlers; nothing new is computed.
+
+### 3.4 `causal_chain_widget.py`
 
 - `BSPAlertBanner` keeps its class name and public interface (whatever `main_window.py`/other callers rely on today) but its internals switch from a bordered/tinted `QFrame` to `theme.page_header()`. `Projected CPI: {value:.2f}%` becomes the header's right-hand stat; "BSP TARGET" + exceeded/within status becomes the eyebrow label; the baseline/sector-impact breakdown becomes the caption underneath, same as today's text content.
 
