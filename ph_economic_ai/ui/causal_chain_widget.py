@@ -106,7 +106,12 @@ class BSPAlertBanner(QFrame):
     def set_alert(self, alert: dict):
         severity    = alert.get('severity', 'STABLE')
         projected   = alert.get('projected_cpi', 0.0)
-        current     = alert.get('current_cpi', 3.8)
+        current     = alert.get('current_cpi', 0.0)
+        # No hardcoded fallback CPI here: an unrelated constant duplicating
+        # `live_data._CURRENT_CPI_PCT` is exactly the "one quantity, two
+        # constructions" shape this project's own audits keep finding, and it
+        # would decay out of sync with the real one the moment either changes.
+        cpi_as_of   = alert.get('cpi_as_of', 'unknown vintage')
         impact      = alert.get('sector_cpi_impact', 0.0)
         breakdown   = alert.get('breakdown', {})
 
@@ -133,7 +138,8 @@ class BSPAlertBanner(QFrame):
             parts.append(f'Food: +{breakdown["food"]:.2f}ppt')
         if 'electricity' in breakdown:
             parts.append(f'Elec: +{breakdown["electricity"]:.2f}ppt')
-        detail = f'Baseline {current:.1f}% + sector impact {impact:+.2f}ppt  ·  ' + '  ·  '.join(parts)
+        detail = (f'Baseline {current:.1f}% ({cpi_as_of}) + sector impact {impact:+.2f}ppt  ·  '
+                 + '  ·  '.join(parts))
         self._detail_lbl.setText(detail)
         self._detail_lbl.setStyleSheet(
             f'font-size:9px;color:{text_c};background:transparent;border:none;')

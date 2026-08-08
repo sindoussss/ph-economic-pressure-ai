@@ -757,8 +757,28 @@ class Stage4ReportPanel(QWidget):
         _vd = 'down' if (avg or 0) < 0 else ('up' if (avg or 0) > 0 else 'flat')
         val_lbl = _theme.serif_number(val_str, color=_theme.direction_color(_vd), size=26)
 
+        # Same honesty treatment the swarm-mode card below already gives its
+        # own consensus number (agreement_basis/agreement_caveat): this card
+        # used to show a bare "N% agent agreement" with none of it, the exact
+        # collapsed-room blind spot ADR-009 found and fixed for swarm mode --
+        # classic mode has its own reachable toggle (Stage2SetupPanel's swarm
+        # checkbox) and was never covered by that fix.
+        classic_estimates = [v.get('estimate') for v in (consensus.get('verdicts') or [])
+                             if v.get('estimate') is not None]
+        classic_n = len(classic_estimates)
+        classic_distinct = len({round(e, 2) for e in classic_estimates})
+
         sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
         sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
+        basis_lbl = QLabel(_honesty.agreement_basis(
+            classic_n, distinct=classic_distinct))
+        basis_lbl.setWordWrap(True)
+        basis_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        _caveat = _honesty.agreement_caveat(classic_n, distinct=classic_distinct)
+        caveat_lbl = QLabel(_caveat)
+        caveat_lbl.setWordWrap(True)
+        caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        caveat_lbl.setVisible(bool(_caveat))
 
         range_row = QHBoxLayout()
         for label, value in [('Low', low), ('High', high), ('Agent agreement', f'{conf}%')]:
@@ -775,6 +795,8 @@ class Stage4ReportPanel(QWidget):
 
         cf_layout.addWidget(val_lbl)
         cf_layout.addWidget(sub_lbl)
+        cf_layout.addWidget(basis_lbl)
+        cf_layout.addWidget(caveat_lbl)
         _note = QLabel(_honesty.consensus_note())
         _note.setWordWrap(True)
         _note.setStyleSheet('font-size:9px;color:#9CA3AF;font-style:italic;')

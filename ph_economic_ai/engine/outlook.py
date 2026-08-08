@@ -148,14 +148,41 @@ def forecast_outlook(brief: PressureBrief, report: Optional[dict] = None,
 def make_swarm_tournament(rag) -> Tournament:
     """Wire the real fuel tournament (swarm), seeded by the present read. Only gas
     has a tournament; food/electricity fall back to naive persistence. Imported
-    lazily so a pure Outlook test never pulls in the swarm/PyQt stack."""
+    lazily so a pure Outlook test never pulls in the swarm/PyQt stack.
+
+    The scenario `forecast_outlook` builds carries only `as_of`/`window`/`sector`
+    -- `forum.run_monitor` (Stage 1) never fetches live Brent or USD/PHP, only
+    the social snapshot, so there was never any oil/FX shock data in this
+    pipeline to pass through. Without it, `swarm.compute_physical_anchor` reads
+    `scenario.get('oil_pct', 0.0)` / `.get('usd_pct', 0.0)`, both silently
+    defaulting to zero: the MECHANICAL PASS-THROUGH anchor every agent estimate
+    gets reconciled against was always exactly PHP 0.00/L, whatever oil and the
+    peso actually did that week, and agents saw no DATA BRIEF at all (`data_brief`
+    was never passed). The anchor and the reconciliation still ran and still
+    looked like the same guardrail the Simulation tab has; it was checking
+    estimates against a fabricated number. Fetches the same `LiveDataBrief` the
+    Simulation tab uses and derives the same scenario fields from it
+    (`derive_scenario_from_brief`), so the swarm sees real market data here too.
+    """
     def _tournament(sector: str, prior: Optional[float], scenario: dict) -> ForecastResult:
         if sector != 'gas':
             return ForecastResult(point=prior, agreement=0, raw=prior)
         from ph_economic_ai.engine.swarm import SwarmOrchestrator
+        from ph_economic_ai.engine.live_data import LiveDataBrief, derive_scenario_from_brief
         ml = f"Present-read baseline: {prior:+.2f} PHP/L" if prior is not None else ''
         try:
-            mv = SwarmOrchestrator(rag, dict(scenario), ml_baseline=ml).run()
+            brief = LiveDataBrief().fetch()
+        except Exception:
+            # A failed live fetch must not fail the tournament outright -- fall
+            # back to no brief, the same as before this fix, rather than lose a
+            # forecast over an unrelated network hiccup. `derive_scenario_from_brief`
+            # already degrades to oil_pct=usd_pct=0 for a None brief, so this is
+            # the pre-fix behaviour on failure, not a new failure mode.
+            brief = None
+        full_scenario = {**dict(scenario), **derive_scenario_from_brief(brief)}
+        try:
+            mv = SwarmOrchestrator(rag, full_scenario, data_brief=brief,
+                                   ml_baseline=ml).run()
         except Exception:
             return ForecastResult(point=prior, agreement=0, raw=prior)
         return ForecastResult(point=mv.final_estimate,

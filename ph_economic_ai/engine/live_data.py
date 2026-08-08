@@ -36,20 +36,54 @@ _RSS_HEADERS = {
 BSP_TARGET_LOW  = 2.0
 BSP_TARGET_HIGH = 4.0
 
-# Current CPI baseline from PSA (updated monthly in debate.py constants)
-_CURRENT_CPI_PCT = 3.8   # PSA April 2026 headline CPI
+# Current CPI baseline from PSA. A hardcoded snapshot goes stale by
+# construction, so it carries its own vintage rather than pretending to be
+# live -- `check_bsp_alert` returns `cpi_as_of` alongside every figure it
+# derives from this, and the UI must show it rather than let a reader assume
+# "current". Was 3.8 ("PSA April 2026 headline CPI"), four months stale when
+# corrected: PSA's actual July 2026 release (2026-08-05) reports headline
+# inflation at 6.2%, easing from 6.4% in June and 6.8% in May -- three
+# consecutive months down, but still 2.2 points above the BSP's own 4% target
+# ceiling, not the near-target reading the stale figure implied. The comment
+# this replaces claimed the value was "updated monthly in debate.py
+# constants"; no such constant exists anywhere in debate.py -- that
+# maintenance mechanism was never real, and this value will go stale again
+# next release unless something actually refreshes it.
+_CURRENT_CPI_PCT = 6.2
+_CPI_AS_OF = 'July 2026 (PSA, released 2026-08-05)'
 
 # CPI basket weights (PSA 2018 base) used for pass-through math
 _FUEL_BASKET_WEIGHT  = 0.089   # Transport fuel share
 _FOOD_BASKET_WEIGHT  = 0.388   # Food & non-alcoholic beverages
 _ELEC_BASKET_WEIGHT  = 0.032   # Electricity share
 
-# Pass-through coefficients (derived from BSP econometric models)
-# ₱1/L fuel change → ppt CPI impact
+# How a sector price move translates into CPI percentage points.
+#
+# Food's is exact, by construction, not an estimate: a Laspeyres CPI's
+# contribution from one sub-index is (% change in that sub-index) x (its
+# basket weight), so a 1% food-price move contributes exactly
+# 1 x _FOOD_BASKET_WEIGHT points -- the two numbers below are the same
+# number for that reason, not by assumption.
+_FOOD_PASSTHROUGH_PER_PCT = _FOOD_BASKET_WEIGHT
+
+# Fuel and electricity are NOT the same kind of number, and the comment this
+# replaces ("derived from BSP econometric models") named a source that does
+# not exist anywhere in this codebase -- no citation, no backtest, nothing
+# resembling the real one `anchoring.py`'s fuel calibration cites. Checked
+# directly: the pure basket-weighted DIRECT contribution of a PHP 1/L fuel
+# move is (1/price) x 100 x _FUEL_BASKET_WEIGHT, about 0.09-0.10 ppt at
+# 2026 retail prices -- these constants are roughly 2 to 2.7x that. A
+# multiplier that size is plausible (fuel and electricity costs ripple into
+# transport fares, freight and production costs the "fuel"/"electricity"
+# basket lines do not directly capture), but it is asserted here, not shown.
+# Kept as the app's stated estimate; the "AUTHORITATIVE" framing in the
+# causal-chain prompt refers only to keeping the LLM from silently
+# recomputing a different figure than the banner shows (DEC on drift: one
+# run showed 4.52% in the chain against 4.10% on the banner), not to these
+# two coefficients being independently validated.
+# ₱1/L fuel change → ppt CPI impact (~2x the direct weighted contribution)
 _FUEL_PASSTHROUGH_PER_PHP   = 0.19
-# 1% monthly food price change → ppt CPI impact
-_FOOD_PASSTHROUGH_PER_PCT   = 0.388
-# ₱0.10/kWh electricity change → ppt CPI impact
+# ₱0.10/kWh electricity change → ppt CPI impact (~2.5x the direct weighted contribution)
 _ELEC_PASSTHROUGH_PER_10SEN = 0.072
 
 
@@ -429,13 +463,20 @@ class LiveDataBrief:
         food_pct:         Optional[float],
         elec_php_per_kwh: Optional[float],
         current_cpi:      float = _CURRENT_CPI_PCT,
+        cpi_as_of:        str = _CPI_AS_OF,
     ) -> dict:
         """Estimate whether sector verdicts would breach BSP 2-4% CPI target.
 
-        Uses PSA basket weights and BSP pass-through coefficients:
+        Uses PSA basket weights and this module's own pass-through estimates
+        (see the constants' own comments for which are exact CPI arithmetic
+        and which are asserted, uncited multipliers):
           Fuel:  ₱1/L  → ~0.19 ppt CPI  (transport fuel basket share 8.9%)
-          Food:  1%/mo → ~0.39 ppt CPI  (food basket share 38.8%)
+          Food:  1%/mo → ~0.39 ppt CPI  (food basket share 38.8%, exact)
           Elec:  ₱0.10/kWh → ~0.07 ppt CPI (electricity basket share 3.2%)
+
+        `cpi_as_of` is returned alongside every figure derived from
+        `current_cpi` so a caller cannot show the projection without also
+        being able to show how old the baseline it is projected from is.
         """
         contrib: dict[str, float] = {}
         total   = 0.0
@@ -458,6 +499,7 @@ class LiveDataBrief:
         projected = current_cpi + total
         return {
             'current_cpi':        round(current_cpi, 2),
+            'cpi_as_of':          cpi_as_of,
             'sector_cpi_impact':  round(total, 3),
             'projected_cpi':      round(projected, 2),
             'bsp_target_low':     BSP_TARGET_LOW,
