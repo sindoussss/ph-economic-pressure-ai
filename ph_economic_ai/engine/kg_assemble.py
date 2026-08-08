@@ -5,7 +5,8 @@ from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
 
 
 def assemble_structured(builder: KnowledgeGraphBuilder, *, sources, data_inputs,
-                        regionals, agents, retrievals, master_estimate=None) -> None:
+                        regionals, agents, retrievals, master_estimate=None,
+                        preserved=None) -> None:
     builder.add_master(master_estimate)
     for s in sources:
         builder.add_source(s)
@@ -24,10 +25,16 @@ def assemble_structured(builder: KnowledgeGraphBuilder, *, sources, data_inputs,
             cid = builder.add_claim(aid, a['estimate'], a.get('statement', ''))
             for k in (data_inputs or {}):
                 builder.add_edge(cid, f'data:{k}', 'references')
+        # 'retrieved' means the agent actually read this chunk; 'reconstructed'
+        # means it was re-derived by querying RAG afterwards and may not be
+        # what the agent saw (RSK-019). Callers that don't know the difference
+        # default to 'retrieved' rather than silently degrading a caller that
+        # already gave real per-agent evidence.
+        was_preserved = (preserved or {}).get(a['name'], True)
         for ev in retrievals.get(a['name'], []):
             evid = builder.add_evidence(ev['source'], ev['idx'], ev['text'],
                                         ev.get('url', ''))
-            builder.add_edge(aid, evid, 'retrieved')
+            builder.add_edge(aid, evid, 'retrieved' if was_preserved else 'reconstructed')
 
 
 def apply_extraction(builder: KnowledgeGraphBuilder, chunk_id: str, source: str,
@@ -35,4 +42,4 @@ def apply_extraction(builder: KnowledgeGraphBuilder, chunk_id: str, source: str,
     for e in result.get('entities', []):
         builder.add_entity(e['name'], e.get('type', ''), chunk_id, source)
     for r in result.get('relations', []):
-        builder.add_relation(r['a'], r['b'])
+        builder.add_relation(r['a'], r['b'], r.get('kind', 'relates'))

@@ -125,11 +125,26 @@ class TrackRecord:
         evidence: it is on record as measuring the wrong question (`RSK-023`),
         and folding it into an accuracy average would let a known-bad grade
         quietly move a number a reader takes as this app's track record.
+
+        Excluded by ROW POSITION relative to the run's most recent withdrawal,
+        not by run_id alone. `store.withdraw_cross_cycle_grades` documents and
+        supports a withdrawn run becoming "eligible again" and grading
+        correctly once its own week settles -- `record_outcome` has no guard
+        against a run_id it has already written an outcome for, so that regrade
+        appends a SECOND outcome row. Keying the exclusion on run_id alone
+        dropped that valid regrade too, forever: a run withdrawn once could
+        never appear in the scorecard again even after being correctly
+        regraded. An outcome recorded AFTER its run_id's latest withdrawal is
+        the regrade, not the thing that was withdrawn, and survives.
         """
         rows = self.all_rows()
-        withdrawn_ids = {r['run_id'] for r in rows if r.get('kind') == 'withdrawal'}
-        outcomes = [r for r in rows
-                   if r.get('kind') == 'outcome' and r['run_id'] not in withdrawn_ids]
+        last_withdrawal_idx: dict = {}
+        for i, r in enumerate(rows):
+            if r.get('kind') == 'withdrawal':
+                last_withdrawal_idx[r['run_id']] = i
+        outcomes = [r for i, r in enumerate(rows)
+                   if r.get('kind') == 'outcome'
+                   and i > last_withdrawal_idx.get(r['run_id'], -1)]
         n = len(outcomes)
         if n == 0:
             return {'n_matured': 0, 'mae': None, 'coverage_90': None}

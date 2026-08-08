@@ -17,9 +17,9 @@ _MINI_TIER = llm.FAST
 # ── Current Philippine economic baselines ─────────────────────────────────────
 # Gas: see swarm.fetch_live_retail_price() — auto-fetches on every swarm run.
 # Food and electricity: update these when PSA/Meralco publishes new figures.
-_FOOD_INFLATION_YOY_PCT: float = 6.1      # PSA April 2026, year-on-year
+_FOOD_INFLATION_YOY_PCT: float = 5.3      # PSA July 2026 (released 2026-08-05), year-on-year
 _RICE_PRICE_PHP_KG: float = 52.0          # Commercial rice, NCR avg
-_MERALCO_RATE_PHP_KWH: float = 14.3345   # Meralco residential May 2026
+_MERALCO_RATE_PHP_KWH: float = 14.8261   # Meralco residential July 2026
 _GAS_PRICE_PHP_L: float = 98.82           # NCR Unleaded 91 avg May 20 2026
 
 
@@ -343,7 +343,7 @@ DEFAULT_AGENTS: list[Agent] = [
 
 _FOOD_ANCHOR = (
     f'IMPORTANT: Current Philippine food inflation is {_FOOD_INFLATION_YOY_PCT:.1f}% '
-    f'year-on-year (PSA April 2026). Commercial rice (NCR) costs approximately '
+    f'year-on-year (PSA July 2026). Commercial rice (NCR) costs approximately '
     f'₱{_RICE_PRICE_PHP_KG:.0f}/kg. Typical monthly food price index changes in the '
     f'Philippines are ±0.3% to ±2.5%. Output only the signed monthly CHANGE percentage. '
 )
@@ -401,7 +401,7 @@ FOOD_AGENTS: list[Agent] = [
 
 _ELEC_ANCHOR = (
     f'IMPORTANT: Current Meralco residential electricity rate is ₱{_MERALCO_RATE_PHP_KWH:.4f}/kWh '
-    f'(May 2026). Typical monthly Meralco adjustments range from ±₱0.01 to ±₱1.50/kWh. '
+    f'(July 2026). Typical monthly Meralco adjustments range from ±₱0.01 to ±₱1.50/kWh. '
     f'Output only the signed monthly CHANGE in ₱/kWh. '
 )
 
@@ -626,6 +626,17 @@ def _extract_percent(text: str) -> Optional[float]:
     return value
 
 
+#: Per-sector agreement band for `consensus()`: PHP/L for gas, percentage
+#: points for food, PHP/kWh for electricity. Must track `forum._BAND` and (for
+#: gas) `swarm._AGREEMENT_BAND` -- three places measuring the same three
+#: sectors' agreement, and a room that reads as agreeing on one screen should
+#: read the same way on another. This engine used one hardcoded 0.20 for every
+#: sector: less than half gas's validated 0.50 (classic-mode gas understated
+#: its own room's agreement relative to swarm mode) and double electricity's
+#: validated 0.10 (classic-mode electricity overstated it).
+_CONSENSUS_BAND = {'gas': 0.50, 'food': 0.3, 'electricity': 0.10}
+
+
 class DebateEngine:
     def __init__(self, agents: list[Agent], rag: RagEngine, scenario: dict,
                  price_extractor=None, data_brief: Optional['LiveDataBrief'] = None,
@@ -797,7 +808,8 @@ class DebateEngine:
             return {'weighted_avg': None, 'low': None, 'high': None,
                     'confidence_pct': 0, 'verdicts': []}
         avg = sum(estimates) / len(estimates)
-        within = sum(1 for e in estimates if abs(e - avg) <= 0.20)
+        band = _CONSENSUS_BAND.get(self._sector, 0.20)
+        within = sum(1 for e in estimates if abs(e - avg) <= band)
         return {
             'weighted_avg': avg,
             'low': min(estimates),

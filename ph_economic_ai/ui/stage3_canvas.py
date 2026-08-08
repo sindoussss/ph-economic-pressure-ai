@@ -1011,7 +1011,7 @@ class _LogRow(QWidget):
         rnd.setStyleSheet('font-size:9px;color:#94A3B8;background:transparent;')
         nm = QLabel(response.agent_name)
         nm.setStyleSheet('font-size:11px;font-weight:700;color:#1E293B;background:transparent;')
-        est_txt = f'+₱{response.price_estimate:.2f}' if response.price_estimate is not None else '—'
+        est_txt = f'₱{response.price_estimate:+.2f}' if response.price_estimate is not None else '—'
         est = QLabel(est_txt)
         est.setStyleSheet(f'font-size:11px;font-weight:700;color:{color};background:transparent;')
         rh.addWidget(rnd); rh.addWidget(nm); rh.addStretch(); rh.addWidget(est)
@@ -1592,7 +1592,7 @@ class Stage3CanvasPanel(QWidget):
         # Price estimate label on canvas
         el = self._est_lbls.get(name)
         if el and resp.price_estimate is not None:
-            el.setPlainText(f'+₱{resp.price_estimate:.2f}/L')
+            el.setPlainText(f'₱{resp.price_estimate:+.2f}/L')
             el.setDefaultTextColor(QColor(color))
             ax, ay = self._apos.get(name, (0, 0))
             r = self._agent_radii.get(name, _AR)

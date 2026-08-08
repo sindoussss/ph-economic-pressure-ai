@@ -2484,7 +2484,7 @@ class Stage3SwarmPanel(QWidget):
         self._canvas.mark_regional_active(judge_id)
         QTimer.singleShot(200, lambda jid=judge_id: self._canvas.mark_regional_done(jid))
         self._regional_done_count += 1
-        est = f'+{verdict.estimate:.2f}/L' if verdict.estimate is not None else 'N/A'
+        est = f'{verdict.estimate:+.2f}/L' if verdict.estimate is not None else 'N/A'
         self._log(f'REGIONAL #{judge_id + 1}  estimate={est}', color='#A78BFA')
         if self._regional_done_count >= 2:
             self._set_phase(3, 'Master verdict')
@@ -2499,7 +2499,7 @@ class Stage3SwarmPanel(QWidget):
     def _on_swarm_complete(self, master_verdict):
         self._canvas.mark_master_done()
         self._clock_tmr.stop()
-        est = (f'+₱{master_verdict.final_estimate:.2f}/L'
+        est = (f'₱{master_verdict.final_estimate:+.2f}/L'
                if master_verdict.final_estimate is not None else 'N/A')
         self._master_estimate = est
         self._gas_est = master_verdict.final_estimate
@@ -2641,7 +2641,7 @@ class Stage3SwarmPanel(QWidget):
     def _on_elec_agent_done(self, resp):
         est = resp.price_estimate
         self._canvas.mark_sector_agent_done(resp.agent_name, 'elec', est)
-        est_str = f'+₱{est:.4f}/kWh' if est is not None else '?'
+        est_str = f'₱{est:+.4f}/kWh' if est is not None else '?'
         self._active_agents = max(0, self._active_agents - 1)
         self._active_val.setText(str(self._active_agents))
         self._log(f'ELEC    {resp.agent_name.split()[0]}  {est_str}', color='#FBBF24')
@@ -2655,7 +2655,7 @@ class Stage3SwarmPanel(QWidget):
     def _on_elec_canvas_complete(self, responses):
         estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
         avg = sum(estimates) / len(estimates) if estimates else None
-        est_str = f'+₱{avg:.4f}/kWh' if avg is not None else 'N/A'
+        est_str = f'₱{avg:+.4f}/kWh' if avg is not None else 'N/A'
         self._elec_est = avg
         self._canvas.mark_sector_complete('elec', est_str)
         self._elec_val.setText(est_str)

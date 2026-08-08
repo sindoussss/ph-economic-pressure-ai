@@ -25,6 +25,27 @@ def test_electricity_agents_have_estimate_format():
         assert 'ESTIMATE:' in agent.system_prompt
 
 
+def test_food_inflation_anchor_is_not_the_stale_april_figure():
+    """RSK-041 lineage: baked into every food agent's system prompt at import
+    time, with no live-refresh path (unlike gas, which fetches a real price
+    every run). PSA's July 2026 release (2026-08-05) put food inflation at
+    5.3%, not the stale 6.1% April figure this agent anchor used to state."""
+    from ph_economic_ai.engine.debate import _FOOD_INFLATION_YOY_PCT, _FOOD_ANCHOR
+    assert _FOOD_INFLATION_YOY_PCT == 5.3
+    assert '6.1' not in _FOOD_ANCHOR
+    assert 'April 2026' not in _FOOD_ANCHOR
+
+
+def test_meralco_rate_anchor_is_not_the_stale_may_figure():
+    """Meralco's own July 2026 rate announcement put the residential rate at
+    14.8261/kWh, not the stale 14.3345 May figure this agent anchor used to
+    state."""
+    from ph_economic_ai.engine.debate import _MERALCO_RATE_PHP_KWH, _ELEC_ANCHOR
+    assert _MERALCO_RATE_PHP_KWH == 14.8261
+    assert '14.3345' not in _ELEC_ANCHOR
+    assert 'May 2026' not in _ELEC_ANCHOR
+
+
 def test_food_agents_use_main_model():
     from ph_economic_ai.engine.debate import _MAIN_TIER
     for agent in FOOD_AGENTS:
@@ -193,6 +214,38 @@ def test_consensus_final_round_only():
     result = engine.consensus()
     # Only round 2 should be used
     assert result['weighted_avg'] == pytest.approx(2.00)
+
+
+def test_consensus_uses_electricity_band_not_the_gas_sized_default():
+    """The engine used one 0.20 band for every sector -- double electricity's
+    validated 0.10 (forum._BAND), so classic-mode electricity confidence read
+    higher than the same room would on the Forum or the swarm."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(ELECTRICITY_AGENTS[:3], rag, {}, sector='electricity')
+    engine._history = [
+        AgentResponse('A', 1, '', 's', 0.00),
+        AgentResponse('B', 1, '', 's', 0.15),
+        AgentResponse('C', 1, '', 's', 0.30),
+    ]
+    result = engine.consensus()
+    # avg=0.15; only B sits within the 0.10 electricity band -> 1 of 3
+    assert result['confidence_pct'] == 33
+
+
+def test_consensus_uses_gas_band_not_the_narrower_default():
+    """Gas's validated band is 0.50 (swarm._AGREEMENT_BAND, forum._BAND); the
+    engine's old 0.20 understated classic-mode gas agreement relative to the
+    swarm's measurement of the identical unit."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(DEFAULT_AGENTS[:3], rag, {}, sector='gas')
+    engine._history = [
+        AgentResponse('A', 1, '', 's', 0.00),
+        AgentResponse('B', 1, '', 's', 0.30),
+        AgentResponse('C', 1, '', 's', 0.60),
+    ]
+    result = engine.consensus()
+    # avg=0.30; all three sit within the 0.50 gas band -> 3 of 3
+    assert result['confidence_pct'] == 100
 
 
 def test_run_clears_history_on_rerun():

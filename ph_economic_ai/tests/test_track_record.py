@@ -47,3 +47,28 @@ def test_scorecard_over_matured_predictions(tmp_path):
     assert sc['n_matured'] == 2
     assert sc['mae'] == pytest.approx((0.5 + 5.0) / 2)
     assert sc['coverage_90'] == pytest.approx(0.5)
+
+
+def test_scorecard_keeps_a_regrade_recorded_after_its_withdrawal(tmp_path):
+    """store.withdraw_cross_cycle_grades documents a withdrawn run becoming
+    eligible again and grading correctly once its own week settles --
+    record_outcome has no guard against a run_id it already wrote an outcome
+    for, so that regrade appends a second outcome row. Keying the scorecard's
+    exclusion on run_id alone used to drop the valid regrade too, forever."""
+    tr = TrackRecord(tmp_path / 'log.jsonl')
+    rid = tr.record_prediction('2026-07', 64.0, 62.0, 66.0, 'hgb-1')
+    tr.record_outcome(rid, actual=200.0)      # the bad, cross-cycle grade
+    tr.record_withdrawal(rid, reason='RSK-023: graded against the wrong week')
+    tr.record_outcome(rid, actual=64.5)       # the later, legitimate regrade
+    sc = tr.scorecard()
+    assert sc['n_matured'] == 1
+    assert sc['mae'] == pytest.approx(0.5)
+
+
+def test_scorecard_still_excludes_a_withdrawal_with_no_regrade(tmp_path):
+    tr = TrackRecord(tmp_path / 'log.jsonl')
+    rid = tr.record_prediction('2026-07', 64.0, 62.0, 66.0, 'hgb-1')
+    tr.record_outcome(rid, actual=200.0)
+    tr.record_withdrawal(rid, reason='RSK-023')
+    sc = tr.scorecard()
+    assert sc['n_matured'] == 0

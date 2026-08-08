@@ -177,3 +177,52 @@ def test_connect_thread_populates_evidence(app):
     p.connect_thread(thread)
     ev = [it for it in p._canvas._scene.items() if isinstance(it, _EvidenceNode)]
     assert len(ev) > 0                                  # canvas populated from run start
+
+
+# ── a sign that lies, RSK-031 lineage never reached this file ────────────────
+
+def test_swarm_complete_signs_a_falling_gas_estimate_correctly(app):
+    """A literal '+' concatenated before the value produced '+₱-3.53/L' for
+    every falling swarm-mode forecast on the sidebar's main GAS figure --
+    the same bug RSK-031 already fixed in swarm.py's prompt and the Agent
+    Performance table, never reaching this file at all."""
+    from ph_economic_ai.engine.swarm import MasterVerdict
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    mv = MasterVerdict(final_estimate=-3.53, confidence_pct=70,
+                       dissenting_regions=[], reasoning='test', regional_verdicts=[])
+    panel._on_swarm_complete(mv)
+    assert panel._gas_val.text() == '₱-3.53/L'
+    assert '+₱-' not in panel._gas_val.text()
+
+
+def test_regional_done_log_signs_a_falling_estimate_correctly(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    verdict = NS(estimate=-1.20, region_pair=('NCR', 'Central Luzon'))
+    panel._on_regional_done(0, verdict)
+    log_text = panel._console.toPlainText()
+    assert '-1.20/L' in log_text
+    assert '+-' not in log_text
+
+
+def test_elec_agent_done_log_signs_a_falling_estimate_correctly(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    resp = NS(agent_name='Grid Analyst', price_estimate=-0.0250, statement='easing')
+    panel._on_elec_agent_done(resp)
+    log_text = panel._console.toPlainText()
+    assert '-0.0250/kWh' in log_text
+    assert '+₱-' not in log_text
+
+
+def test_elec_canvas_complete_signs_a_falling_average_correctly(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    responses = [NS(price_estimate=-0.02), NS(price_estimate=-0.04)]
+    panel._on_elec_canvas_complete(responses)
+    assert panel._elec_val.text() == '₱-0.0300/kWh'
+    assert '+₱-' not in panel._elec_val.text()
