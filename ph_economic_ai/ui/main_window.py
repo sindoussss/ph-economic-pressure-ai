@@ -33,6 +33,7 @@ from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
 from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
 from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
 from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+from ph_economic_ai.ui import honesty as _honesty
 from ph_economic_ai.ui.accuracy_view import AccuracyView
 from ph_economic_ai.ui.learning_view import LearningView
 from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
@@ -193,6 +194,7 @@ def _format_gas_verdict(
     low: float | None = None,
     high: float | None = None,
     regional: list | None = None,
+    estimates: list | None = None,
 ) -> str:
     """Human-readable gas verdict for the downstream LLM prompts.
 
@@ -203,15 +205,36 @@ def _format_gas_verdict(
     mangled Python object and invented its own numbers (+₱13.70/L against a
     +₱2.54/L consensus). Food and electricity always formatted prose here; gas
     was the odd one out.
+
+    `estimates`, the raw agent estimates behind `agreement_pct`, replaced a
+    bare "agent agreement N%" with `honesty.spread_line`'s distinct-value and
+    span breakdown -- the same fix applied to `_on_food_complete` and
+    `_on_elec_complete`'s verdict strings for the identical reason: a
+    percentage this text feeds straight into an LLM prompt (and, via
+    stage5_interact, straight onto the user's screen) cannot be checked
+    against anything else without the numbers behind it, on any of the three
+    sectors alike.
     """
     if estimate is None:
         return '(Gas sector verdict unavailable.)'
+    usable = [e for e in (estimates or []) if e is not None]
+    if usable:
+        agreement_text = _honesty.spread_line(usable, '₱/L', pct=agreement_pct or 0)
+    elif agreement_pct is not None:
+        agreement_text = f'agent agreement {agreement_pct:.0f}%'
+    else:
+        agreement_text = None
     parts = [f'Retail gasoline monthly change: {estimate:+.2f} ₱/L']
-    if agreement_pct is not None:
-        parts.append(f'agent agreement {agreement_pct:.0f}%')
+    if agreement_text is not None:
+        parts.append(agreement_text)
     if low is not None and high is not None:
         parts.append(f'range {low:+.2f} to {high:+.2f} ₱/L')
     summary = f'{parts[0]} ({", ".join(parts[1:])})' if len(parts) > 1 else parts[0]
+    if usable:
+        distinct = len({round(e, 2) for e in usable})
+        caveat = _honesty.agreement_caveat(len(usable), distinct=distinct)
+        if caveat:
+            summary += f' {caveat}.'
 
     for pair, value in (regional or []):
         if value is None:
@@ -738,10 +761,12 @@ class SimMainWindow(QMainWindow):
         scenario = self._last_scenario or {}
         anchor = self._food_anchor(scenario)
         raw_avg, conf = None, 0
+        verdicts = []
         if responses and self._food_engine:
             c = self._food_engine.consensus()
             raw_avg = c.get('weighted_avg')
             conf = c.get('confidence_pct', 0)
+            verdicts = c.get('verdicts') or []
         # Persistence-anchored: trust the agents near their own trend, clamp a
         # drift, and fall back to the trend outright when the debate produced
         # nothing — so food is never a blank, even on total debate failure.
@@ -751,9 +776,21 @@ class SimMainWindow(QMainWindow):
         self._sector_responses['food'] = list(responses or [])
         self._food_agreement = conf
         note = anchoring.explain(rec, unit='%', anchor_label='own-trend persistence')
+        # Same honesty treatment fuel's agreement number already gets (ADR-009):
+        # `conf` alone cannot distinguish a converged room from two agents that
+        # happened to land close, or a template-copying collapse -- this engine
+        # has none of swarm.py's collapse/echo detection built in. Naming the
+        # distinct-value count and the spread is what lets a reader tell the
+        # difference, same reasoning that made a bare percentage insufficient
+        # for fuel's card.
+        food_estimates = [v.get('estimate') for v in verdicts if v.get('estimate') is not None]
+        spread = _honesty.spread_line(food_estimates, '%', pct=conf)
+        distinct = len({round(e, 2) for e in food_estimates})
+        caveat = _honesty.agreement_caveat(len(food_estimates), distinct=distinct)
+        caveat_text = f' {caveat}.' if caveat else ''
         self._food_verdict = (
             f'Food price index monthly change: {rec.value:+.2f}% '
-            f'(confidence {conf}%). {note}'
+            f'({spread}). {note}{caveat_text}'
         )
         if 'food_price_idx' in self._df.columns:
             food_hist = self._df['food_price_idx'].dropna().tail(6).tolist()
@@ -781,22 +818,42 @@ class SimMainWindow(QMainWindow):
         scenario = self._last_scenario or {}
         anchor = self._elec_anchor(scenario)
         raw_avg, conf = None, 0
+        verdicts = []
         if responses and self._elec_engine:
             c = self._elec_engine.consensus()
             raw_avg = c.get('weighted_avg')
             conf = c.get('confidence_pct', 0)
-        # Electricity's fuel pass-through is the one sector channel the benchmark
-        # confirmed as genuinely predictive, so the anchor is a validated signal,
-        # not just a scale. Reconcile against it exactly as fuel does.
+            verdicts = c.get('verdicts') or []
+        # NOT a validated predictive signal -- corrected 2026-08-08, this comment
+        # previously claimed the opposite. Electricity's driver-only edge was
+        # withdrawn (manuscript S5.7: Ridge is worse than predicting the constant
+        # once the baseline is corrected; reconfirmed null again by RSK-004's
+        # selection-holdout re-test). `electricity_passthrough_anchor` is, by its
+        # own docstring, a magnitude guard only (corr ~0.03-0.13 against real PSA
+        # electricity CPI) -- it keeps a weak model's estimate physically sized,
+        # the same job the fuel and food anchors do. Reconciled against it the
+        # same way as fuel and food for that reason, not because it forecasts.
         rec = anchoring.reconcile_estimate(
             raw_avg, anchor, tolerance=anchoring.ELECTRICITY_TOLERANCE_PHP_KWH)
         self._elec_estimate = rec.value
         self._sector_responses['electricity'] = list(responses or [])
         self._elec_agreement = conf
         note = anchoring.explain(rec, unit='₱/kWh', anchor_label='fuel pass-through')
+        # See the matching comment in _on_food_complete: this engine has none of
+        # swarm.py's collapse/echo detection, so the distinct-value count and
+        # spread lead rather than a bare percentage that cannot tell a converged
+        # room from a collapsed one.
+        elec_estimates = [v.get('estimate') for v in verdicts if v.get('estimate') is not None]
+        spread = _honesty.spread_line(elec_estimates, '₱/kWh', pct=conf)
+        # Rounded to 2dp, matching `spread_line`'s own internal rounding exactly
+        # -- a different precision here would let this caveat's distinct count
+        # disagree with the one spread_line just printed for the same estimates.
+        distinct = len({round(e, 2) for e in elec_estimates})
+        caveat = _honesty.agreement_caveat(len(elec_estimates), distinct=distinct)
+        caveat_text = f' {caveat}.' if caveat else ''
         self._elec_verdict = (
             f'Electricity rate monthly change: {rec.value:+.4f} ₱/kWh '
-            f'(confidence {conf}%). {note}'
+            f'({spread}). {note}{caveat_text}'
         )
         if 'electricity_rate' in self._df.columns:
             elec_hist = self._df['electricity_rate'].dropna().tail(6).tolist()
@@ -820,11 +877,13 @@ class SimMainWindow(QMainWindow):
 
     def _on_simulation_complete(self, responses):
         consensus = self._stage3.engine.consensus()
+        _verdicts = consensus.get('verdicts') or [] if isinstance(consensus, dict) else []
         self._gas_verdict = _format_gas_verdict(
             estimate=consensus.get('weighted_avg') if isinstance(consensus, dict) else None,
             agreement_pct=consensus.get('confidence_pct') if isinstance(consensus, dict) else None,
             low=consensus.get('low') if isinstance(consensus, dict) else None,
             high=consensus.get('high') if isinstance(consensus, dict) else None,
+            estimates=[v.get('estimate') for v in _verdicts],
         )
         if responses:
             estimates = [r.price_estimate for r in responses if r.price_estimate is not None]
@@ -1011,6 +1070,8 @@ class SimMainWindow(QMainWindow):
             estimate=self._gas_estimate,
             agreement_pct=getattr(master_verdict, 'confidence_pct', None),
             regional=regional,
+            estimates=[r.price_estimate for r in self._sector_responses.get('gas', [])
+                      if r.price_estimate is not None],
         )
         self._push_sector_forecasts()
         self._stage4.populate_swarm(
