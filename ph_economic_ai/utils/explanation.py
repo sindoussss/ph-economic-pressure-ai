@@ -69,7 +69,7 @@ def generate(oil_delta: float, usd_delta: float, demand_norm: float,
         advisory, advisory_icon = 'No action needed — prices stable', '✓'
 
     price_change = predicted_price - current_price
-    sign = '+' if price_change >= 0 else ''
+    sign = '-' if price_change < 0 else '+'
     direction = 'increase' if price_change >= 0 else 'decrease'
 
     return {

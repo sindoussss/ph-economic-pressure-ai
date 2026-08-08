@@ -56,3 +56,15 @@ def test_risk_colors():
     assert _gen(pressure_index=75.0)['risk_color'] == '#E07A4A'
     assert _gen(pressure_index=45.0)['risk_color'] == '#E0A84A'
     assert _gen(pressure_index=15.0)['risk_color'] == '#4A90E2'
+
+
+# ── a sign that lies, RSK-031 lineage never reached this file ──
+
+def test_expected_increase_signs_a_falling_price_correctly():
+    result = _gen(current=72.0, predicted=70.0)
+    assert result['expected_increase'] == '-₱2.00 / liter'
+
+
+def test_expected_increase_signs_a_rising_price_correctly():
+    result = _gen(current=70.0, predicted=72.0)
+    assert result['expected_increase'] == '+₱2.00 / liter'
