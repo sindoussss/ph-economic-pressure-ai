@@ -106,10 +106,18 @@ class LearningView(QWidget):
     def _format_track(self):
         try:
             logged = self._store.total_runs()
+            # `count_graded_runs` is the census; `get_recent_runs(limit=200)` is
+            # a window. RSK-029 already found and fixed this exact shape
+            # elsewhere (`len(get_graded_errors())`, also capped at 200, used
+            # as a graded-run count) and its own docstring names the cause as
+            # "deriving a total from a windowed query" -- this screen was doing
+            # the same thing through a different call and was never touched by
+            # that fix. Past 200 total runs with any graded ones older than the
+            # newest 200, this would have silently undercounted.
+            n_graded = self._store.count_graded_runs()
             recent = self._store.get_recent_runs(limit=200)
-            graded = [r for r in recent if r.get('actual_price_change') is not None]
-            n_graded = len(graded)
-            errs = [r['accuracy_error'] for r in graded if r.get('accuracy_error') is not None]
+            errs = [r['accuracy_error'] for r in recent
+                   if r.get('accuracy_error') is not None]
             mae = (sum(errs) / len(errs)) if errs else None
         except Exception:
             logged, n_graded, mae = 0, 0, None
@@ -118,5 +126,15 @@ class LearningView(QWidget):
         if n_graded == 0:
             out.append('No graded outcomes yet - grading waits ~5 days for real DOE pump prices.')
         elif mae is not None:
-            out.append(f'mean abs error: ₱{mae:.2f}/L over {n_graded} graded runs')
+            # MAE is computed over `errs` (the 200-run window), which is not
+            # necessarily `n_graded` (the true total) any more now that the
+            # count above comes from the real census -- stating the window's
+            # own size here avoids reintroducing the same "one number labelled
+            # with another's count" shape this function was just fixed for.
+            n_errs = len(errs)
+            if n_errs < n_graded:
+                out.append(f'mean abs error: ₱{mae:.2f}/L over the most recent '
+                          f'{n_errs} of {n_graded} graded runs')
+            else:
+                out.append(f'mean abs error: ₱{mae:.2f}/L over {n_errs} graded runs')
         return '\n'.join(out)

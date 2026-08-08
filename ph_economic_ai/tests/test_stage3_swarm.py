@@ -53,6 +53,109 @@ def test_live_graph_grows_and_view_report(app):
     assert fired == [True]
 
 
+def test_swarm_complete_flags_a_collapsed_room(app):
+    """RSK-038 follow-up: this canvas label stays on screen after the run
+    completes and showed a bare 'N% confidence' with none of the collapse
+    signal the Stage 4 report card already gives the same number."""
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    from ph_economic_ai.engine.swarm import MasterVerdict
+    panel = Stage3SwarmPanel()
+    mv = MasterVerdict(final_estimate=1.5, confidence_pct=100,
+                       dissenting_regions=[], reasoning='test', regional_verdicts=[],
+                       agreement_n=3, agreement_distinct=2)
+    panel._on_swarm_complete(mv)
+    assert 'narrow room' in panel._gas_sub.text()
+    assert 'narrow room' in panel._toast_sub.text()
+
+
+def test_swarm_complete_silent_on_a_spread_room(app):
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    from ph_economic_ai.engine.swarm import MasterVerdict
+    panel = Stage3SwarmPanel()
+    mv = MasterVerdict(final_estimate=1.5, confidence_pct=60,
+                       dissenting_regions=[], reasoning='test', regional_verdicts=[],
+                       agreement_n=4, agreement_distinct=4)
+    panel._on_swarm_complete(mv)
+    assert 'narrow room' not in panel._gas_sub.text()
+
+
+def test_food_consensus_flags_a_collapsed_room(app):
+    """Same RSK-038 gap as the gas label: 'consensus reached' claimed
+    agreement with no distinct-value check behind it."""
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    responses = [NS(price_estimate=0.30), NS(price_estimate=0.30), NS(price_estimate=0.31)]
+    panel._on_food_canvas_complete(responses)
+    assert 'narrow room' in panel._food_sub.text()
+
+
+def test_food_consensus_silent_on_a_spread_room(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    responses = [NS(price_estimate=0.10), NS(price_estimate=0.30), NS(price_estimate=0.50)]
+    panel._on_food_canvas_complete(responses)
+    assert panel._food_sub.text() == 'consensus reached'
+    assert 'narrow room' not in panel._food_sub.text()
+
+
+def test_elec_consensus_flags_a_collapsed_room(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    responses = [NS(price_estimate=0.03), NS(price_estimate=0.03), NS(price_estimate=0.04)]
+    panel._on_elec_canvas_complete(responses)
+    assert 'narrow room' in panel._elec_sub.text()
+
+
+def test_elec_consensus_silent_on_a_spread_room(app):
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    responses = [NS(price_estimate=0.01), NS(price_estimate=0.03), NS(price_estimate=0.07)]
+    panel._on_elec_canvas_complete(responses)
+    assert panel._elec_sub.text() == 'consensus reached'
+
+
+def test_graph_metrics_reflect_the_real_scene_not_a_hardcoded_literal(app):
+    """NODES/EDGES/density/avg_deg used to be literal strings ('37', '110+',
+    '0.087', '4.21') that never changed no matter what was actually built."""
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    canvas = panel._canvas
+    gm = canvas._graph_metrics()
+    expected_nodes = (len(canvas._agents) + len(canvas._regionals) + 1
+                      + len(canvas._rag_nodes) + len(canvas._sector_agents) + 2)
+    assert gm['nodes'] == expected_nodes
+    assert gm['nodes'] != 37                    # the old hardcoded literal
+    assert gm['edges'] > 0
+    assert gm['edges'] != 110                    # the old hardcoded literal ('110+')
+    assert 0 < gm['density'] <= 1
+    assert gm['avg_deg'] == pytest.approx(2 * gm['edges'] / gm['nodes'])
+    assert gm['clusters'] == 6
+
+
+def test_console_header_matches_the_real_session_id(app):
+    """The console header showed a fixed 'swarm_session_001' forever, right
+    next to the SWARM SESSION card's real per-run generated id."""
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    panel = Stage3SwarmPanel()
+    assert panel._console_id.text() == 'swarm_session_001'
+    thread = NS(_rag=None, _scenario={'current_price': 60.0},
+                agent_typing=NS(connect=lambda *a: None),
+                agent_done_typing=NS(connect=lambda *a: None),
+                group_round_done=NS(connect=lambda *a: None),
+                group_eliminated=NS(connect=lambda *a: None),
+                group_survivor=NS(connect=lambda *a: None),
+                regional_done=NS(connect=lambda *a: None),
+                swarm_complete=NS(connect=lambda *a: None))
+    panel.connect_thread(thread)
+    assert panel._console_id.text() != 'swarm_session_001'
+    assert panel._console_id.text() == panel._canvas._session['session_id']
+
+
 def test_connect_thread_populates_evidence(app):
     from types import SimpleNamespace as NS
     from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel, _EvidenceNode
