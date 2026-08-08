@@ -11,6 +11,19 @@ CACHE_PATH = Path(__file__).parent / 'cache' / 'data.json'
 CACHE_TTL_HOURS = 24
 FETCH_TIMEOUT = 8
 
+#: What `_fetch_all` always produces. A cache file has no schema version of its
+#: own, so a file written before a column existed (`food_price_idx`,
+#: `electricity_rate`) reads back as valid JSON with the wrong shape, and
+#: nothing downstream checks for that until `build_food_features`/
+#: `build_electricity_features` raise a `KeyError` two call frames away from
+#: this file, on a machine with no network to notice the real cause. `main.py`
+#: catches that `KeyError` and silently drops the sector's regressor from
+#: `regressors`, so a stale cache degrades food and electricity forecasting
+#: to nothing with no message shown anywhere.
+REQUIRED_COLUMNS = ('date', 'oil_price', 'usd_php', 'demand_index', 'gas_price',
+                    'psei', 'cpi', 'bsp_rate', 'remittances', 'rainfall_mm',
+                    'temp_c', 'food_price_idx', 'electricity_rate')
+
 _YAHOO_HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -302,7 +315,17 @@ def _load_cache(cache_path: Path = CACHE_PATH) -> tuple[Optional[pd.DataFrame], 
         if fetched_at.tzinfo is None:
             fetched_at = fetched_at.replace(tzinfo=timezone.utc)
         is_fresh = (datetime.now(timezone.utc) - fetched_at) < timedelta(hours=CACHE_TTL_HOURS)
-        return pd.DataFrame(raw['data']), is_fresh
+        df = pd.DataFrame(raw['data'])
+        missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+        if missing:
+            # Not a cache to serve, fresh or stale: a file missing columns the
+            # current pipeline requires is a cache from an older schema, not a
+            # cache that has merely aged. Reporting it as a miss sends
+            # `fetch_dataset` down its existing "no usable cache" path (retry
+            # a live fetch, or the explicit connection-error message) instead
+            # of past it silently.
+            return None, False
+        return df, is_fresh
     except Exception:
         return None, False
 

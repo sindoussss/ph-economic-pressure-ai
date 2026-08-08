@@ -36,8 +36,16 @@ class TrackRecord:
             f.write(json.dumps(payload) + '\n')
         return payload
 
-    def record_prediction(self, target_month, predicted, low, high, model_version) -> str:
-        run_id = uuid.uuid4().hex[:12]
+    def record_prediction(self, target_month, predicted, low, high, model_version,
+                          run_id=None) -> str:
+        """Lock in a prediction (phase A). Returns the run_id it was filed under.
+
+        `run_id` lets a caller correlate this row with its own record of the same
+        run (e.g. the SQLite `runs.run_id` this prediction came from) instead of
+        tracking two independent identifiers for one event. A generated uuid is
+        used only when the caller has no id of its own to offer.
+        """
+        run_id = str(run_id) if run_id is not None else uuid.uuid4().hex[:12]
         self._append({
             'kind': 'prediction',
             'run_id': run_id,
@@ -51,6 +59,12 @@ class TrackRecord:
         return run_id
 
     def record_outcome(self, run_id, actual) -> None:
+        # Every stored `run_id` is a string (`record_prediction` coerces it, so
+        # a caller's own generated id and a caller-supplied one, e.g. SQLite's
+        # integer primary key, compare the same way). Coercing here too means
+        # `record_outcome(1, ...)` and `record_outcome('1', ...)` find the same
+        # row instead of the int silently matching nothing.
+        run_id = str(run_id)
         pred = next((r for r in self.all_rows()
                      if r.get('kind') == 'prediction' and r['run_id'] == run_id), None)
         if pred is None:
@@ -62,6 +76,28 @@ class TrackRecord:
             'actual': float(actual),
             'error': float(actual) - pred['predicted'],
             'inside_band': bool(pred['low'] <= float(actual) <= pred['high']),
+        })
+
+    def record_withdrawal(self, run_id, reason: str) -> None:
+        """Mark a prior outcome invalid (phase B, undone) without erasing it.
+
+        The chain is append-only, so an invalid grade cannot be deleted or
+        rewritten without breaking every hash after it — the same property that
+        makes the log trustworthy forbids quietly correcting it. A withdrawal is
+        instead its own row: the original prediction and outcome stay in the
+        file exactly as filed, and `scorecard` excludes any outcome a later
+        withdrawal names, so the visible record and the honest one agree.
+        """
+        run_id = str(run_id)
+        outcome = next((r for r in self.all_rows()
+                        if r.get('kind') == 'outcome' and r['run_id'] == run_id), None)
+        if outcome is None:
+            raise KeyError(f'no outcome with run_id={run_id} to withdraw')
+        self._append({
+            'kind': 'withdrawal',
+            'run_id': run_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'reason': reason,
         })
 
     def all_rows(self) -> list:
@@ -83,8 +119,17 @@ class TrackRecord:
         return True
 
     def scorecard(self) -> dict:
+        """MAE and band coverage over matured, still-valid outcomes.
+
+        A withdrawn outcome is excluded rather than treated as ordinary
+        evidence: it is on record as measuring the wrong question (`RSK-023`),
+        and folding it into an accuracy average would let a known-bad grade
+        quietly move a number a reader takes as this app's track record.
+        """
         rows = self.all_rows()
-        outcomes = [r for r in rows if r.get('kind') == 'outcome']
+        withdrawn_ids = {r['run_id'] for r in rows if r.get('kind') == 'withdrawal'}
+        outcomes = [r for r in rows
+                   if r.get('kind') == 'outcome' and r['run_id'] not in withdrawn_ids]
         n = len(outcomes)
         if n == 0:
             return {'n_matured': 0, 'mae': None, 'coverage_90': None}

@@ -8,9 +8,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from ph_economic_ai.engine import interval as _interval
 from ph_economic_ai.engine.ground_truth import compute_accuracy_score
+from ph_economic_ai.engine.track_record import TrackRecord
 
 _DEFAULT_DB = Path(__file__).parent.parent / 'cache' / 'trust.db'
+_DEFAULT_TRACK_RECORD = Path(__file__).parent.parent / 'cache' / 'track_record.jsonl'
 
 #: The product this app forecasts and grades against. An observation of anything
 #: else is not evidence about this series, however plausible its number looks.
@@ -48,13 +51,35 @@ _PH_DAY = '+8 hours'
 
 
 class AgentTrustStore:
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None, track_record_path: str | None = None):
         self._path = db_path or str(_DEFAULT_DB)
         Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self._path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
         self._migrate()
+        # A second, independent record of what this app predicted and how it
+        # turned out. `trust.db` is the live operational store: it is meant to
+        # be corrected (a grade found to compare the wrong week gets withdrawn,
+        # RSK-023) and its numbers change as that happens. `track_record` is the
+        # append-only counterpart -- nothing in it is ever edited, only added to,
+        # so a reader can verify the chain hash and see every prediction this
+        # app ever locked in, matured or not, withdrawn or not, rather than take
+        # the current numbers on trust.
+        #
+        # Defaults alongside whichever `db_path` is actually in use, not always
+        # to the production cache file. A test store built on `tmp_path` and
+        # left to the module-level default here would write into this
+        # developer's real `cache/track_record.jsonl` on every test run, and
+        # every OTHER test store doing the same would interleave into the same
+        # file and break each other's hash chains.
+        if track_record_path is not None:
+            tr_path = track_record_path
+        elif db_path is not None:
+            tr_path = Path(db_path).parent / 'track_record.jsonl'
+        else:
+            tr_path = _DEFAULT_TRACK_RECORD
+        self.track_record = TrackRecord(tr_path)
 
     # ── Schema ────────────────────────────────────────────────────────────────
 
@@ -269,7 +294,22 @@ class AgentTrustStore:
                  json.dumps(verdict, default=str) if verdict is not None else None),
             )
             self._conn.commit()
-            return cur.lastrowid
+            run_id = cur.lastrowid
+        # Lock the prediction into the hash-chained record too, gas only: that
+        # is the only sector this app grades against an observed price
+        # (`interval.GRADED_SECTORS`), so it is the only one a band here would
+        # mean anything for. A None estimate is not a prediction to file -- the
+        # swarm produced nothing to check. Outside `self._lock`: `get_graded_errors`
+        # takes it too, and the lock is not reentrant.
+        if final_estimate is not None:
+            b = _interval.band(float(final_estimate), self.get_graded_errors(),
+                               level=_interval.EXPANDED_LEVEL, sector='gas')
+            self.track_record.record_prediction(
+                target_month=target.date().isoformat(),
+                predicted=final_estimate, low=b['low'], high=b['high'],
+                model_version=f'run_seed={run_seed}' if run_seed is not None else 'unseeded',
+                run_id=run_id)
+        return run_id
 
     def get_run(self, run_id: int) -> Optional[dict]:
         """One run row by id, or None.
@@ -677,6 +717,13 @@ class AgentTrustStore:
 
             withdrawn.append({'run_id': run['run_id'], 'target_cycle': target_cycle,
                               'was_error': run.get('accuracy_error')})
+            try:
+                self.track_record.record_withdrawal(
+                    run['run_id'],
+                    reason='graded against a different pricing week than it '
+                          'forecast (RSK-023)')
+            except KeyError:
+                pass  # no phase-A/B row in the chain for a pre-feature run
             with self._lock:
                 self._conn.execute(
                     'UPDATE runs SET actual_price_change=NULL, accuracy_error=NULL, '
@@ -868,6 +915,16 @@ class AgentTrustStore:
                 (actual_change, error, datetime.now(timezone.utc).isoformat(),
                  graded_against, run_id),
             )
+            if final_est is not None:
+                try:
+                    self.track_record.record_outcome(run_id, actual_change)
+                except KeyError:
+                    # A run stored before this feature existed has a grade to
+                    # apply but no matching phase-A row in the hash-chained
+                    # log -- that log only starts covering runs made after it
+                    # was wired in. Grading still proceeds; this outcome is
+                    # simply outside what the chain can attest to.
+                    pass
             responses = [dict(r) for r in
                          self._latest_responses_no_commit(run_id)]
             for resp in responses:

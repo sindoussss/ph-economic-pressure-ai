@@ -20,12 +20,23 @@ from ph_economic_ai.fetcher import (
 
 
 def _sample_df() -> pd.DataFrame:
+    """All columns `REQUIRED_COLUMNS` names, so a round-tripped cache built
+    from this fixture is one `_load_cache` accepts as usable rather than one
+    it now correctly treats as an incompatible-schema cache miss."""
     return pd.DataFrame({
         'date': ['2024-01', '2024-02'],
         'oil_price': [80.0, 82.0],
         'usd_php': [56.0, 56.5],
         'demand_index': [72.0, 68.0],
         'gas_price': [65.0, 66.0],
+        'psei': [6500.0, 6520.0],
+        'cpi': [120.0, 120.5],
+        'bsp_rate': [6.5, 6.5],
+        'remittances': [2800.0, 2850.0],
+        'rainfall_mm': [150.0, 140.0],
+        'temp_c': [27.5, 28.0],
+        'food_price_idx': [110.0, 111.0],
+        'electricity_rate': [11.2, 11.3],
     })
 
 
@@ -72,6 +83,32 @@ def test_stale_cache_is_not_fresh(tmp_path):
     cache_file.write_text(json.dumps(payload), encoding='utf-8')
     _, is_fresh = _load_cache(cache_path=cache_file)
     assert not is_fresh
+
+
+def test_cache_missing_required_columns_is_a_miss(tmp_path):
+    """A cache written before `food_price_idx`/`electricity_rate` existed in
+    the schema is not a cache to serve, fresh timestamp or not: reading it
+    back and calling it usable is what let a stale, schema-incompatible cache
+    reach `build_food_features` and fail two frames away from the real cause,
+    with `main.py`'s broad except silently dropping food/electricity
+    forecasting and telling nobody."""
+    cache_file = tmp_path / 'data.json'
+    old_schema_df = pd.DataFrame({
+        'date': ['2024-01', '2024-02'],
+        'oil_price': [80.0, 82.0],
+        'usd_php': [56.0, 56.5],
+        'demand_index': [72.0, 68.0],
+        'gas_price': [65.0, 66.0],
+        # everything after this point post-dates the cache format that wrote it
+    })
+    payload = {
+        'fetched_at': datetime.now(timezone.utc).isoformat(),  # freshly "written"
+        'data': old_schema_df.to_dict(orient='records'),
+    }
+    cache_file.write_text(json.dumps(payload), encoding='utf-8')
+    df, is_fresh = _load_cache(cache_path=cache_file)
+    assert df is None
+    assert is_fresh is False
 
 
 def test_forward_fill_annual_basic():
