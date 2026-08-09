@@ -59,3 +59,26 @@ def test_confidence_bar_positioning(app):
 def test_warning_token():
     from ph_economic_ai.ui import theme
     assert theme.WARNING == '#B45309'
+
+
+def test_stat_card_full(app):
+    from ph_economic_ai.ui import theme
+    frame, layout = theme.stat_card(
+        'GAS / FUEL', '-P0.08/L', color=theme.DOWN,
+        meta='70% agent agreement', tag_kind='exploratory',
+        confidence_frac=(0.38, 0.24))
+    labels = [c.text() for c in frame.findChildren(QLabel)]
+    assert 'GAS / FUEL' in labels
+    assert '-P0.08/L' in labels
+    assert '70% agent agreement' in labels
+    assert 'exploratory' in labels
+    assert len(frame.findChildren(QFrame)) >= 1  # the confidence bar's track
+
+
+def test_stat_card_without_confidence_or_tag(app):
+    from ph_economic_ai.ui import theme
+    frame, layout = theme.stat_card('FOOD', '-0.21%', tag_kind=None)
+    labels = [c.text() for c in frame.findChildren(QLabel)]
+    assert 'FOOD' in labels
+    assert '-0.21%' in labels
+    assert 'exploratory' not in labels and 'validated' not in labels
