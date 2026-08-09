@@ -30,3 +30,17 @@ def test_helpers(app):
     assert isinstance(frame, QFrame)
     assert 'TITLE' in [c.text() for c in frame.findChildren(QLabel)]
     assert theme.tag('validated').text() == 'validated'
+
+
+def test_confidence_bar(app):
+    from ph_economic_ai.ui import theme
+    bar = theme.confidence_bar(0.3, 0.2)
+    assert isinstance(bar, QFrame)
+    fills = [c for c in bar.findChildren(QFrame)]
+    assert len(fills) == 1
+    assert bar.height() == 5
+
+
+def test_warning_token():
+    from ph_economic_ai.ui import theme
+    assert theme.WARNING == '#B45309'

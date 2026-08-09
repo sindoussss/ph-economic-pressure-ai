@@ -12,6 +12,7 @@ HAIRLINE = '#E5E7EB'
 UP = '#B3261E'        # price up = red (bad for consumers)
 DOWN = '#15803D'      # price down = green (good)
 NEUTRAL = '#3B6FD4'
+WARNING = '#B45309'   # amber -- collapsed-room and unscored-survivor caveats
 
 # -- fonts --
 SERIF = 'Georgia'
@@ -52,6 +53,24 @@ def hairline() -> QFrame:
     fr.setFixedHeight(1)
     fr.setStyleSheet(f'background:{HAIRLINE};border:none;')
     return fr
+
+
+def confidence_bar(low_frac: float, width_frac: float) -> QFrame:
+    """A 5px horizontal track with a filled segment from `low_frac` to
+    `low_frac + width_frac` (both 0-1, fractions of the track's own width).
+    Purely a visual echo of numbers already shown in the caption beside it --
+    not a new statistic."""
+    track = QFrame()
+    track.setFixedHeight(5)
+    track.setStyleSheet(f'background:{HAIRLINE};border-radius:2px;')
+    fill = QFrame(track)
+    fill.setStyleSheet(f'background:{INK};border-radius:2px;')
+
+    def _position():
+        w = track.width()
+        fill.setGeometry(int(w * low_frac), 0, max(2, int(w * width_frac)), 5)
+    track.resizeEvent = lambda e: _position()
+    return track
 
 
 def card(title=None):
