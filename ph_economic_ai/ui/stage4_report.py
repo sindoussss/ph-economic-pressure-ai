@@ -337,51 +337,35 @@ class Stage4ReportPanel(QWidget):
             lay.addWidget(note)
         return box
 
-    def set_sector_forecasts(self, gas=None, food=None, elec=None):
-        """Render the gas/food/electricity next-month forecasts as a card."""
+    def set_sector_forecasts(self, gas=None, food=None, elec=None,
+                             gas_agreement=0, food_agreement=0, elec_agreement=0):
+        """Render the gas/food/electricity next-month forecasts as a card grid."""
         from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
+        agreements = {'gas': gas_agreement, 'food': food_agreement, 'elec': elec_agreement}
         try:
             while self._sector_holder_layout.count():
                 it = self._sector_holder_layout.takeAt(0)
                 w = it.widget()
                 if w is not None:
                     w.deleteLater()
-            title = QLabel('NEXT-MONTH SECTOR FORECAST')
-            title.setStyleSheet('font-size:10px;font-weight:700;letter-spacing:1px;'
-                                'color:#6B7280;')
-            self._sector_holder_layout.addWidget(title)
-            sub = QLabel('exploratory — not validated')
-            sub.setStyleSheet('font-size:9px;color:#9EA3AE;')
-            self._sector_holder_layout.addWidget(sub)
-            arrows = {'up': '▲', 'down': '▼', 'flat': '■', 'na': '·'}
-            colors = {'up': '#EF4444', 'down': '#16A34A', 'flat': '#6B7280', 'na': '#9EA3AE'}
+            self._sector_holder_layout.addWidget(_theme.eyebrow('NEXT-MONTH SECTOR FORECAST'))
+            self._sector_holder_layout.addWidget(_theme.muted('exploratory — not validated', size=9))
+            row_layout = QHBoxLayout()
             for r in sector_forecast_rows(gas, food, elec):
-                color = colors[r['direction']]
-                row = QWidget()
-                rl = QHBoxLayout(row)
-                rl.setContentsMargins(0, 0, 0, 0)
-                rl.setSpacing(8)
-                name = QLabel(f"{arrows[r['direction']]}  {r['label']}")
-                name.setFixedWidth(118)
-                name.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
-                rl.addWidget(name)
-                track = QFrame()
-                track.setFixedSize(120, 8)
-                track.setStyleSheet('background:#EEF0F4;border-radius:4px;')
-                fill = QFrame(track)
-                w = max(2, int(120 * r['bar'])) if r['bar'] > 0 else 0
-                fill.setGeometry(0, 0, w, 8)
-                fill.setStyleSheet(f'background:{color};border-radius:4px;')
-                rl.addWidget(track)
-                val = QLabel(r['value_str'])
-                val.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
-                rl.addWidget(val)
-                rl.addStretch()
-                self._sector_holder_layout.addWidget(row)
+                agreement = agreements[r['key']]
+                meta = f'{agreement}% agent agreement' if agreement else ''
+                confidence_frac = (0.0, r['bar']) if r['bar'] > 0 else None
+                frame, layout = _theme.stat_card(
+                    r['label'].upper(), r['value_str'],
+                    color=_theme.direction_color(r['direction']),
+                    meta=meta, tag_kind='exploratory',
+                    confidence_frac=confidence_frac)
+                row_layout.addWidget(frame)
                 # The row key is 'elec'; the engine's sector name is 'electricity'.
                 block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
                 if block is not None:
-                    self._sector_holder_layout.addWidget(block)
+                    layout.addWidget(block)
+            self._sector_holder_layout.addLayout(row_layout)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
         except Exception:
