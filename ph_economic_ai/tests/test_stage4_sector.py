@@ -16,10 +16,14 @@ def test_set_sector_forecasts_renders_card(app):
     panel = Stage4ReportPanel()
     panel.set_sector_forecasts(-2.40, 0.50, 0.05)
     texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
-    assert 'SECTOR FORECAST' in texts.upper()
-    assert 'Gas / fuel' in texts and '/L' in texts
-    assert 'Food' in texts and '%' in texts
-    assert 'Electricity' in texts and 'kWh' in texts
+    # Sector labels now render through theme.eyebrow(), which uppercases
+    # (card grid instead of the old mixed-case row list) -- compare
+    # case-insensitively; the check itself (label + unit present) is unchanged.
+    upper = texts.upper()
+    assert 'SECTOR FORECAST' in upper
+    assert 'GAS / FUEL' in upper and '/L' in texts
+    assert 'FOOD' in upper and '%' in texts
+    assert 'ELECTRICITY' in upper and 'kWh' in texts
     assert 'exploratory' in texts.lower()
 
 
