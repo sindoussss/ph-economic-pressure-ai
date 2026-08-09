@@ -359,7 +359,7 @@ Confirm the only production caller is `main_window.py:762` (updated in Task 4) a
 
 - [ ] **Step 1: Write the failing test**
 
-Add to whichever test file Step 0 found exercises this method (create `ph_economic_ai/tests/test_stage4_sector_cards.py` if none does):
+Step 0 found `ph_economic_ai/tests/test_stage4_sector.py` already exercises this method. Add these tests there, alongside the existing ones -- do not create a new file (this project has a documented recurring defect pattern of coverage scattered across near-duplicate test files):
 
 ```python
 import sys, os
@@ -398,7 +398,7 @@ def test_sector_forecasts_omits_agreement_when_zero(app):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest ph_economic_ai/tests/test_stage4_sector_cards.py -v`
+Run: `pytest ph_economic_ai/tests/test_stage4_sector.py -v`
 Expected: FAIL -- `TypeError: set_sector_forecasts() got an unexpected keyword argument 'gas_agreement'`
 
 - [ ] **Step 3: Write the implementation**
@@ -419,7 +419,15 @@ Replace `set_sector_forecasts` in `ph_economic_ai/ui/stage4_report.py` (lines 34
                     w.deleteLater()
             self._sector_holder_layout.addWidget(_theme.eyebrow('NEXT-MONTH SECTOR FORECAST'))
             self._sector_holder_layout.addWidget(_theme.muted('exploratory — not validated', size=9))
-            row_layout = QHBoxLayout()
+            # A QWidget wrapper, not a bare sub-layout: the clear loop above
+            # only ever calls .deleteLater() on it.widget() results, so a
+            # layout added via addLayout() (whose QLayoutItem.widget() is
+            # always None) would never be cleaned up on the next render --
+            # main_window.py calls this method from 5 call sites, so every
+            # re-render would silently orphan the previous set of cards.
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
             for r in sector_forecast_rows(gas, food, elec):
                 agreement = agreements[r['key']]
                 meta = f'{agreement}% agent agreement' if agreement else ''
@@ -434,7 +442,7 @@ Replace `set_sector_forecasts` in `ph_economic_ai/ui/stage4_report.py` (lines 34
                 block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
                 if block is not None:
                     layout.addWidget(block)
-            self._sector_holder_layout.addLayout(row_layout)
+            self._sector_holder_layout.addWidget(row_widget)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
         except Exception:
@@ -445,18 +453,43 @@ This section header stays a plain `eyebrow()` + `muted()` pair rather than `page
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pytest ph_economic_ai/tests/test_stage4_sector_cards.py -v`
+Run: `pytest ph_economic_ai/tests/test_stage4_sector.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Run the file's full existing test coverage to confirm no regression**
+- [ ] **Step 5: Write a regression test for the widget-leak fix, and run it**
 
-Run: `pytest ph_economic_ai/tests/test_stage4_swarm.py ph_economic_ai/tests/test_stage4_classic_honesty.py -v`
-Expected: all PASS (these exercise other parts of `Stage4ReportPanel`, not `set_sector_forecasts`, so they should be unaffected -- if any fail, they were relying on the row-list DOM shape this task replaced; read the failure and fix the assertion to match the new card shape, preserving what it was actually checking)
+Add to `ph_economic_ai/tests/test_stage4_sector.py`:
 
-- [ ] **Step 6: Commit**
+```python
+def test_calling_set_sector_forecasts_twice_does_not_leak_the_old_cards(app):
+    """Re-rendering (main_window.py calls this from 5 sites) must actually
+    remove the previous cards, not just lose track of them."""
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, -0.21, -0.10, gas_agreement=70)
+    first_children = set(panel._sector_holder.findChildren(QLabel))
+    panel.set_sector_forecasts(0.15, 0.30, 0.05, gas_agreement=40)
+    second_children = set(panel._sector_holder.findChildren(QLabel))
+    # None of the first render's labels should still be attached -- they may
+    # not be destroyed yet (deleteLater is deferred), but they must no
+    # longer be children of the holder.
+    assert not (first_children & second_children)
+    assert any('40%' in c.text() for c in second_children)
+    assert not any('70%' in c.text() for c in second_children)
+```
+
+Run: `pytest ph_economic_ai/tests/test_stage4_sector.py -v`
+Expected: PASS (fails against the pre-fix `addLayout(row_layout)` version -- the first render's labels stay attached as orphaned children of `_sector_holder`, so `first_children & second_children` would be empty only coincidentally; the stronger check is that `second_children` would contain both '70%' and '40%' labels simultaneously since the first row never gets removed -- confirm this test actually distinguishes the two implementations before trusting it, per this plan's own testing discipline)
+
+- [ ] **Step 6: Run the file's full existing test coverage to confirm no other regression**
+
+Run: `pytest ph_economic_ai/tests/test_stage4_sector.py ph_economic_ai/tests/test_stage4_trajectories.py -v`
+Expected: all PASS (the two files Step 0's own grep found actually exercise `set_sector_forecasts`/the sector-forecast section -- not `test_stage4_swarm.py`/`test_stage4_classic_honesty.py`, which don't touch this method at all)
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add ph_economic_ai/ui/stage4_report.py ph_economic_ai/tests/test_stage4_sector_cards.py
+git add ph_economic_ai/ui/stage4_report.py ph_economic_ai/tests/test_stage4_sector.py
 git commit -m "feat(report): migrate sector-forecast row list to stat_card grid"
 ```
 
