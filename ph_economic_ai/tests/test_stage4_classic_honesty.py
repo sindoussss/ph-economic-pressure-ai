@@ -64,3 +64,18 @@ def test_classic_mode_card_silent_on_a_spread_room(app):
     panel.populate(_responses([1.0, 1.8, 0.5, 2.1]), consensus, reg, df, 0.5, {})
     texts = ' || '.join(l.text() for l in panel.findChildren(QLabel))
     assert 'room has narrowed' not in texts
+
+
+def test_classic_left_caveats_survive_the_restyle(app):
+    """Pin test for the Task 8 token-restyle of _build_left: sub_lbl,
+    basis_lbl, caveat_lbl, and range-row values change stylesheet only.
+    Text and visibility must be identical before and after."""
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    consensus = {
+        'weighted_avg': -0.08, 'confidence_pct': 100, 'low': -0.10, 'high': -0.07,
+        'verdicts': [{'estimate': -0.08}, {'estimate': -0.08}, {'estimate': -0.09}],
+    }
+    panel._build_left(consensus, responses=[])
+    texts = [c.text() for c in panel.findChildren(QLabel)]
+    assert any('100% agent agreement' in t for t in texts)

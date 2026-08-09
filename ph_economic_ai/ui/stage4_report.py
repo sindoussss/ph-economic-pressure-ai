@@ -743,16 +743,13 @@ class Stage4ReportPanel(QWidget):
         classic_n = len(classic_estimates)
         classic_distinct = len({round(e, 2) for e in classic_estimates})
 
-        sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
-        sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
-        basis_lbl = QLabel(_honesty.agreement_basis(
-            classic_n, distinct=classic_distinct))
-        basis_lbl.setWordWrap(True)
-        basis_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        sub_lbl = _theme.muted(f'Weighted average · {conf}% agent agreement', size=9)
+        basis_lbl = _theme.muted(_honesty.agreement_basis(
+            classic_n, distinct=classic_distinct), size=8, color=_theme.FAINT)
         _caveat = _honesty.agreement_caveat(classic_n, distinct=classic_distinct)
         caveat_lbl = QLabel(_caveat)
         caveat_lbl.setWordWrap(True)
-        caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        caveat_lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{_theme.WARNING};')
         caveat_lbl.setVisible(bool(_caveat))
 
         range_row = QHBoxLayout()
@@ -764,7 +761,7 @@ class Stage4ReportPanel(QWidget):
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
-            bold.setStyleSheet('font-size:11px;font-weight:600;color:#1C1E26;')
+            bold.setStyleSheet(f'font-size:11px;font-weight:600;color:{_theme.INK};')
             col.addWidget(bold)
             range_row.addLayout(col)
 
