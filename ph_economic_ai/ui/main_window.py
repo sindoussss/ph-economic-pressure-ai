@@ -760,7 +760,9 @@ class SimMainWindow(QMainWindow):
                 # numbers rendered normally, so nothing looked wrong.
                 logging.exception('sector explanations could not be built')
             self._stage4.set_sector_forecasts(
-                self._gas_estimate, self._food_estimate, self._elec_estimate)
+                self._gas_estimate, self._food_estimate, self._elec_estimate,
+                gas_agreement=self._gas_agreement, food_agreement=self._food_agreement,
+                elec_agreement=self._elec_agreement)
         except Exception:
             pass
 
