@@ -857,7 +857,7 @@ class Stage4ReportPanel(QWidget):
             mf_layout.setContentsMargins(10, 8, 10, 8)
             mf_layout.addWidget(self._muted(label))
             v_lbl = QLabel(value)
-            v_lbl.setStyleSheet('font-size:16px;font-weight:700;color:#1C1E26;')
+            v_lbl.setStyleSheet(f'font-size:16px;font-weight:700;color:{_theme.INK};')
             mf_layout.addWidget(v_lbl)
             grid.addWidget(mf)
         cl.addLayout(grid)
@@ -939,10 +939,7 @@ class Stage4ReportPanel(QWidget):
         try:
             acc_card, acc_l = self._card('Validated accuracy')
             for _line in _hs.validated_summary_lines(_report):
-                _ql = QLabel(_line)
-                _ql.setWordWrap(True)
-                _ql.setStyleSheet('font-size:12px;color:#475467;')
-                acc_l.addWidget(_ql)
+                acc_l.addWidget(_theme.muted(_line, size=12))
             self._right.addWidget(acc_card)
         except Exception:
             pass
