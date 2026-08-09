@@ -41,6 +41,21 @@ def test_confidence_bar(app):
     assert bar.height() == 5
 
 
+def test_confidence_bar_positioning(app):
+    """Verify that confidence_bar's _position() correctly computes fill geometry."""
+    from ph_economic_ai.ui import theme
+    bar = theme.confidence_bar(0.3, 0.2)
+    # Set fixed width and show the widget to trigger resizeEvent -> _position()
+    bar.setFixedWidth(200)
+    bar.show()
+    # Verify the fill widget's geometry: x = int(200*0.3)=60, width = int(200*0.2)=40
+    fill = [c for c in bar.findChildren(QFrame)][0]
+    assert fill.geometry().x() == 60
+    assert fill.geometry().y() == 0
+    assert fill.geometry().width() == 40
+    assert fill.geometry().height() == 5
+
+
 def test_warning_token():
     from ph_economic_ai.ui import theme
     assert theme.WARNING == '#B45309'

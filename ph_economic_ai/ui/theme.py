@@ -62,7 +62,7 @@ def confidence_bar(low_frac: float, width_frac: float) -> QFrame:
     not a new statistic."""
     track = QFrame()
     track.setFixedHeight(5)
-    track.setStyleSheet(f'background:{HAIRLINE};border-radius:2px;')
+    track.setStyleSheet(f'background:{FAINT};border-radius:2px;')
     fill = QFrame(track)
     fill.setStyleSheet(f'background:{INK};border-radius:2px;')
 
