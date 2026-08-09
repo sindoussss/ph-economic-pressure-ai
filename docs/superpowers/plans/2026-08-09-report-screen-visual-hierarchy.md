@@ -26,6 +26,7 @@
 
 **Interfaces:**
 - Produces: `confidence_bar(low_frac: float, width_frac: float) -> QFrame` — a 5px track (`FAINT`-tinted background) with a dark-`INK` filled child `QFrame` positioned from `low_frac` to `low_frac + width_frac` (both 0.0-1.0, fractions of the track's own width). Purely decorative; callers compute the fractions from data they already have.
+- Produces: `WARNING: str` — a new token constant, `'#B45309'`. The existing caveat/warning labels across `stage4_report.py` already use this exact hex consistently (Tasks 7-8 below); this names it so it stops being a magic value not covered by SP2d-1's original approved token set.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -39,16 +40,30 @@ def test_confidence_bar(app):
     fills = [c for c in bar.findChildren(QFrame)]
     assert len(fills) == 1
     assert bar.height() == 5
+
+
+def test_warning_token():
+    from ph_economic_ai.ui import theme
+    assert theme.WARNING == '#B45309'
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest ph_economic_ai/tests/test_theme.py::test_confidence_bar -v`
-Expected: FAIL with `AttributeError: module 'ph_economic_ai.ui.theme' has no attribute 'confidence_bar'`
+Run: `pytest ph_economic_ai/tests/test_theme.py::test_confidence_bar ph_economic_ai/tests/test_theme.py::test_warning_token -v`
+Expected: both FAIL -- `test_confidence_bar` with `AttributeError: module 'ph_economic_ai.ui.theme' has no attribute 'confidence_bar'`, `test_warning_token` with `AttributeError: module 'ph_economic_ai.ui.theme' has no attribute 'WARNING'`
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `ph_economic_ai/ui/theme.py` (after `hairline()`):
+Add `WARNING = '#B45309'` to `ph_economic_ai/ui/theme.py`'s existing token block (next to `UP`, `DOWN`, `NEUTRAL`):
+
+```python
+UP = '#B3261E'        # price up = red (bad for consumers)
+DOWN = '#15803D'      # price down = green (good)
+NEUTRAL = '#3B6FD4'
+WARNING = '#B45309'   # amber -- collapsed-room and unscored-survivor caveats
+```
+
+Then add `confidence_bar` to `ph_economic_ai/ui/theme.py` (after `hairline()`):
 
 ```python
 def confidence_bar(low_frac: float, width_frac: float) -> QFrame:
@@ -71,14 +86,14 @@ def confidence_bar(low_frac: float, width_frac: float) -> QFrame:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pytest ph_economic_ai/tests/test_theme.py::test_confidence_bar -v`
-Expected: PASS
+Run: `pytest ph_economic_ai/tests/test_theme.py::test_confidence_bar ph_economic_ai/tests/test_theme.py::test_warning_token -v`
+Expected: both PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add ph_economic_ai/ui/theme.py ph_economic_ai/tests/test_theme.py
-git commit -m "feat(theme): add confidence_bar() editorial helper"
+git commit -m "feat(theme): add confidence_bar() and WARNING token"
 ```
 
 ---
@@ -402,8 +417,8 @@ Replace `set_sector_forecasts` in `ph_economic_ai/ui/stage4_report.py` (lines 34
                 w = it.widget()
                 if w is not None:
                     w.deleteLater()
-            self._sector_holder_layout.addWidget(_theme.page_header(
-                'NEXT-MONTH SECTOR FORECAST', 'Exploratory, not validated'))
+            self._sector_holder_layout.addWidget(_theme.eyebrow('NEXT-MONTH SECTOR FORECAST'))
+            self._sector_holder_layout.addWidget(_theme.muted('exploratory — not validated', size=9))
             row_layout = QHBoxLayout()
             for r in sector_forecast_rows(gas, food, elec):
                 agreement = agreements[r['key']]
@@ -426,7 +441,7 @@ Replace `set_sector_forecasts` in `ph_economic_ai/ui/stage4_report.py` (lines 34
             pass
 ```
 
-Note the `page_header` call here doesn't pass `right_value`, so it renders as a plain title with no right-hand stat -- confirm that's still valid given Task 3's implementation (it is: `right_value` defaults to `None`, and the right-side block is skipped entirely).
+This section header stays a plain `eyebrow()` + `muted()` pair rather than `page_header()` -- `page_header`'s `title` slot is a bold 20px serif heading (Task 3), and "exploratory — not validated" is caption text, not a heading. Reusing `page_header` here would render a caveat as if it were the page's main title.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -605,7 +620,7 @@ This method carries eight independently-visible honesty labels (`sub_lbl`, `basi
 |---|---|
 | `'font-size:9px;color:#6B7280;'` (line 584, `sub_lbl`) | delete the call; use `_theme.muted(text, size=9)` to build the label instead of a bare `QLabel(text)` |
 | `'font-size:8px;color:#9CA3AF;'` (lines 590, 608, 614, 621, 627 -- `basis_lbl`, `cross_lbl`, `synth_lbl`, `bracket_lbl`) | `_theme.muted(text, size=8, color=_theme.FAINT)` |
-| `'font-size:9px;font-weight:600;color:#B45309;'` (lines 599, 628 -- `caveat_lbl`, `unscored_lbl`) | keep as a literal string but replace the hex with `_theme.UP`-adjacent amber -- **no token exists for this amber**; leave the hex as-is (it's a distinct semantic warning color, not one of the six SP2d-1 tokens) but note it in a one-line comment: `# amber warning, not an editorial token -- SP2d-1 has no warning color` |
+| `'font-size:9px;font-weight:600;color:#B45309;'` (lines 599, 628 -- `caveat_lbl`, `unscored_lbl`) | `f'font-size:9px;font-weight:600;color:{_theme.WARNING};'` |
 | `f'background:{_theme.SURFACE};border-radius:10px;border:1px solid {_theme.HAIRLINE};'` (line 568, `consensus_frame`) | already tokenized; leave as-is |
 | `'font-size:11px;font-weight:600;color:#1C1E26;'` (line 645, range-row values) | `f'font-size:11px;font-weight:600;color:{_theme.INK};'` |
 
@@ -708,7 +723,7 @@ with:
         for note_text in notes:
             note_lbl = QLabel(note_text)
             note_lbl.setWordWrap(True)
-            note_lbl.setStyleSheet('font-size:8px;color:#B45309;')
+            note_lbl.setStyleSheet(f'font-size:8px;color:{_theme.WARNING};')
             rvcl.addWidget(note_lbl)
 
         self._left.addWidget(card)
@@ -852,7 +867,7 @@ git commit -m "style(report): token-restyle the swarm consensus panel and region
 |---|---|---|
 | 772 (`sub_lbl`) | `'font-size:9px;color:#6B7280;'` | build via `_theme.muted(text, size=9)` |
 | 776 (`basis_lbl`) | `'font-size:8px;color:#9CA3AF;'` | `_theme.muted(text, size=8, color=_theme.FAINT)` |
-| 780 (`caveat_lbl`) | `'font-size:9px;font-weight:600;color:#B45309;'` | leave hex as-is (same amber-has-no-token note as Task 7) |
+| 780 (`caveat_lbl`) | `'font-size:9px;font-weight:600;color:#B45309;'` | `f'font-size:9px;font-weight:600;color:{_theme.WARNING};'` |
 | 792 (range-row values) | `'font-size:11px;font-weight:600;color:#1C1E26;'` | `f'font-size:11px;font-weight:600;color:{_theme.INK};'` |
 
 - [ ] **Step 1: Write the pin test**
