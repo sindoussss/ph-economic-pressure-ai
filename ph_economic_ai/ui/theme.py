@@ -1,6 +1,7 @@
 """Editorial design tokens + widget helpers — the single source of truth for the
 app's look. Screens use these instead of hand-coding stylesheets."""
-from PyQt6.QtWidgets import QLabel, QFrame, QVBoxLayout
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel, QFrame, QHBoxLayout, QVBoxLayout
 
 # -- palette --
 SURFACE = '#FBFBFA'
@@ -95,6 +96,36 @@ def tag(kind: str = 'exploratory') -> QLabel:
         f'font-family:{MONO},monospace;font-size:8px;font-style:italic;'
         f'color:{FAINT};background:transparent;')
     return lbl
+
+
+def page_header(eyebrow_text: str, title: str, right_eyebrow: str = None,
+                right_value: str = None, right_caption: str = None) -> QFrame:
+    """Plain page-header row: title on the left, an optional stat on the
+    right. No border, no fill -- replaces a boxed-alert pattern."""
+    frame = QFrame()
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(0, 0, 0, 10)
+
+    left = QVBoxLayout()
+    left.addWidget(eyebrow(eyebrow_text))
+    title_lbl = QLabel(title)
+    title_lbl.setStyleSheet(
+        f'font-family:{SERIF},serif;font-size:20px;font-weight:700;color:{INK};')
+    left.addWidget(title_lbl)
+    row.addLayout(left)
+    row.addStretch()
+
+    if right_value is not None:
+        right = QVBoxLayout()
+        right.setAlignment(Qt.AlignmentFlag.AlignRight)
+        if right_eyebrow:
+            right.addWidget(eyebrow(right_eyebrow))
+        right.addWidget(serif_number(right_value, size=26))
+        if right_caption:
+            right.addWidget(muted(right_caption, size=9))
+        row.addLayout(right)
+
+    return frame
 
 
 def stat_card(eyebrow_text: str, value: str, color: str = INK, meta: str = '',
