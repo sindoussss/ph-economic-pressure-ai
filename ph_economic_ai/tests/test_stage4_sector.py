@@ -35,3 +35,49 @@ def test_sector_card_renders_bars(app):
     texts = ' || '.join(l.text() for l in p.findChildren(QLabel))
     assert '1.80' in texts and '2.60' in texts and '0.1800' in texts
     assert len(p._sector_holder.findChildren(QFrame)) >= 3   # a bar track per sector
+
+
+def test_sector_forecasts_show_agreement_for_all_three(app):
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, -0.21, -0.10,
+                               gas_agreement=70, food_agreement=62, elec_agreement=81)
+    labels = [c.text() for c in panel._sector_holder.findChildren(QLabel)]
+    assert any('70%' in t for t in labels)
+    assert any('62%' in t for t in labels)
+    assert any('81%' in t for t in labels)
+
+
+def test_sector_forecasts_omits_agreement_when_zero(app):
+    """Old callers/tests still calling positionally-only must not crash, and a
+    0 agreement (the pre-Task-4 default, or a genuinely unmeasured run) must
+    not print a nonsense '0% agreement' caption."""
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, -0.21, -0.10)
+    labels = [c.text() for c in panel._sector_holder.findChildren(QLabel)]
+    assert not any('% agreement' in t for t in labels)
+
+
+def test_calling_set_sector_forecasts_twice_does_not_leak_the_old_cards(app):
+    """Re-rendering (main_window.py calls this from 5 sites) must actually
+    remove the previous cards, not just lose track of them.
+
+    deleteLater() only *schedules* destruction; the QObject stays a live
+    child (and shows up in findChildren) until the event loop actually
+    processes the deferred-delete event. Qt only posts that event once the
+    widget's parent-of-parents chain has been asked, so we flush it
+    explicitly rather than relying on an implicit event-loop spin.
+    """
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, -0.21, -0.10, gas_agreement=70)
+    first_children = set(panel._sector_holder.findChildren(QLabel))
+    panel.set_sector_forecasts(0.15, 0.30, 0.05, gas_agreement=40)
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    second_children = set(panel._sector_holder.findChildren(QLabel))
+    assert not (first_children & second_children)
+    assert any('40%' in c.text() for c in second_children)
+    assert not any('70%' in c.text() for c in second_children)

@@ -350,7 +350,9 @@ class Stage4ReportPanel(QWidget):
                     w.deleteLater()
             self._sector_holder_layout.addWidget(_theme.eyebrow('NEXT-MONTH SECTOR FORECAST'))
             self._sector_holder_layout.addWidget(_theme.muted('exploratory — not validated', size=9))
-            row_layout = QHBoxLayout()
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
             for r in sector_forecast_rows(gas, food, elec):
                 agreement = agreements[r['key']]
                 meta = f'{agreement}% agent agreement' if agreement else ''
@@ -365,7 +367,7 @@ class Stage4ReportPanel(QWidget):
                 block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
                 if block is not None:
                     layout.addWidget(block)
-            self._sector_holder_layout.addLayout(row_layout)
+            self._sector_holder_layout.addWidget(row_widget)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
         except Exception:
