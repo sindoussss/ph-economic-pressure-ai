@@ -82,3 +82,25 @@ def test_stat_card_without_confidence_or_tag(app):
     assert 'FOOD' in labels
     assert '-0.21%' in labels
     assert 'exploratory' not in labels and 'validated' not in labels
+
+
+def test_page_header_with_right_stat(app):
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header(
+        'SIMULATION REPORT', 'Next-month sector forecast',
+        right_eyebrow='PROJECTED CPI', right_value='6.03%',
+        right_caption='baseline 6.2%')
+    labels = [c.text() for c in hdr.findChildren(QLabel)]
+    assert 'SIMULATION REPORT' in labels
+    assert 'Next-month sector forecast' in labels
+    assert 'PROJECTED CPI' in labels
+    assert '6.03%' in labels
+    assert 'baseline 6.2%' in labels
+
+
+def test_page_header_without_right_stat(app):
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header('EYEBROW', 'Title only')
+    labels = [c.text() for c in hdr.findChildren(QLabel)]
+    assert 'Title only' in labels
+    assert '6.03%' not in labels
