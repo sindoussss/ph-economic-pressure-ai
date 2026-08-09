@@ -95,3 +95,22 @@ def tag(kind: str = 'exploratory') -> QLabel:
         f'font-family:{MONO},monospace;font-size:8px;font-style:italic;'
         f'color:{FAINT};background:transparent;')
     return lbl
+
+
+def stat_card(eyebrow_text: str, value: str, color: str = INK, meta: str = '',
+              tag_kind: str | None = 'exploratory',
+              confidence_frac: tuple | None = None):
+    """One sector-forecast card: eyebrow, a serif value, an optional
+    confidence-bar row, a muted meta caption, and an optional exploratory/
+    validated tag. Returns (frame, layout) like `card()`."""
+    frame, layout = card()
+    layout.addWidget(eyebrow(eyebrow_text))
+    layout.addWidget(serif_number(value, color=color, size=28))
+    if confidence_frac is not None:
+        low_frac, width_frac = confidence_frac
+        layout.addWidget(confidence_bar(low_frac, width_frac))
+    if meta:
+        layout.addWidget(muted(meta, size=11))
+    if tag_kind is not None:
+        layout.addWidget(tag(tag_kind))
+    return frame, layout
