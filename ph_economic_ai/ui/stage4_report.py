@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QFrame, QScrollArea, QPushButton, QFileDialog, QStackedWidget,
+    QFrame, QScrollArea, QPushButton, QFileDialog, QStackedWidget, QGridLayout,
 )
 from PyQt6.QtCore import Qt
 from matplotlib.figure import Figure
@@ -337,51 +337,37 @@ class Stage4ReportPanel(QWidget):
             lay.addWidget(note)
         return box
 
-    def set_sector_forecasts(self, gas=None, food=None, elec=None):
-        """Render the gas/food/electricity next-month forecasts as a card."""
+    def set_sector_forecasts(self, gas=None, food=None, elec=None,
+                             gas_agreement=0, food_agreement=0, elec_agreement=0):
+        """Render the gas/food/electricity next-month forecasts as a card grid."""
         from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
+        agreements = {'gas': gas_agreement, 'food': food_agreement, 'elec': elec_agreement}
         try:
             while self._sector_holder_layout.count():
                 it = self._sector_holder_layout.takeAt(0)
                 w = it.widget()
                 if w is not None:
                     w.deleteLater()
-            title = QLabel('NEXT-MONTH SECTOR FORECAST')
-            title.setStyleSheet('font-size:10px;font-weight:700;letter-spacing:1px;'
-                                'color:#6B7280;')
-            self._sector_holder_layout.addWidget(title)
-            sub = QLabel('exploratory — not validated')
-            sub.setStyleSheet('font-size:9px;color:#9EA3AE;')
-            self._sector_holder_layout.addWidget(sub)
-            arrows = {'up': '▲', 'down': '▼', 'flat': '■', 'na': '·'}
-            colors = {'up': '#EF4444', 'down': '#16A34A', 'flat': '#6B7280', 'na': '#9EA3AE'}
+            self._sector_holder_layout.addWidget(_theme.eyebrow('NEXT-MONTH SECTOR FORECAST'))
+            self._sector_holder_layout.addWidget(_theme.muted('exploratory — not validated', size=9))
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 0, 0, 0)
             for r in sector_forecast_rows(gas, food, elec):
-                color = colors[r['direction']]
-                row = QWidget()
-                rl = QHBoxLayout(row)
-                rl.setContentsMargins(0, 0, 0, 0)
-                rl.setSpacing(8)
-                name = QLabel(f"{arrows[r['direction']]}  {r['label']}")
-                name.setFixedWidth(118)
-                name.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
-                rl.addWidget(name)
-                track = QFrame()
-                track.setFixedSize(120, 8)
-                track.setStyleSheet('background:#EEF0F4;border-radius:4px;')
-                fill = QFrame(track)
-                w = max(2, int(120 * r['bar'])) if r['bar'] > 0 else 0
-                fill.setGeometry(0, 0, w, 8)
-                fill.setStyleSheet(f'background:{color};border-radius:4px;')
-                rl.addWidget(track)
-                val = QLabel(r['value_str'])
-                val.setStyleSheet(f'font-size:11px;font-weight:600;color:{color};')
-                rl.addWidget(val)
-                rl.addStretch()
-                self._sector_holder_layout.addWidget(row)
+                agreement = agreements[r['key']]
+                meta = f'{agreement}% agent agreement' if agreement else ''
+                confidence_frac = (0.0, r['bar']) if r['bar'] > 0 else None
+                frame, layout = _theme.stat_card(
+                    r['label'].upper(), r['value_str'],
+                    color=_theme.direction_color(r['direction']),
+                    meta=meta, tag_kind='exploratory',
+                    confidence_frac=confidence_frac)
+                row_layout.addWidget(frame)
                 # The row key is 'elec'; the engine's sector name is 'electricity'.
                 block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
                 if block is not None:
-                    self._sector_holder_layout.addWidget(block)
+                    layout.addWidget(block)
+            self._sector_holder_layout.addWidget(row_widget)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
         except Exception:
@@ -577,17 +563,14 @@ class Stage4ReportPanel(QWidget):
         _n = consensus.get('agreement_n', 0)
         _regions = consensus.get('agreement_regions', (0, 0))
         if _n < 2:
-            sub_lbl = QLabel('Master judge estimate · agent agreement '
-                             'not measurable this run')
+            sub_lbl = _theme.muted('Master judge estimate · agent agreement '
+                             'not measurable this run', size=9)
         else:
-            sub_lbl = QLabel(f'Master judge estimate · {conf}% agent agreement')
-        sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
-        basis_lbl = QLabel(_honesty.agreement_basis(
+            sub_lbl = _theme.muted(f'Master judge estimate · {conf}% agent agreement', size=9)
+        basis_lbl = _theme.muted(_honesty.agreement_basis(
             _n, _regions, consensus.get('agreement_echo_n', 0),
             consensus.get('agreement_distinct', 0),
-            consensus.get('agreement_diversity', 0.0)))
-        basis_lbl.setWordWrap(True)
-        basis_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+            consensus.get('agreement_diversity', 0.0)), size=8, color=_theme.FAINT)
         # The caveat that stops a high percentage reading as strong consensus.
         # Amber rather than grey: a collapsed room is the case where the number
         # most looks like good news and least is.
@@ -596,36 +579,30 @@ class Stage4ReportPanel(QWidget):
             consensus.get('agreement_diversity', 0.0))
         caveat_lbl = QLabel(_caveat)
         caveat_lbl.setWordWrap(True)
-        caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        caveat_lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{_theme.WARNING};')
         caveat_lbl.setVisible(bool(_caveat))
         # Whether the agreement survived a change of MODEL, which is the only
         # thing on this card that can separate consensus from one model's
         # determinism. Silent on a single-model roster rather than claiming a
         # comparison it never made.
         _cross = _honesty.cross_model_note(consensus.get('agreement_models', {}))
-        cross_lbl = QLabel(_cross)
-        cross_lbl.setWordWrap(True)
-        cross_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        cross_lbl = _theme.muted(_cross, size=8, color=_theme.FAINT)
         cross_lbl.setVisible(bool(_cross))
         # That the headline is one model's synthesis however varied the roster.
         _synth = _honesty.synthesis_note(consensus.get('agreement_models', {}))
-        synth_lbl = QLabel(_synth)
-        synth_lbl.setWordWrap(True)
-        synth_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        synth_lbl = _theme.muted(_synth, size=8, color=_theme.FAINT)
         synth_lbl.setVisible(bool(_synth))
         # Which models actually reached the judges. A model with no survivors
         # contributed nothing to the published number however many agents it had.
         _bracket = _honesty.bracket_note(consensus.get('agreement_models', {}))
-        bracket_lbl = QLabel(_bracket)
-        bracket_lbl.setWordWrap(True)
-        bracket_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        bracket_lbl = _theme.muted(_bracket, size=8, color=_theme.FAINT)
         bracket_lbl.setVisible(bool(_bracket))
         # A regional figure resting on an arbitrary pick rather than a ranked one.
         _unscored = _honesty.unscored_survivor_note(
             consensus.get('unscored_regions', 0))
         unscored_lbl = QLabel(_unscored)
         unscored_lbl.setWordWrap(True)
-        unscored_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        unscored_lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{_theme.WARNING};')
         unscored_lbl.setVisible(bool(_unscored))
 
         range_row = QHBoxLayout()
@@ -642,7 +619,7 @@ class Stage4ReportPanel(QWidget):
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
-            bold.setStyleSheet('font-size:11px;font-weight:600;color:#1C1E26;')
+            bold.setStyleSheet(f'font-size:11px;font-weight:600;color:{_theme.INK};')
             col.addWidget(bold)
             range_row.addLayout(col)
 
@@ -685,19 +662,21 @@ class Stage4ReportPanel(QWidget):
             dissent_lbl.setStyleSheet('font-size:9px;color:#EF4444;')
             cl.addWidget(dissent_lbl)
 
-        # Regional verdicts table
+        # Regional verdicts: one compact table row per region, replacing the
+        # old one-bordered-QFrame-per-region layout. Every value the old
+        # layout showed (name, estimate/discarded/no-estimate, agreement%,
+        # the missing-estimate honesty note) still renders -- the note just
+        # moves from inside each region's box to its own line below the
+        # table, since a table cell can't word-wrap a variable-length caveat.
         rv_card, rvcl = self._card('Regional Verdicts')
-        for rv in master_verdict.regional_verdicts:
-            rvf = QFrame()
-            rvf.setStyleSheet(f'background:{_theme.SURFACE};border-radius:8px;border:1px solid {_theme.HAIRLINE};')
-            rvfl = QVBoxLayout(rvf)
-            rvfl.setContentsMargins(10, 8, 10, 8)
-            rvfl.setSpacing(3)
-
-            head_row = QHBoxLayout()
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(4)
+        notes = []
+        for row_i, rv in enumerate(master_verdict.regional_verdicts):
             pair_str = ' & '.join(rv.region_pair)
             name_lbl = QLabel(pair_str[:50])
-            name_lbl.setStyleSheet('font-size:10px;font-weight:600;color:#1C1E26;')
+            name_lbl.setStyleSheet(f'font-size:10px;font-weight:600;color:{_theme.INK};')
             rejected = getattr(rv, 'rejected_estimate', None)
             if rv.estimate is not None:
                 est_str = f'{rv.estimate:+.2f} ₱/L'
@@ -706,25 +685,21 @@ class Stage4ReportPanel(QWidget):
             else:
                 est_str = 'no estimate'
             est_lbl = QLabel(est_str)
-            est_lbl.setStyleSheet('font-size:10px;font-weight:700;color:#1C1E26;')
-            head_row.addWidget(name_lbl)
-            head_row.addStretch()
-            head_row.addWidget(est_lbl)
-            rvfl.addLayout(head_row)
+            est_lbl.setStyleSheet(f'font-size:10px;font-weight:700;color:{_theme.INK};')
+            conf_lbl = _theme.muted(f'{rv.confidence:.0%}', size=9, color=_theme.FAINT)
+            grid.addWidget(name_lbl, row_i, 0)
+            grid.addWidget(est_lbl, row_i, 1)
+            grid.addWidget(conf_lbl, row_i, 2)
 
-            conf_lbl = QLabel(f'Agent agreement: {rv.confidence:.0%}')
-            conf_lbl.setStyleSheet('font-size:8px;color:#9EA3AE;')
-            rvfl.addWidget(conf_lbl)
-
-            # A blank estimate reads as a crash unless we say what happened.
             note = _missing_estimate_note(rv.estimate, rejected)
             if note:
-                note_lbl = QLabel(note)
-                note_lbl.setWordWrap(True)
-                note_lbl.setStyleSheet('font-size:8px;color:#B45309;')
-                rvfl.addWidget(note_lbl)
-
-            rvcl.addWidget(rvf)
+                notes.append(f'{pair_str}: {note}')
+        rvcl.addLayout(grid)
+        for note_text in notes:
+            note_lbl = QLabel(note_text)
+            note_lbl.setWordWrap(True)
+            note_lbl.setStyleSheet(f'font-size:8px;color:{_theme.WARNING};')
+            rvcl.addWidget(note_lbl)
 
         self._left.addWidget(card)
         self._left.addWidget(rv_card)
@@ -768,16 +743,13 @@ class Stage4ReportPanel(QWidget):
         classic_n = len(classic_estimates)
         classic_distinct = len({round(e, 2) for e in classic_estimates})
 
-        sub_lbl = QLabel(f'Weighted average · {conf}% agent agreement')
-        sub_lbl.setStyleSheet('font-size:9px;color:#6B7280;')
-        basis_lbl = QLabel(_honesty.agreement_basis(
-            classic_n, distinct=classic_distinct))
-        basis_lbl.setWordWrap(True)
-        basis_lbl.setStyleSheet('font-size:8px;color:#9CA3AF;')
+        sub_lbl = _theme.muted(f'Weighted average · {conf}% agent agreement', size=9)
+        basis_lbl = _theme.muted(_honesty.agreement_basis(
+            classic_n, distinct=classic_distinct), size=8, color=_theme.FAINT)
         _caveat = _honesty.agreement_caveat(classic_n, distinct=classic_distinct)
         caveat_lbl = QLabel(_caveat)
         caveat_lbl.setWordWrap(True)
-        caveat_lbl.setStyleSheet('font-size:9px;font-weight:600;color:#B45309;')
+        caveat_lbl.setStyleSheet(f'font-size:9px;font-weight:600;color:{_theme.WARNING};')
         caveat_lbl.setVisible(bool(_caveat))
 
         range_row = QHBoxLayout()
@@ -789,7 +761,7 @@ class Stage4ReportPanel(QWidget):
             else:
                 v_str = str(value) if value is not None else '—'
             bold = QLabel(v_str)
-            bold.setStyleSheet('font-size:11px;font-weight:600;color:#1C1E26;')
+            bold.setStyleSheet(f'font-size:11px;font-weight:600;color:{_theme.INK};')
             col.addWidget(bold)
             range_row.addLayout(col)
 
@@ -885,7 +857,7 @@ class Stage4ReportPanel(QWidget):
             mf_layout.setContentsMargins(10, 8, 10, 8)
             mf_layout.addWidget(self._muted(label))
             v_lbl = QLabel(value)
-            v_lbl.setStyleSheet('font-size:16px;font-weight:700;color:#1C1E26;')
+            v_lbl.setStyleSheet(f'font-size:16px;font-weight:700;color:{_theme.INK};')
             mf_layout.addWidget(v_lbl)
             grid.addWidget(mf)
         cl.addLayout(grid)
@@ -967,10 +939,7 @@ class Stage4ReportPanel(QWidget):
         try:
             acc_card, acc_l = self._card('Validated accuracy')
             for _line in _hs.validated_summary_lines(_report):
-                _ql = QLabel(_line)
-                _ql.setWordWrap(True)
-                _ql.setStyleSheet('font-size:12px;color:#475467;')
-                acc_l.addWidget(_ql)
+                acc_l.addWidget(_theme.muted(_line, size=12))
             self._right.addWidget(acc_card)
         except Exception:
             pass

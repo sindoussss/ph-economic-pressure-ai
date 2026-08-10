@@ -201,3 +201,14 @@ def test_learning_tab_present_and_refreshes(window):
     assert isinstance(window._stack.widget(learn_idx), LearningView)
     window._learning.refresh(None)                              # no crash, empty-states
     assert '0 runs logged' in window._learning._track_lbl.text() or 'runs logged' in window._learning._track_lbl.text()
+
+
+def test_push_sector_forecasts_passes_agreement_values(window):
+    window._gas_estimate, window._food_estimate, window._elec_estimate = -0.08, -0.21, -0.10
+    window._gas_agreement, window._food_agreement, window._elec_agreement = 70, 62, 81
+    captured = {}
+    window._stage4.set_sector_forecasts = lambda *args, **kw: captured.update(kw)
+    window._push_sector_forecasts()
+    assert captured['gas_agreement'] == 70
+    assert captured['food_agreement'] == 62
+    assert captured['elec_agreement'] == 81

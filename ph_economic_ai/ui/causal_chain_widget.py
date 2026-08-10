@@ -73,35 +73,16 @@ def _classify_node(label: str) -> str:
 # ── BSP Alert Banner ──────────────────────────────────────────────────────────
 
 class BSPAlertBanner(QFrame):
-    """Horizontal banner shown at the top of Stage 4 when BSP target is at risk."""
+    """Plain page-header stat shown at the top of Stage 4 when BSP target is
+    at risk. No colored box -- severity is conveyed by the eyebrow wording
+    and a small severity-colored dot, not a bordered/tinted alert card."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(52)
         self.hide()
-
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(20, 0, 20, 0)
-        lay.setSpacing(12)
-
-        self._icon_lbl = QLabel()
-        self._icon_lbl.setFixedSize(28, 28)
-        self._icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self._title_lbl = QLabel()
-        self._title_lbl.setStyleSheet('font-size:10px;font-weight:700;')
-
-        self._detail_lbl = QLabel()
-        self._detail_lbl.setStyleSheet('font-size:9px;')
-
-        self._cpi_lbl = QLabel()
-        self._cpi_lbl.setStyleSheet('font-size:11px;font-weight:700;font-family:Consolas,monospace;')
-        self._cpi_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-        lay.addWidget(self._icon_lbl)
-        lay.addWidget(self._title_lbl)
-        lay.addWidget(self._detail_lbl, stretch=1)
-        lay.addWidget(self._cpi_lbl)
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._header = None
 
     def set_alert(self, alert: dict):
         severity    = alert.get('severity', 'STABLE')
@@ -115,21 +96,11 @@ class BSPAlertBanner(QFrame):
         impact      = alert.get('sector_cpi_impact', 0.0)
         breakdown   = alert.get('breakdown', {})
 
-        text_c, bg_c, border_c = _SEVERITY_COLORS.get(severity, _SEVERITY_COLORS['STABLE'])
+        text_c, _bg_c, _border_c = _SEVERITY_COLORS.get(severity, _SEVERITY_COLORS['STABLE'])
 
-        self.setStyleSheet(
-            f'QFrame{{background:{bg_c};border-bottom:2px solid {border_c};border-radius:0;}}'
-            f'QLabel{{background:transparent;border:none;}}'
-        )
-
-        icon_map = {'STABLE': '●', 'WATCH': '◆', 'ALERT': '▲', 'CRITICAL': '■'}
-        self._icon_lbl.setText(icon_map.get(severity, '●'))
-        self._icon_lbl.setStyleSheet(
-            f'font-size:16px;font-weight:900;color:{text_c};background:transparent;border:none;')
-
-        self._title_lbl.setText(_SEVERITY_ICONS.get(severity, ''))
-        self._title_lbl.setStyleSheet(
-            f'font-size:10px;font-weight:700;color:{text_c};background:transparent;border:none;')
+        if self._header is not None:
+            self._layout.removeWidget(self._header)
+            self._header.deleteLater()
 
         parts = []
         if 'fuel' in breakdown:
@@ -138,17 +109,23 @@ class BSPAlertBanner(QFrame):
             parts.append(f'Food: +{breakdown["food"]:.2f}ppt')
         if 'electricity' in breakdown:
             parts.append(f'Elec: +{breakdown["electricity"]:.2f}ppt')
-        detail = (f'Baseline {current:.1f}% ({cpi_as_of}) + sector impact {impact:+.2f}ppt  ·  '
-                 + '  ·  '.join(parts))
-        self._detail_lbl.setText(detail)
-        self._detail_lbl.setStyleSheet(
-            f'font-size:9px;color:{text_c};background:transparent;border:none;')
+        caption = (f'Baseline {current:.1f}% ({cpi_as_of}) + sector impact {impact:+.2f}ppt'
+                  + ('  ·  ' + '  ·  '.join(parts) if parts else ''))
 
-        self._cpi_lbl.setText(f'Projected CPI: {projected:.2f}%')
-        self._cpi_lbl.setStyleSheet(
-            f'font-size:11px;font-weight:700;font-family:Consolas,monospace;'
-            f'color:{text_c};background:transparent;border:none;')
+        icon = {'STABLE': '●', 'WATCH': '◆', 'ALERT': '▲', 'CRITICAL': '■'}.get(severity, '●')
+        eyebrow_text = f'{icon} {_SEVERITY_ICONS.get(severity, "")}'
 
+        from ph_economic_ai.ui import theme as _theme
+        # The severity color still shows, just on the eyebrow icon/text rather
+        # than as a page-wide tint -- pass it straight through to page_header
+        # instead of reaching into the returned widget tree afterward.
+        self._header = _theme.page_header(
+            eyebrow_text, ' ',
+            right_eyebrow='PROJECTED CPI',
+            right_value=f'{projected:.2f}%',
+            right_caption=caption,
+            eyebrow_color=text_c)
+        self._layout.addWidget(self._header)
         self.show()
 
 
