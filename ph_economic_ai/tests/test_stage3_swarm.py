@@ -96,8 +96,28 @@ def test_food_consensus_silent_on_a_spread_room(app):
     panel = Stage3SwarmPanel()
     responses = [NS(price_estimate=0.10), NS(price_estimate=0.30), NS(price_estimate=0.50)]
     panel._on_food_canvas_complete(responses)
-    assert panel._food_sub.text() == 'consensus reached'
+    assert panel._food_sub.text() == '100% agreement'
     assert 'narrow room' not in panel._food_sub.text()
+
+
+def test_food_consensus_shows_the_calibrated_agreement_percentage(app):
+    """The live tile used to show a bare 'consensus reached' -- the calibrated
+    number `DebateEngine.consensus()` already computes (RSK-042's band) sat
+    one call away, unused. This pins the tile to that same computation."""
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    from ph_economic_ai.engine.debate import DebateEngine
+    panel = Stage3SwarmPanel()
+    estimates = [0.10, 0.30, 0.50, 0.35]
+    responses = [NS(price_estimate=e) for e in estimates]
+    panel._on_food_canvas_complete(responses)
+
+    engine = DebateEngine.__new__(DebateEngine)
+    engine._sector = 'food'
+    engine._history = [NS(round_num=1, price_estimate=e, agent_name='a', statement='')
+                        for e in estimates]
+    expected_pct = engine.consensus()['confidence_pct']
+    assert panel._food_sub.text().startswith(f'{expected_pct}% agreement')
 
 
 def test_elec_consensus_flags_a_collapsed_room(app):
@@ -115,7 +135,26 @@ def test_elec_consensus_silent_on_a_spread_room(app):
     panel = Stage3SwarmPanel()
     responses = [NS(price_estimate=0.01), NS(price_estimate=0.03), NS(price_estimate=0.07)]
     panel._on_elec_canvas_complete(responses)
-    assert panel._elec_sub.text() == 'consensus reached'
+    assert panel._elec_sub.text() == '100% agreement'
+
+
+def test_elec_consensus_shows_the_calibrated_agreement_percentage(app):
+    """Same pin as the food test above, for electricity's own (tighter, 0.10)
+    band."""
+    from types import SimpleNamespace as NS
+    from ph_economic_ai.ui.stage3_swarm_canvas import Stage3SwarmPanel
+    from ph_economic_ai.engine.debate import DebateEngine
+    panel = Stage3SwarmPanel()
+    estimates = [0.01, 0.03, 0.07, 0.09]
+    responses = [NS(price_estimate=e) for e in estimates]
+    panel._on_elec_canvas_complete(responses)
+
+    engine = DebateEngine.__new__(DebateEngine)
+    engine._sector = 'electricity'
+    engine._history = [NS(round_num=1, price_estimate=e, agent_name='a', statement='')
+                        for e in estimates]
+    expected_pct = engine.consensus()['confidence_pct']
+    assert panel._elec_sub.text().startswith(f'{expected_pct}% agreement')
 
 
 def test_graph_metrics_reflect_the_real_scene_not_a_hardcoded_literal(app):
