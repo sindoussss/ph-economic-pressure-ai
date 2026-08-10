@@ -2614,11 +2614,24 @@ class Stage3SwarmPanel(QWidget):
             f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
         )
         # Same RSK-038 gap as the gas label above: 'consensus reached' claimed
-        # agreement with no distinct-value check behind it.
+        # agreement with no distinct-value check behind it, and no number at
+        # all -- unlike gas's '{confidence_pct}% confidence' a few lines up.
+        # `DebateEngine.consensus()` already computes this from the identical
+        # per-sector band RSK-042 validated (`debate._CONSENSUS_BAND`); this
+        # canvas label just never called it, so the calibrated number sat
+        # unused one call away while the label claimed a bare "reached".
         from ph_economic_ai.ui import honesty as _honesty
+        from ph_economic_ai.engine.debate import _CONSENSUS_BAND
         distinct = len({round(e, 2) for e in estimates})
         marker = _honesty.tile_narrow_marker(len(estimates), distinct)
-        self._food_sub.setText(f'consensus reached ({marker})' if marker else 'consensus reached')
+        if avg is not None and estimates:
+            band = _CONSENSUS_BAND.get('food', 0.20)
+            within = sum(1 for e in estimates if abs(e - avg) <= band)
+            pct = int(within / len(estimates) * 100)
+            sub = f'{pct}% agreement'
+        else:
+            sub = 'consensus reached'
+        self._food_sub.setText(f'{sub} ({marker})' if marker else sub)
         self._food_sub.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
@@ -2663,10 +2676,20 @@ class Stage3SwarmPanel(QWidget):
         self._elec_val.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:16px;font-weight:700;color:{color};'
         )
+        # Same fix as the food label above: a calibrated '% agreement' instead
+        # of a bare 'consensus reached', from the identical RSK-042 band.
         from ph_economic_ai.ui import honesty as _honesty
+        from ph_economic_ai.engine.debate import _CONSENSUS_BAND
         distinct = len({round(e, 2) for e in estimates})
         marker = _honesty.tile_narrow_marker(len(estimates), distinct)
-        self._elec_sub.setText(f'consensus reached ({marker})' if marker else 'consensus reached')
+        if avg is not None and estimates:
+            band = _CONSENSUS_BAND.get('electricity', 0.20)
+            within = sum(1 for e in estimates if abs(e - avg) <= band)
+            pct = int(within / len(estimates) * 100)
+            sub = f'{pct}% agreement'
+        else:
+            sub = 'consensus reached'
+        self._elec_sub.setText(f'{sub} ({marker})' if marker else sub)
         self._elec_sub.setStyleSheet(
             f'font-family:Consolas,monospace;font-size:9px;color:{color};'
         )
