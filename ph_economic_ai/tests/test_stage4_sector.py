@@ -59,25 +59,61 @@ def test_sector_forecasts_omits_agreement_when_zero(app):
     assert not any('% agreement' in t for t in labels)
 
 
-def test_calling_set_sector_forecasts_twice_does_not_leak_the_old_cards(app):
-    """Re-rendering (main_window.py calls this from 5 sites) must actually
-    remove the previous cards, not just lose track of them.
+def test_sector_holder_items_are_all_widgets_so_the_clear_loop_can_remove_them(app):
+    """Pins the actual mechanism the widget-leak fix depends on, not just its
+    downstream symptom.
 
-    deleteLater() only *schedules* destruction; the QObject stays a live
-    child (and shows up in findChildren) until the event loop actually
-    processes the deferred-delete event. Qt only posts that event once the
-    widget's parent-of-parents chain has been asked, so we flush it
-    explicitly rather than relying on an implicit event-loop spin.
+    set_sector_forecasts()'s own clear loop only calls .deleteLater() on
+    it.widget() results:
+        while layout.count():
+            it = layout.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                w.deleteLater()
+    A QLayoutItem for a bare addLayout()'d sub-layout always returns None
+    from .widget() -- so if the sector-card row were ever added via
+    addLayout() again instead of wrapped in a QWidget + addWidget(), this
+    clear loop would silently stop removing it, orphaning every previous
+    render's cards. Checking that every item in the layout is a widget item
+    pins the fix directly.
+
+    An earlier version of this test instead forced Qt's deferred-delete
+    queue to run early (QCoreApplication.sendPostedEvents(None,
+    QEvent.Type.DeferredDelete) + processEvents()) to observe the actual
+    destruction. That proved unstable on this project's CI -- a segfault in
+    PyQt6/Qt internals under the Linux/offscreen/xdist-parallel runner,
+    non-deterministic (passed once, crashed the next run), not reproducible
+    locally. This version tests the same regression without touching Qt's
+    event-processing internals at all.
     """
-    from PyQt6.QtCore import QCoreApplication, QEvent
     from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
     panel = Stage4ReportPanel()
     panel.set_sector_forecasts(-0.08, -0.21, -0.10, gas_agreement=70)
-    first_children = set(panel._sector_holder.findChildren(QLabel))
+    layout = panel._sector_holder_layout
+    assert layout.count() > 0
+    for i in range(layout.count()):
+        item = layout.itemAt(i)
+        assert item.widget() is not None, (
+            f"item {i} in _sector_holder_layout has no widget() -- it was "
+            "added via addLayout(), which the clear loop's deleteLater() "
+            "cleanup can never reach, silently orphaning it on the next render")
+
+
+def test_calling_set_sector_forecasts_twice_shows_the_latest_values(app):
+    """Re-rendering (main_window.py calls this from 5 sites) must not raise,
+    and the new render's values must appear.
+
+    Does not assert the first render's labels are absent: deleteLater()
+    only schedules destruction, so the old QLabels are still findable until
+    the event loop actually processes it -- checking that would need the
+    same forced event-flush this file deliberately avoids (see the test
+    above). The structural test above is what actually pins the leak fix;
+    this one just confirms a second call renders correctly and doesn't
+    raise.
+    """
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, -0.21, -0.10, gas_agreement=70)
     panel.set_sector_forecasts(0.15, 0.30, 0.05, gas_agreement=40)
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    app.processEvents()
-    second_children = set(panel._sector_holder.findChildren(QLabel))
-    assert not (first_children & second_children)
-    assert any('40%' in c.text() for c in second_children)
-    assert not any('70%' in c.text() for c in second_children)
+    labels = [c.text() for c in panel._sector_holder.findChildren(QLabel)]
+    assert any('40%' in t for t in labels)
