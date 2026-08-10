@@ -116,17 +116,15 @@ class BSPAlertBanner(QFrame):
         eyebrow_text = f'{icon} {_SEVERITY_ICONS.get(severity, "")}'
 
         from ph_economic_ai.ui import theme as _theme
+        # The severity color still shows, just on the eyebrow icon/text rather
+        # than as a page-wide tint -- pass it straight through to page_header
+        # instead of reaching into the returned widget tree afterward.
         self._header = _theme.page_header(
             eyebrow_text, ' ',
             right_eyebrow='PROJECTED CPI',
             right_value=f'{projected:.2f}%',
-            right_caption=caption)
-        # The severity color still shows, just on the eyebrow icon/text rather
-        # than as a page-wide tint -- find the eyebrow label and recolor it.
-        for lbl in self._header.findChildren(QLabel):
-            if lbl.text() == eyebrow_text:
-                lbl.setStyleSheet(lbl.styleSheet() + f';color:{text_c};')
-                break
+            right_caption=caption,
+            eyebrow_color=text_c)
         self._layout.addWidget(self._header)
         self.show()
 

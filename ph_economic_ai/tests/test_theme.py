@@ -104,3 +104,27 @@ def test_page_header_without_right_stat(app):
     labels = [c.text() for c in hdr.findChildren(QLabel)]
     assert 'Title only' in labels
     assert '6.03%' not in labels
+
+
+def test_page_header_eyebrow_color_default(app):
+    """With no eyebrow_color given, the left eyebrow keeps theme.FAINT --
+    matching eyebrow()'s own default so existing callers are unaffected."""
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header('EYEBROW', 'Title only')
+    labels = hdr.findChildren(QLabel)
+    eyebrow_lbl = next(lbl for lbl in labels if lbl.text() == 'EYEBROW')
+    assert f'color:{theme.FAINT}' in eyebrow_lbl.styleSheet()
+
+
+def test_page_header_eyebrow_color_applied(app):
+    """page_header(..., eyebrow_color=...) colors the left eyebrow label
+    directly, without needing a post-hoc findChildren() workaround."""
+    from ph_economic_ai.ui import theme
+    custom_color = '#DC2626'
+    hdr = theme.page_header('SEVERITY EYEBROW', 'Title', eyebrow_color=custom_color)
+    labels = hdr.findChildren(QLabel)
+    eyebrow_lbl = next(lbl for lbl in labels if lbl.text() == 'SEVERITY EYEBROW')
+    assert f'color:{custom_color}' in eyebrow_lbl.styleSheet()
+    # The title label is untouched by eyebrow_color.
+    title_lbl = next(lbl for lbl in labels if lbl.text() == 'Title')
+    assert custom_color not in title_lbl.styleSheet()

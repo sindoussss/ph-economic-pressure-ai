@@ -26,11 +26,11 @@ def direction_color(direction: str) -> str:
     return _DIR.get(direction, MUTED)
 
 
-def eyebrow(text) -> QLabel:
+def eyebrow(text, color: str = FAINT) -> QLabel:
     lbl = QLabel(str(text).upper())
     lbl.setStyleSheet(
         f'font-family:{MONO},monospace;font-size:10px;font-weight:700;'
-        f'letter-spacing:1.4px;color:{FAINT};background:transparent;')
+        f'letter-spacing:1.4px;color:{color};background:transparent;')
     return lbl
 
 
@@ -99,7 +99,8 @@ def tag(kind: str = 'exploratory') -> QLabel:
 
 
 def page_header(eyebrow_text: str, title: str, right_eyebrow: str = None,
-                right_value: str = None, right_caption: str = None) -> QFrame:
+                right_value: str = None, right_caption: str = None,
+                eyebrow_color: str = FAINT) -> QFrame:
     """Plain page-header row: title on the left, an optional stat on the
     right. No border, no fill -- replaces a boxed-alert pattern."""
     frame = QFrame()
@@ -107,7 +108,7 @@ def page_header(eyebrow_text: str, title: str, right_eyebrow: str = None,
     row.setContentsMargins(0, 0, 0, 10)
 
     left = QVBoxLayout()
-    left.addWidget(eyebrow(eyebrow_text))
+    left.addWidget(eyebrow(eyebrow_text, color=eyebrow_color))
     title_lbl = QLabel(title)
     title_lbl.setStyleSheet(
         f'font-family:{SERIF},serif;font-size:20px;font-weight:700;color:{INK};')
