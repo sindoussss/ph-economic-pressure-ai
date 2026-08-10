@@ -1,6 +1,7 @@
 """Editorial design tokens + widget helpers — the single source of truth for the
 app's look. Screens use these instead of hand-coding stylesheets."""
-from PyQt6.QtWidgets import QLabel, QFrame, QVBoxLayout
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel, QFrame, QHBoxLayout, QVBoxLayout
 
 # -- palette --
 SURFACE = '#FBFBFA'
@@ -12,6 +13,7 @@ HAIRLINE = '#E5E7EB'
 UP = '#B3261E'        # price up = red (bad for consumers)
 DOWN = '#15803D'      # price down = green (good)
 NEUTRAL = '#3B6FD4'
+WARNING = '#B45309'   # amber -- collapsed-room and unscored-survivor caveats
 
 # -- fonts --
 SERIF = 'Georgia'
@@ -24,11 +26,11 @@ def direction_color(direction: str) -> str:
     return _DIR.get(direction, MUTED)
 
 
-def eyebrow(text) -> QLabel:
+def eyebrow(text, color: str = FAINT) -> QLabel:
     lbl = QLabel(str(text).upper())
     lbl.setStyleSheet(
         f'font-family:{MONO},monospace;font-size:10px;font-weight:700;'
-        f'letter-spacing:1.4px;color:{FAINT};background:transparent;')
+        f'letter-spacing:1.4px;color:{color};background:transparent;')
     return lbl
 
 
@@ -54,6 +56,24 @@ def hairline() -> QFrame:
     return fr
 
 
+def confidence_bar(low_frac: float, width_frac: float) -> QFrame:
+    """A 5px horizontal track with a filled segment from `low_frac` to
+    `low_frac + width_frac` (both 0-1, fractions of the track's own width).
+    Purely a visual echo of numbers already shown in the caption beside it --
+    not a new statistic."""
+    track = QFrame()
+    track.setFixedHeight(5)
+    track.setStyleSheet(f'background:{FAINT};border-radius:2px;')
+    fill = QFrame(track)
+    fill.setStyleSheet(f'background:{INK};border-radius:2px;')
+
+    def _position():
+        w = track.width()
+        fill.setGeometry(int(w * low_frac), 0, max(2, int(w * width_frac)), 5)
+    track.resizeEvent = lambda e: _position()
+    return track
+
+
 def card(title=None):
     """Editorial white card. Returns (frame, content_layout). Title -> eyebrow."""
     frame = QFrame()
@@ -76,3 +96,53 @@ def tag(kind: str = 'exploratory') -> QLabel:
         f'font-family:{MONO},monospace;font-size:8px;font-style:italic;'
         f'color:{FAINT};background:transparent;')
     return lbl
+
+
+def page_header(eyebrow_text: str, title: str, right_eyebrow: str = None,
+                right_value: str = None, right_caption: str = None,
+                eyebrow_color: str = FAINT) -> QFrame:
+    """Plain page-header row: title on the left, an optional stat on the
+    right. No border, no fill -- replaces a boxed-alert pattern."""
+    frame = QFrame()
+    row = QHBoxLayout(frame)
+    row.setContentsMargins(0, 0, 0, 10)
+
+    left = QVBoxLayout()
+    left.addWidget(eyebrow(eyebrow_text, color=eyebrow_color))
+    title_lbl = QLabel(title)
+    title_lbl.setStyleSheet(
+        f'font-family:{SERIF},serif;font-size:20px;font-weight:700;color:{INK};')
+    left.addWidget(title_lbl)
+    row.addLayout(left)
+    row.addStretch()
+
+    if right_value is not None:
+        right = QVBoxLayout()
+        right.setAlignment(Qt.AlignmentFlag.AlignRight)
+        if right_eyebrow:
+            right.addWidget(eyebrow(right_eyebrow))
+        right.addWidget(serif_number(right_value, size=26))
+        if right_caption:
+            right.addWidget(muted(right_caption, size=9))
+        row.addLayout(right)
+
+    return frame
+
+
+def stat_card(eyebrow_text: str, value: str, color: str = INK, meta: str = '',
+              tag_kind: str | None = 'exploratory',
+              confidence_frac: tuple | None = None):
+    """One sector-forecast card: eyebrow, a serif value, an optional
+    confidence-bar row, a muted meta caption, and an optional exploratory/
+    validated tag. Returns (frame, layout) like `card()`."""
+    frame, layout = card()
+    layout.addWidget(eyebrow(eyebrow_text))
+    layout.addWidget(serif_number(value, color=color, size=28))
+    if confidence_frac is not None:
+        low_frac, width_frac = confidence_frac
+        layout.addWidget(confidence_bar(low_frac, width_frac))
+    if meta:
+        layout.addWidget(muted(meta, size=11))
+    if tag_kind is not None:
+        layout.addWidget(tag(tag_kind))
+    return frame, layout

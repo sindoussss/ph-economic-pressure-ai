@@ -30,3 +30,101 @@ def test_helpers(app):
     assert isinstance(frame, QFrame)
     assert 'TITLE' in [c.text() for c in frame.findChildren(QLabel)]
     assert theme.tag('validated').text() == 'validated'
+
+
+def test_confidence_bar(app):
+    from ph_economic_ai.ui import theme
+    bar = theme.confidence_bar(0.3, 0.2)
+    assert isinstance(bar, QFrame)
+    fills = [c for c in bar.findChildren(QFrame)]
+    assert len(fills) == 1
+    assert bar.height() == 5
+
+
+def test_confidence_bar_positioning(app):
+    """Verify that confidence_bar's _position() correctly computes fill geometry."""
+    from ph_economic_ai.ui import theme
+    bar = theme.confidence_bar(0.3, 0.2)
+    # Set fixed width and show the widget to trigger resizeEvent -> _position()
+    bar.setFixedWidth(200)
+    bar.show()
+    # Verify the fill widget's geometry: x = int(200*0.3)=60, width = int(200*0.2)=40
+    fill = [c for c in bar.findChildren(QFrame)][0]
+    assert fill.geometry().x() == 60
+    assert fill.geometry().y() == 0
+    assert fill.geometry().width() == 40
+    assert fill.geometry().height() == 5
+
+
+def test_warning_token():
+    from ph_economic_ai.ui import theme
+    assert theme.WARNING == '#B45309'
+
+
+def test_stat_card_full(app):
+    from ph_economic_ai.ui import theme
+    frame, layout = theme.stat_card(
+        'GAS / FUEL', '-P0.08/L', color=theme.DOWN,
+        meta='70% agent agreement', tag_kind='exploratory',
+        confidence_frac=(0.38, 0.24))
+    labels = [c.text() for c in frame.findChildren(QLabel)]
+    assert 'GAS / FUEL' in labels
+    assert '-P0.08/L' in labels
+    assert '70% agent agreement' in labels
+    assert 'exploratory' in labels
+    assert len(frame.findChildren(QFrame)) >= 1  # the confidence bar's track
+
+
+def test_stat_card_without_confidence_or_tag(app):
+    from ph_economic_ai.ui import theme
+    frame, layout = theme.stat_card('FOOD', '-0.21%', tag_kind=None)
+    labels = [c.text() for c in frame.findChildren(QLabel)]
+    assert 'FOOD' in labels
+    assert '-0.21%' in labels
+    assert 'exploratory' not in labels and 'validated' not in labels
+
+
+def test_page_header_with_right_stat(app):
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header(
+        'SIMULATION REPORT', 'Next-month sector forecast',
+        right_eyebrow='PROJECTED CPI', right_value='6.03%',
+        right_caption='baseline 6.2%')
+    labels = [c.text() for c in hdr.findChildren(QLabel)]
+    assert 'SIMULATION REPORT' in labels
+    assert 'Next-month sector forecast' in labels
+    assert 'PROJECTED CPI' in labels
+    assert '6.03%' in labels
+    assert 'baseline 6.2%' in labels
+
+
+def test_page_header_without_right_stat(app):
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header('EYEBROW', 'Title only')
+    labels = [c.text() for c in hdr.findChildren(QLabel)]
+    assert 'Title only' in labels
+    assert '6.03%' not in labels
+
+
+def test_page_header_eyebrow_color_default(app):
+    """With no eyebrow_color given, the left eyebrow keeps theme.FAINT --
+    matching eyebrow()'s own default so existing callers are unaffected."""
+    from ph_economic_ai.ui import theme
+    hdr = theme.page_header('EYEBROW', 'Title only')
+    labels = hdr.findChildren(QLabel)
+    eyebrow_lbl = next(lbl for lbl in labels if lbl.text() == 'EYEBROW')
+    assert f'color:{theme.FAINT}' in eyebrow_lbl.styleSheet()
+
+
+def test_page_header_eyebrow_color_applied(app):
+    """page_header(..., eyebrow_color=...) colors the left eyebrow label
+    directly, without needing a post-hoc findChildren() workaround."""
+    from ph_economic_ai.ui import theme
+    custom_color = '#DC2626'
+    hdr = theme.page_header('SEVERITY EYEBROW', 'Title', eyebrow_color=custom_color)
+    labels = hdr.findChildren(QLabel)
+    eyebrow_lbl = next(lbl for lbl in labels if lbl.text() == 'SEVERITY EYEBROW')
+    assert f'color:{custom_color}' in eyebrow_lbl.styleSheet()
+    # The title label is untouched by eyebrow_color.
+    title_lbl = next(lbl for lbl in labels if lbl.text() == 'Title')
+    assert custom_color not in title_lbl.styleSheet()
