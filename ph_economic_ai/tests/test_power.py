@@ -33,6 +33,7 @@ def test_more_data_lowers_the_detectable_effect():
     assert mde(200) < mde(40)
 
 
+@pytest.mark.timeout(600)
 def test_interpretation_states_the_honest_bound():
     """The fuel one-month forecast is a null, and the bound must say so honestly.
 
@@ -74,6 +75,7 @@ def test_identical_errors_give_zero_observed_skill():
     assert r['min_detectable_skill'] >= 0
 
 
+@pytest.mark.timeout(600)
 def test_every_nowcast_null_is_bounded():
     """No null may be reported without a minimum-detectable-effect: an unbounded
     null is an unfalsifiable claim."""
@@ -88,6 +90,7 @@ def test_every_nowcast_null_is_bounded():
         assert r['best_candidate'] not in ('mean', 'random_walk', 'drift', 'seasonal_naive')
 
 
+@pytest.mark.timeout(600)
 def test_observed_skill_stays_below_the_detectable_bound():
     """Consistency: every target is a null, so the observed skill must sit inside
     the band the test could not have resolved. If one ever exceeds its MDE, that

@@ -7,6 +7,17 @@ import numpy as np
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import Ridge
 
+# Explicit optimizer-iteration ceilings for the statsmodels fits below. ARIMA's
+# value matches statsmodels' own default (so this changes nothing on data that
+# already converges) -- it just stops that default from being an implicit,
+# upstream-controlled bound. ETS has no explicit default of its own: an
+# unspecified `method` falls back to scipy's L-BFGS-B with *its* default of
+# 15000 iterations, which is enough headroom that a pathological walk-forward
+# window (checked against every candidate on every step) can run far longer
+# than any of the ~30 iterations a converging fit here actually needs.
+_ARIMA_MAXITER = 50
+_ETS_MAXITER = 200
+
 
 def _random_walk(X_train, y_train, x_next) -> float:
     return float(y_train[-1])
@@ -44,7 +55,8 @@ def _hgb(X_train, y_train, x_next) -> float:
 def _arima(X_train, y_train, x_next) -> float:
     try:
         from statsmodels.tsa.arima.model import ARIMA
-        fit = ARIMA(np.asarray(y_train, dtype=float), order=(1, 1, 1)).fit()
+        fit = ARIMA(np.asarray(y_train, dtype=float), order=(1, 1, 1)).fit(
+            method_kwargs={'maxiter': _ARIMA_MAXITER})
         return float(np.asarray(fit.forecast(1)).ravel()[0])
     except Exception:
         return float(y_train[-1])
@@ -53,7 +65,8 @@ def _arima(X_train, y_train, x_next) -> float:
 def _ets(X_train, y_train, x_next) -> float:
     try:
         from statsmodels.tsa.holtwinters import ExponentialSmoothing
-        fit = ExponentialSmoothing(np.asarray(y_train, dtype=float), trend='add').fit()
+        fit = ExponentialSmoothing(np.asarray(y_train, dtype=float), trend='add').fit(
+            minimize_kwargs={'options': {'maxiter': _ETS_MAXITER}})
         return float(np.asarray(fit.forecast(1)).ravel()[0])
     except Exception:
         return float(y_train[-1])
