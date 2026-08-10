@@ -1029,3 +1029,9 @@ Follow this project's own convention for UI changes: run the actual PyQt6 app (c
 - [ ] **Step 4: Report findings**
 
 If the visual comparison surfaces a mismatch (spacing, a missed hex, a card that doesn't match the mockup's proportions), fix it in a new small commit -- do not fold silent fixes into an earlier task's commit.
+
+---
+
+## Post-implementation note (scope actually delivered)
+
+This plan's Goal line says "finish SP2d-1's editorial-theme migration on the Report screen" -- read after the fact, that overstates what Tasks 1-9 actually did. What was migrated is exactly what each task named: the sector-forecast cards (Task 5), the swarm and classic consensus panels and the Regional Verdicts table (Tasks 7-8), the final-outputs metrics grid and validated-accuracy card (Task 9, two specific `setStyleSheet` substitutions in `_build_right` -- not a sweep), and `BSPAlertBanner` (Task 6). `stage4_report.py` still carries 42 `setStyleSheet` calls outside those sections -- the top status bar, the export button, the recall banner, `_physics_anchor_label`, `_explanation_block`, classic-mode per-response cards (`name_lbl`/`est_lbl`/`stmt_lbl`), the dissenting-regions label, and the map basis/unvalidatable captions. None of that was ever in scope for this plan's tasks; it remains an acknowledged, un-migrated gap for a future slice, not something this branch quietly finished.
