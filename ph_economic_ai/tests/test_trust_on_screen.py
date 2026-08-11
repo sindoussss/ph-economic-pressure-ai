@@ -331,6 +331,38 @@ def test_the_run_table_signs_a_falling_forecast_correctly(tmp_path):
     s.close()
 
 
+def test_the_run_table_has_no_invisible_columns(tmp_path):
+    """Date/Predicted/Actual/Error/Quality had no explicit item foreground, so
+    they inherited whatever the OS palette's default text color is -- white on
+    Windows dark mode -- against the table's own explicit `background:#fff`.
+    White text on a white cell is not blank data, it is invisible data: direct
+    inspection of `.item().text()` showed every column correctly populated
+    while the rendered screenshot showed five of six columns as empty. Only
+    Status was visible, because it is the one column that already called
+    `setForeground()`. Every column needs its own explicit color for the same
+    reason, not just the one that happened to need one for its status color."""
+    import sys
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+    from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+
+    s = AgentTrustStore(db_path=str(tmp_path / 'trust3.db'))
+    s.save_run(scenario={'current_price': 85.0}, final_estimate=-1.0,
+               confidence_pct=70, horizon_days=7.0)
+    panel = AgentPerformancePanel(s)
+    panel.refresh()
+    for col in range(panel._run_table.columnCount()):
+        item = panel._run_table.item(0, col)
+        assert item.foreground().style() != Qt.BrushStyle.NoBrush, (
+            f'column {col} has no explicit foreground and would be invisible '
+            'against the table\'s explicit white background under a dark '
+            'OS palette')
+    s.close()
+
+
 def test_the_run_table_names_the_obstacle_and_does_not_tick(tmp_path):
     """'⏳ Pending DOE' and 'Graded ✓' were replaced on the landing tiles and
     survived here, on the sibling screen nobody swept."""
