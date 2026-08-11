@@ -363,6 +363,45 @@ def test_the_run_table_has_no_invisible_columns(tmp_path):
     s.close()
 
 
+def test_the_leaderboard_does_not_double_render_on_a_second_refresh(tmp_path):
+    """`_refresh_leaderboard()` clears old rows with `takeAt(0)` + `.deleteLater()`,
+    which only SCHEDULES destruction for a future event-loop turn -- a widget
+    removed from the layout this way stays alive and painted at its last
+    geometry until Qt gets around to it. A second refresh() before that happens
+    (the normal case for a screen meant to update live, e.g. the DOE checker's
+    grades_applied signal firing again) used to add a fresh set of rows on top
+    of the still-visible old ones: doubled, overlapping trust-score text and a
+    ghost agent badge. Found by counting live QWidget children directly, not
+    from a screenshot -- `layout.count()` alone cannot see this, since takeAt(0)
+    removes the item from the layout's own bookkeeping immediately regardless
+    of whether the widget itself is actually gone."""
+    import sys
+    from PyQt6.QtWidgets import QApplication, QWidget
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    from ph_economic_ai.engine.store import AgentTrustStore
+    from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
+
+    store = AgentTrustStore(db_path=str(tmp_path / 'trust4.db'))
+    for i, name in enumerate(['Market Analyst', 'Policy Expert', 'Risk Assessor']):
+        store.update_trust(name, internal_score=0.6 + i * 0.05)
+    panel = AgentPerformancePanel(store)
+
+    def visible_row_count():
+        container = panel._leaderboard_layout.parentWidget()
+        return len([c for c in container.children()
+                   if isinstance(c, QWidget) and c.objectName() == '' and not c.isHidden()])
+
+    panel.refresh()
+    app.processEvents()
+    assert visible_row_count() == 3
+
+    panel.refresh()  # second refresh, no processEvents() before checking
+    assert visible_row_count() == 3, (
+        'old rows are still visible underneath the new ones after a second refresh')
+    store.close()
+
+
 def test_the_run_table_names_the_obstacle_and_does_not_tick(tmp_path):
     """'⏳ Pending DOE' and 'Graded ✓' were replaced on the landing tiles and
     survived here, on the sibling screen nobody swept."""
