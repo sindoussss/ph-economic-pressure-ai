@@ -81,6 +81,30 @@ def test_run_nowcast_ties_naive_on_random_walk_target():
     assert res['best_method'] == 'random_walk'
 
 
+def test_run_nowcast_never_lets_a_baseline_win(monkeypatch):
+    """A baseline (drift) can look like it beats random_walk by construction on a
+    trending series -- that says nothing about predictability. audit.py's sibling
+    verdict_from_panel already guards against this (see test_audit.py's
+    test_verdict_efficient_when_none_significantly_better); this pins the same
+    property through run_nowcast's own path, which used to have no such guard."""
+    import ph_economic_ai.benchmark.nowcast as nc
+
+    fake_panel = [
+        {'method': 'random_walk', 'skill_vs_rw': 0.0, 'dm_p': None, 'rmse': 1.0, 'mae': 1.0, 'n': 40},
+        {'method': 'drift', 'skill_vs_rw': 0.3, 'dm_p': 0.01, 'rmse': 0.7, 'mae': 0.6, 'n': 40},
+        {'method': 'seasonal_naive', 'skill_vs_rw': -0.5, 'dm_p': 0.02, 'rmse': 1.5, 'mae': 1.2, 'n': 40},
+        {'method': 'hgb', 'skill_vs_rw': -0.1, 'dm_p': 0.4, 'rmse': 1.1, 'mae': 0.9, 'n': 40},
+    ]
+    monkeypatch.setattr(nc, 'run_panel', lambda *a, **kw: fake_panel)
+    idx = pd.date_range('2016-01', periods=40, freq='MS').strftime('%Y-%m')
+    frame = pd.DataFrame({'oil': 0.0, 'fx': 0.0, 'fuel': 0.0,
+                          'prev_inflation': 0.0, 'target': 0.0}, index=idx)
+    res = nc.run_nowcast(min_train=24, frame=frame)
+
+    assert res['verdict'] == 'no_better_than_naive'
+    assert res['best_method'] == 'random_walk'
+
+
 def test_run_nowcast_insufficient_data():
     idx = pd.date_range('2020-01', periods=10, freq='MS').strftime('%Y-%m')
     frame = pd.DataFrame({'oil': range(10), 'fx': range(10), 'fuel': range(10),

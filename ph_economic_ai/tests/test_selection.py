@@ -112,3 +112,21 @@ def test_too_short_a_frame_reports_insufficient_data_rather_than_guessing():
     frame = _frame(target, prev=np.roll(target, 1))
     result = selection.run_selection_holdout(frame, METHODS, POOL, min_train=24)
     assert result['verdict'] == 'insufficient_data'
+
+
+def test_holdout_below_the_documented_minimum_is_refused():
+    """split_point()'s own clamps can force a cut that leaves fewer than
+    MIN_HOLDOUT_PREDICTIONS on the holdout side: at n=42 with the default
+    min_train=24, the selection-segment floor and the holdout-size floor
+    conflict and only 6 predictions are left after the cut. The module's own
+    docstring says 12 is the minimum "for a DM test to mean anything", so a DM
+    test must never actually run on fewer than that -- regardless of what
+    split_point computed -- and this must be refused as insufficient_data
+    rather than silently producing a confirmed/not_confirmed verdict."""
+    rng = np.random.default_rng(2)
+    n = 42
+    target = rng.normal(0.2, 0.4, n)
+    frame = _frame(target, prev=np.roll(target, 1))
+    result = selection.run_selection_holdout(frame, METHODS, POOL, min_train=24)
+    assert result['verdict'] == 'insufficient_data'
+    assert result['n_holdout_predictions'] < selection.MIN_HOLDOUT_PREDICTIONS

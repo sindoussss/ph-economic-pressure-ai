@@ -105,7 +105,12 @@ def run_selection_holdout(frame, methods, baseline_pool, min_train: int = 24,
     idx_m, yt_m, yp_m = _losses(y, X, selected, min_train)
     idx_b, yt_b, yp_b = _losses(y, X, best_naive, min_train)
     keep_m, keep_b = idx_m >= cut, idx_b >= cut
-    if keep_m.sum() < 3:
+    # MIN_HOLDOUT_PREDICTIONS, not a smaller magic number: split_point() tries to
+    # guarantee this floor but its own two clamps (selection segment vs. holdout
+    # size) can conflict on a small frame, silently handing back a shorter holdout
+    # than the module's own stated minimum "for a DM test to mean anything". This
+    # is the actual enforcement point regardless of what split_point computed.
+    if keep_m.sum() < MIN_HOLDOUT_PREDICTIONS:
         return {'verdict': 'insufficient_data', 'n': int(n), 'cut': int(cut),
                 'n_holdout_predictions': int(keep_m.sum())}
 

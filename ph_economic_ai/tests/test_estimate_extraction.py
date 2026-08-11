@@ -8,8 +8,8 @@ the BSP-target banner.
 import pytest
 
 from ph_economic_ai.engine.debate import (
-    _extract_percent, _extract_price, _extract_electricity_change,
-    _MAX_REALISTIC_FOOD_PCT,
+    _extract_percent, _extract_price, _extract_price_bounded,
+    _extract_electricity_change, _MAX_REALISTIC_FOOD_PCT,
 )
 
 
@@ -71,6 +71,26 @@ def test_electricity_rejects_an_absolute_rate_parsed_as_a_change():
 
 def test_electricity_accepts_a_realistic_change():
     assert _extract_electricity_change('ESTIMATE: +₱0.45/kWh') == pytest.approx(0.45)
+
+
+def test_gas_extract_price_stays_unbounded_for_forums_own_guard():
+    """forum.py's _extract_guarded calls _extract_price directly and needs the
+    raw value to report a rejected estimate as distinct from no estimate at
+    all -- so this function itself must NOT apply the ceiling."""
+    assert _extract_price('ESTIMATE: +₱150.00/L') == pytest.approx(150.0)
+
+
+def test_gas_bounded_rejects_an_absolute_price_parsed_as_a_change():
+    """A live run had two agents return +150.00/L and +100.00/L -- the model
+    quoting an absolute pump PRICE where a CHANGE was asked for. Classic-mode
+    gas debate (DebateEngine's default price_extractor) has no separate
+    accepted/rejected reporting layer like forum.py's, so it uses this bounded
+    wrapper instead of raw _extract_price."""
+    assert _extract_price_bounded('ESTIMATE: +₱150.00/L') is None
+
+
+def test_gas_bounded_accepts_a_realistic_change_at_the_boundary():
+    assert _extract_price_bounded('ESTIMATE: +₱8.00/L') == pytest.approx(8.0)
 
 
 def test_no_estimate_anywhere_returns_none():
