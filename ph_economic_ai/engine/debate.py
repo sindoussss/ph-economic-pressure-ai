@@ -587,6 +587,12 @@ def _extract_price(text: str) -> Optional[float]:
     Prefers the explicit ESTIMATE line; only falls back to scanning the prose
     when the agent did not produce one. Requires an explicit sign either way,
     so baseline mentions like 'a base of ₱60/L' are not mistaken for a change.
+
+    Deliberately UNBOUNDED: `forum.py`'s `_extract_guarded` calls this directly
+    and needs the raw value to report a rejected estimate as distinct from no
+    estimate at all (see its own docstring). Callers that have no such
+    accepted/rejected reporting layer of their own must apply
+    `_MAX_REALISTIC_FUEL_PHP_L` themselves -- see `_extract_price_bounded`.
     """
     anchored = _last_estimate_match(text, r'(?:₱|PHP|P)?\s*(\d+\.?\d*)')
     if anchored is not None:
@@ -596,6 +602,24 @@ def _extract_price(text: str) -> Optional[float]:
         sign = -1 if m.group(1) == '-' else 1
         return sign * float(m.group(2))
     return None
+
+
+def _extract_price_bounded(text: str) -> Optional[float]:
+    """`_extract_price` with the parse-sanity ceiling applied.
+
+    Classic-mode gas debate (`DebateEngine`'s default `price_extractor`) is the
+    one live gas path with no separate accepted/rejected reporting layer --
+    unlike `forum.py`'s `_extract_guarded`, which deliberately keeps
+    `_extract_price` unbounded so it can report a rejected value distinctly
+    from no estimate at all. Food and electricity already get this protection
+    from their own extractors (`_extract_percent`, `_extract_electricity_change`);
+    this closes the same hole for gas's default path, without touching
+    `_extract_price` itself and breaking that other caller's reporting.
+    """
+    value = _extract_price(text)
+    if value is None or abs(value) > _MAX_REALISTIC_FUEL_PHP_L:
+        return None
+    return value
 
 
 def _extract_electricity_change(text: str) -> Optional[float]:
@@ -659,7 +683,7 @@ class DebateEngine:
         self._rag = rag
         self._scenario = scenario
         self._history: list[AgentResponse] = []
-        self._price_extractor = price_extractor or _extract_price
+        self._price_extractor = price_extractor or _extract_price_bounded
         self._data_brief = data_brief
         self._anchor_note = anchor_note
         self._sector = sector
