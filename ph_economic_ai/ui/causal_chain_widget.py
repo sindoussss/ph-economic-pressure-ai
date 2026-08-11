@@ -115,11 +115,11 @@ class BSPAlertBanner(QFrame):
 
         parts = []
         if 'fuel' in breakdown:
-            parts.append(f'Fuel: +{breakdown["fuel"]:.2f}ppt')
+            parts.append(f'Fuel: {breakdown["fuel"]:+.2f}ppt')
         if 'food' in breakdown:
-            parts.append(f'Food: +{breakdown["food"]:.2f}ppt')
+            parts.append(f'Food: {breakdown["food"]:+.2f}ppt')
         if 'electricity' in breakdown:
-            parts.append(f'Elec: +{breakdown["electricity"]:.2f}ppt')
+            parts.append(f'Elec: {breakdown["electricity"]:+.2f}ppt')
         caption = (f'Baseline {current:.1f}% ({cpi_as_of}) + sector impact {impact:+.2f}ppt'
                   + ('  ·  ' + '  ·  '.join(parts) if parts else ''))
 
