@@ -80,8 +80,19 @@ class BSPAlertBanner(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.hide()
+        # An explicit light background, matching the sibling sections in
+        # Stage4ReportPanel._build() (the status bar, the sector-forecast
+        # holder) -- both set this exact background for the same reason.
+        # page_header() itself deliberately paints nothing ("no fill"),
+        # which was correct for retiring the colored/tinted alert box, but
+        # left this frame relying on whatever background it happens to sit
+        # on. That is the panel's own unstyled palette, which is not
+        # guaranteed light (confirmed: renders black on a dark-mode Windows
+        # default palette) -- so it needs its own explicit one, the same as
+        # every other top-level section in this file.
+        self.setStyleSheet('background:#FFFFFF;border-bottom:1px solid #E5E7EB;')
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setContentsMargins(20, 10, 20, 10)
         self._header = None
 
     def set_alert(self, alert: dict):
