@@ -128,8 +128,18 @@ class AgentPerformancePanel(QWidget):
             self._basis_lbl.setText('')
         while self._leaderboard_layout.count():
             item = self._leaderboard_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w:
+                # hide() first: deleteLater() only SCHEDULES destruction for a
+                # future event-loop turn, so a widget removed from the layout
+                # this way stays alive and still painted at its last geometry
+                # until Qt gets around to it. A second refresh() before that
+                # happens -- the normal case for a screen meant to update live
+                # -- adds a fresh set of rows on top of the still-visible old
+                # ones: doubled, overlapping text. hide() takes effect
+                # immediately and does not depend on event-loop timing.
+                w.hide()
+                w.deleteLater()
 
         for row in rows[:15]:
             trust = row['trust_score']
