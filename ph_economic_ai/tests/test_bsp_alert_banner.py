@@ -28,6 +28,26 @@ def test_set_alert_shows_plain_header_no_colored_box(app):
     assert 'background' not in style or '#FEF2F2' not in style
 
 
+def test_set_alert_sector_breakdown_has_one_sign_not_two(app):
+    """RSK-031's shape a ninth time: 'Fuel: +{value:.2f}ppt' hardcoded a literal
+    '+' in front of a value that is negative when a sector is falling, producing
+    'Fuel: +-0.01ppt' -- the same double-sign bug already fixed eight times
+    elsewhere in this codebase, in a location none of those fixes reached."""
+    from ph_economic_ai.ui.causal_chain_widget import BSPAlertBanner
+    banner = BSPAlertBanner()
+    banner.set_alert({
+        'severity': 'CRITICAL', 'projected_cpi': 6.03, 'current_cpi': 6.2,
+        'cpi_as_of': 'PSA, Jul 2026', 'sector_cpi_impact': -0.17,
+        'breakdown': {'fuel': -0.01, 'food': -0.08, 'electricity': 0.07},
+    })
+    labels = [c.text() for c in banner.findChildren(QLabel)]
+    combined = ' || '.join(labels)
+    assert '+-' not in combined
+    assert 'Fuel: -0.01ppt' in combined
+    assert 'Food: -0.08ppt' in combined
+    assert 'Elec: +0.07ppt' in combined
+
+
 def test_set_alert_stable_severity_still_shows(app):
     from ph_economic_ai.ui.causal_chain_widget import BSPAlertBanner
     banner = BSPAlertBanner()
