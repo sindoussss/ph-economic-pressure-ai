@@ -19,6 +19,7 @@ _GREEN  = '#1a7f37'
 _AMBER  = '#7d4e00'
 _RED    = '#cf222e'
 _GRAY   = '#57606a'
+_INK    = '#24292f'
 _BG_GREEN  = '#dafbe1'
 _BG_AMBER  = '#fff8c5'
 _BG_RED    = '#ffebe9'
@@ -238,4 +239,12 @@ class AgentPerformancePanel(QWidget):
                 if col == 5:
                     item.setForeground(QColor(status_color))
                     item.setBackground(QColor(status_bg))
+                else:
+                    # The table forces an explicit white cell background above;
+                    # an item with no explicit foreground of its own falls back
+                    # to the OS palette instead, which is white text on Windows
+                    # dark mode -- white on the table's white, invisible. Every
+                    # column here needs its own explicit color for the same
+                    # reason the Status column already has one.
+                    item.setForeground(QColor(_INK))
                 self._run_table.setItem(i, col, item)
