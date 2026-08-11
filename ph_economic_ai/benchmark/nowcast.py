@@ -42,6 +42,7 @@ def build_nowcast_frame(target_loader=None, prev_col: str = 'prev_inflation', fe
     return require_complete_calendar(out, 'nowcast frame')
 
 
+from ph_economic_ai.benchmark.audit import verdict_from_panel
 from ph_economic_ai.benchmark.backtest import walk_forward
 from ph_economic_ai.benchmark.conformal import build_calibration_table
 from ph_economic_ai.benchmark.efficiency import run_panel
@@ -54,22 +55,20 @@ CONFORMAL_LEVELS = (0.5, 0.8, 0.9, 0.95)
 
 def run_nowcast(min_train: int = 24, frame=None) -> dict:
     """Nowcast inflation via the panel; naive baseline = last published inflation.
-    Verdict 'beats_naive' if any method significantly beats naive (dm_p<0.05,
-    skill>0), else 'no_better_than_naive'."""
+    Verdict 'beats_naive' if any *candidate* method significantly beats a naive
+    baseline (dm_p<0.05, skill>0), else 'no_better_than_naive'. Reuses
+    `audit.verdict_from_panel` rather than a second copy of its guard: a baseline
+    (random_walk, drift, seasonal_naive) is never eligible to be the method that
+    earns 'beats_naive', because one naive comparator outperforming another says
+    nothing about predictability."""
     if frame is None:
         frame = build_nowcast_frame()
     if len(frame) < min_train + 5:
         return {'verdict': 'insufficient_data', 'n': int(len(frame))}
 
     panel = run_panel(frame, PANEL_METHODS, min_train, FEATURE_COLS, target_col='target')
-    beats = [r for r in panel
-             if r['dm_p'] is not None and r['dm_p'] < 0.05 and r['skill_vs_rw'] > 0]
-    if beats:
-        best = max(beats, key=lambda r: r['skill_vs_rw'])
-        verdict = 'beats_naive'
-    else:
-        best = next(r for r in panel if r['method'] == 'random_walk')
-        verdict = 'no_better_than_naive'
+    outcome, best = verdict_from_panel(panel)
+    verdict = 'beats_naive' if outcome == 'predictable' else 'no_better_than_naive'
 
     y = frame['target'].to_numpy(dtype=float)
     X = frame[FEATURE_COLS].to_numpy(dtype=float)
