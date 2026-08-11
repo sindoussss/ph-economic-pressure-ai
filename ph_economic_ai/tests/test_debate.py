@@ -146,6 +146,22 @@ def test_run_extracts_price_estimate():
     assert responses[0].price_estimate == pytest.approx(2.50)
 
 
+def test_run_rejects_an_absolute_price_parsed_as_a_change():
+    """Classic-mode gas debate's default price_extractor must apply the same
+    plausibility ceiling forum.py and swarm.py apply at their own call sites --
+    an agent quoting an absolute pump price (e.g. '+150.00/L') must not reach
+    consensus() as if it were a real weekly change."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(DEFAULT_AGENTS[:1], rag,
+                          {'oil_pct': 5.0, 'usd_pct': 2.0,
+                           'bsp_rate': 6.5, 'demand_index': 72})
+    fake_stream = ['ESTIMATE: +₱150.00/L']
+    with patch('ph_economic_ai.engine.debate.llm.stream',
+               return_value=iter(fake_stream)):
+        responses = engine.run(rounds=1)
+    assert responses[0].price_estimate is None
+
+
 def test_parse_think_unclosed_tag():
     thinking, statement = _parse_think('<think>reasoning starts but never ends')
     assert statement == ''
