@@ -678,7 +678,7 @@ def _extract_category_percents(text: str) -> dict[str, float]:
     result: dict[str, float] = {}
     for category, label in _CATEGORY_LABELS.items():
         hits = re.findall(
-            rf'{label}\s*:\s*\**\s*([+\-])?\s*(\d+\.?\d*)\s*%',
+            rf'\b{label}\s*:\s*\**\s*([+\-])?\s*(\d+\.?\d*)\s*%',
             cleaned, flags=re.IGNORECASE,
         )
         if not hits:
