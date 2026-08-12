@@ -673,12 +673,22 @@ def _extract_category_percents(text: str) -> dict[str, float]:
     absent from the returned dict -- never present as 0.0 or copied from
     another category's value. Takes the LAST match per category, same reason
     every other extractor in this file does: agents restate and revise.
+
+    The sign is REQUIRED (unlike `_last_estimate_match`'s ESTIMATE line, where
+    an unsigned number defaults to positive). Every one of the twelve worked
+    examples in `_FOOD_CATEGORY_LINES` carries an explicit sign, so an unsigned
+    match here is not a category read with the "+" dropped -- it is usually a
+    year-on-year figure cited with no sign context ("Rice: 8.9% year-on-year")
+    or the sign living in nearby prose the judge's own words already contradict
+    ("Rice prices are falling. RICE: 0.4%"). Guessing a sign for either would
+    fabricate a month-on-month reading; refusing (treating it as unparseable)
+    is the honest answer.
     """
     cleaned = _TOLERANCE_BAND_RE.sub(' ', text)
     result: dict[str, float] = {}
     for category, label in _CATEGORY_LABELS.items():
         hits = re.findall(
-            rf'\b{label}\s*:\s*\**\s*([+\-])?\s*(\d+\.?\d*)\s*%',
+            rf'\b{label}\s*:\s*\**\s*([+\-])\s*(\d+\.?\d*)\s*%',
             cleaned, flags=re.IGNORECASE,
         )
         if not hits:
@@ -688,6 +698,35 @@ def _extract_category_percents(text: str) -> dict[str, float]:
         if abs(value) <= _MAX_REALISTIC_FOOD_PCT:
             result[category] = value
     return result
+
+
+_CATEGORY_LINE_RE = re.compile(
+    r'\b(?:' + '|'.join(re.escape(lbl) for lbl in _CATEGORY_LABELS.values()) +
+    r')\s*:\s*\**\s*[+\-]?\s*\d+\.?\d*\s*%',
+    re.IGNORECASE,
+)
+
+
+def _strip_category_lines(text: str) -> str:
+    """Remove every RICE:/MEAT:/.../SUGAR: line from text, so the blended
+    ESTIMATE:'s prose fallback (which grabs the first signed percent it sees
+    anywhere) can't accidentally pick up a category value instead. Built
+    generically from `_CATEGORY_LABELS` rather than a separate hardcoded list,
+    so it can't drift out of sync with the six labels.
+
+    Why this exists: `_extract_percent`'s prose fallback (a regex matching a
+    leading plus-or-minus sign followed by a number and a percent sign)
+    matches the FIRST signed percent anywhere in the text whenever the
+    anchored ESTIMATE: line fails to parse (e.g. the judge writes
+    "ESTIMATE: broadly unchanged"). The food judge prompt now always asks
+    for six category lines before its ESTIMATE line, so that fallback would
+    silently grab a category value (typically RICE, asked first) and it
+    would become the app's headline "Food" estimate with no signal anything
+    went wrong. Stripping the category lines before the blended extraction
+    closes that hole without touching the well-tested
+    `_extract_percent`/`_last_estimate_match` themselves.
+    """
+    return _CATEGORY_LINE_RE.sub(' ', text)
 
 
 #: Per-sector agreement band for `consensus()`: PHP/L for gas, percentage

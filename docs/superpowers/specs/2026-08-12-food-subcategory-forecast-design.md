@@ -5,6 +5,8 @@
 **Owner:** Sindous
 **Program context:** New feature, not a continuation of an existing spec. Triggered by the owner sharing six Manila Public Information Office "Bantay Presyo" market bulletins (itemized wet-market prices for rice, fish, poultry, beef, pork, vegetables, sugar, eggs across six markets) and pointing out that the app's single blended "Food" number can't tell a household "fish is expensive this week because of rain, but rice is fine" — a real, common divergence a basket-wide percentage erases.
 
+> **Implementation note (post-plan correction):** three details below were superseded during the implementation plan and the shipped code follows the plan, not this spec: (1) `economy_overview.py`'s "Food Index (derived)" card is explicitly OUT of scope for relabeling — it's a different, gas-derived metric, not the Forum's food estimate; (2) `SectorReading.subcategories` uses `kw_only=True`, matching `estimates`' own stronger convention, not plain field-append; (3) `subcategories` values are plain `dict[str, float]` with a missing key meaning "no read," not `dict[str, Optional[float]]` with explicit `None`. See `docs/superpowers/plans/2026-08-12-food-subcategory-app.md` for the corrected design.
+
 ---
 
 ## 1. Problem & Goal

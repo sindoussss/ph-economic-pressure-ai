@@ -31,7 +31,7 @@ from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
     ESTIMATE_LINE, _extract_price, _parse_think, unfilled_scaffold,
-    _extract_category_percents)
+    _extract_category_percents, _strip_category_lines)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
 # Per-sector estimate parsing, agreement band, and the "flat" threshold.
@@ -628,8 +628,19 @@ class Forum:
         _, statement = _parse_think(text)
         # The judge is guarded too: it reads agent numbers, so it can repeat an
         # implausible one back.
-        accepted, _ = _extract_guarded(ctx.sector, statement)
+        #
+        # Food-only: the six category lines are stripped BEFORE the blended
+        # estimate is extracted. `_extract_percent`'s prose fallback grabs the
+        # first signed percent anywhere in the text whenever the anchored
+        # ESTIMATE: line fails to parse (e.g. "ESTIMATE: broadly unchanged") --
+        # and this sector's prompt guarantees six other signed percents exist
+        # earlier in the response. Without the strip, that fallback would
+        # silently adopt a category value (typically RICE, asked first) as the
+        # headline blended "Food" estimate. `subcategories` and the returned
+        # verdict text still use the full, unstripped `statement`.
         subcategories = _extract_category_percents(statement) if ctx.sector == 'food' else {}
+        blended_src = _strip_category_lines(statement) if ctx.sector == 'food' else statement
+        accepted, _ = _extract_guarded(ctx.sector, blended_src)
         return accepted, statement.strip(), subcategories
 
     def _emit(self, kind: str, data: dict):

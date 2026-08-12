@@ -94,6 +94,9 @@ def test_food_card_shows_subcategory_breakdown(app):
     assert 'Vegetables +0.5%' in texts
     assert 'Dairy' in texts and '—' in texts   # missing category shows unavailable
     assert '+-' not in texts
+    # A reader must not mistake the six category reads for components that
+    # sum/average to the headline estimate above them -- the caption says so.
+    assert 'not components of the figure above' in texts
 
 
 def test_gas_card_has_no_subcategory_breakdown(app):

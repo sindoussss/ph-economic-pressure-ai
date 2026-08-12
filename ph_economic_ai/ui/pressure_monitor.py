@@ -866,6 +866,18 @@ class PressureMonitorPanel(QWidget):
             breakdown.setWordWrap(True)
             lay.addWidget(breakdown)
 
+            # Without this, the six category values sit directly under the
+            # headline estimate with nothing telling a reader they are the
+            # judge's own separate per-category reads -- not components that
+            # sum or average to the number above. One shade more muted than
+            # the breakdown row itself (_T3 vs _T2), matching how this file
+            # already de-emphasises secondary/caveat text relative to content.
+            note = QLabel('Separate per-category reads from the same debate '
+                          '— not components of the figure above.')
+            note.setStyleSheet(f'color:{_T3};font-size:10px;font-style:italic;margin-top:2px;')
+            note.setWordWrap(True)
+            lay.addWidget(note)
+
         return card
 
     def _outlook_row(self, s) -> QFrame:
