@@ -575,6 +575,34 @@ def test_food_blended_estimate_does_not_silently_become_a_category_value(monkeyp
                              'dairy_eggs': 0.0, 'vegetables': 0.1, 'sugar': 0.0}
 
 
+def test_food_blended_estimate_does_not_leak_from_category_line_commentary(monkeypatch):
+    """Same failure class as the sibling test above, but the leak comes from
+    trailing commentary on a category line (e.g. '(down from -1.2% last
+    month)') rather than the category value's own token -- the first fix
+    round only stripped the label+value, not the rest of the line."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    monkeypatch.setattr(llm_mod, 'complete', lambda msgs, **kw: (
+        'ESTIMATE: broadly unchanged\n'
+        'RICE: +0.3% (down from -1.2% last month)\n'
+        'MEAT: +0.0%\nFISH: +0.0%\nDAIRY_EGGS: +0.0%\n'
+        'VEGETABLES: +0.0%\nSUGAR: +0.0%'
+    ))
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert estimate is None, (
+        f'blended estimate should be None -- got {estimate}, leaked from '
+        f'trailing commentary on the RICE line'
+    )
+    assert subcategories['rice'] == 0.3, (
+        'subcategories parsing (on the full unstripped text) must still '
+        'correctly find rice=0.3 despite the trailing commentary'
+    )
+
+
 def test_food_judge_prompt_actually_contains_the_category_lines(monkeypatch):
     """`fake_complete`-style tests elsewhere in this file ignore `msgs` entirely
     and return a canned response, so they would stay green even if the prompt-
