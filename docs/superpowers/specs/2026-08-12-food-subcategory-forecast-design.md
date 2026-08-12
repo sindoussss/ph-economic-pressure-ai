@@ -200,3 +200,26 @@ Closes the actual gap the owner pointed at: a single "Food +0.4%" number cannot 
 ## 7. Open Question (not blocking this spec)
 
 **Is there a real, structured, citable peso-price source for any of these six categories?** Investigated during brainstorming: the PSA OpenSTAT API this project already automates only publishes indices (CPI/PPI/RPI/WPI) — no absolute peso level for any category. PSA very likely publishes actual retail rice prices through a separate product (a "Palay, Rice and Corn" price bulletin), but whether it's reachable as a clean structured feed (like the CPI PX-Web API) or only as periodic PDF releases is unconfirmed. For meat/fish/vegetables/dairy & eggs/sugar, no candidate source has been identified at all. This is the same shape of problem `Q-ENG-009` (regional fuel retail prices) already turned out to be harder than assumed — the source believed to exist didn't publish what was needed. Recommended next step, separate from this spec: a dedicated research pass per category before any peso-anchor feature is designed, not a guess or a second unlabeled hardcoded constant.
+
+### 2026-08-13 update: found and confirmed live, four of six categories
+
+Dedicated research pass, done. **A real, structured, citable peso-price source exists** — not the "Palay, Rice and Corn" bulletin guessed at above, but a sibling family of tables in the exact same PSA OpenSTAT PX-Web system `psa_cpi.py` already automates for CPI, confirmed by direct API calls (not assumed from documentation), using the identical mechanism (`GET` for metadata, `POST` for the query body, tabular `json` format) `_fetch_px_table` already implements:
+
+```
+GET/POST https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB/2M/2018NEW/<table>.px
+```
+
+Eleven tables live under this one folder, covering "Retail Prices of Agricultural Commodities," 2018-based (matching CPI's own base year), confirmed live through **July 2026** at the time of this check (today: 2026-08-13) — roughly the same one-month publication lag CPI itself has. Geographic granularity is finer than CPI too: national plus 119 regions/provinces, versus CPI's national-only.
+
+| This project's category | PSA table | Confirmed coverage |
+|---|---|---|
+| Rice | `0042M4ARN01.px` (Cereals) | "RICE, WELL-MILLED, 1 KG" / "REGULAR-MILLED" / "SPECIAL," among 14 cereal items |
+| Meat | `0042M4ARN09.px` (Livestock) | 13 items — beef/carabeef/pork by specific cut (brisket, liempo, kasim, pata, etc.) |
+| Fish | `0042M4ARN11.px` (Fish) | 57 species by name, including `ROUND SCAD, GALUNGGONG` — the exact fish named in the owner's original Manila MAO bulletins |
+| Vegetables | `0042M4ARN05.px` (Fruit Vegetables) + `0042M4ARN06.px` (Leafy Vegetables) | Split across two tables, 9 + 12 items (tomato, eggplant, squash, cabbage, kangkong, pechay, etc.) — no single "vegetables" table, would need to combine or pick a representative item |
+| Dairy & eggs | `0042M4ARN10.px` (Poultry) | **Eggs only** — chicken/duck/quail eggs are in this table; no dairy/milk product found anywhere in this PX-Web tree. Partial match to this project's COICOP `01.1.4` category (milk + eggs), not full |
+| Sugar | — | **Not found.** Checked every table under this folder (Cereals, Rootcrops, Beans and Legumes, Condiments, Fruit Vegetables, Leafy Vegetables, Fruits, Commercial Crops, Livestock, Poultry, Fish) — no sugar retail price line item anywhere. `Commercial Crops` is coconut only; `Condiments` is garlic/ginger/onion. Sugar's peso price is not tracked in this dataset |
+
+**A real trap avoided, matching this project's own `Q-ENG-009` lesson exactly.** Two OTHER, older folders in the same API tree (`2M/RP` "Retail Prices, Old Series" and `2M/NRP` "Retail Prices, 2012-based") expose tables with the *identical* category names and *very similar* table IDs (`0042M4ARP01`–`11`, `0042M4ARN01`–`11` — the `NRP` ID pattern is one character off from the live `2018NEW` ID pattern, `0042M4ARN01` in both cases, same digits) — confirmed both stop publishing at **2021**, five years stale. Fetching from the wrong folder would silently freeze the app's peso anchors at 2021-era prices with no error, since the request succeeds and returns real (just old) data. The live table lives specifically under `2M/2018NEW/`, not `2M/RP/` or `2M/NRP/`.
+
+**Not designed here.** This is a research finding only, per this section's own original recommendation (research separate from this spec, before any peso-anchor feature is designed). Four of six categories (rice, meat, fish, vegetables) have a clean, live, directly-reusable source using this project's existing fetch mechanism; a fifth (eggs) is partially covered; sugar has no confirmed source. A peso-anchor feature covering the four-to-five confirmed categories, explicitly excluding sugar (and naming dairy as eggs-only, not milk), would need its own brainstorming → spec → plan cycle before implementation.
