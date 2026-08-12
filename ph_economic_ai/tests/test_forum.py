@@ -494,6 +494,59 @@ def test_estimate_line_is_an_instruction_not_a_template():
             assert _extract_guarded(sector, m)[0] is not None, f'{sector}: {m!r}'
 
 
+def test_food_category_lines_are_instructions_not_templates():
+    """Same guard as the ESTIMATE line above, for the six new food
+    sub-category lines: each must carry a worked example and must not leave
+    a copyable 'X.X' placeholder outside its own worked example."""
+    from ph_economic_ai.engine.forum import _FOOD_CATEGORY_LINES
+    from ph_economic_ai.engine.debate import _CATEGORY_LABELS, _extract_category_percents
+    assert set(_FOOD_CATEGORY_LINES) == set(_CATEGORY_LABELS)
+    for category, line in _FOOD_CATEGORY_LINES.items():
+        assert 'worked example' in line
+        assert 'your own number' in line
+        import re
+        for m in re.findall(rf'"({_CATEGORY_LABELS[category]}:[^"]+)"', line):
+            assert category in _extract_category_percents(m), f'{category}: {m!r}'
+
+
+def test_judge_sector_returns_subcategories_for_food(monkeypatch):
+    """The judge's synthesis, for food, must feed _extract_category_percents
+    and thread the result through -- not just the blended estimate."""
+    import pytest
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    def fake_complete(msgs, **kw):
+        return ('Prices are broadly steady with a modest rice uptick.\n'
+                'RICE: +0.3%\nMEAT: +0.0%\nFISH: -0.2%\n'
+                'DAIRY_EGGS: +0.0%\nVEGETABLES: +0.1%\nSUGAR: +0.0%\n'
+                'ESTIMATE: +0.1%')
+
+    monkeypatch.setattr(llm_mod, 'complete', fake_complete)
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert estimate == pytest.approx(0.1)
+    assert subcategories == {'rice': 0.3, 'meat': 0.0, 'fish': -0.2,
+                             'dairy_eggs': 0.0, 'vegetables': 0.1, 'sugar': 0.0}
+
+
+def test_judge_sector_returns_empty_subcategories_for_gas(monkeypatch):
+    """Gas and electricity have no PSA sub-categories -- the judge must not
+    try to parse category lines that were never asked for."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    monkeypatch.setattr(llm_mod, 'complete',
+                        lambda msgs, **kw: 'Steady. ESTIMATE: +0.10/L')
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert subcategories == {}
+
+
 def test_placeholder_answer_parses_to_nothing():
     """Guards the regression directly: if an agent ever echoes a placeholder again,
     it must come through as 'no estimate' rather than a bogus number."""
