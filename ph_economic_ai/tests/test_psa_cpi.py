@@ -87,3 +87,26 @@ def test_fetch_cpi_subcategory_raises_on_too_few_rows(tmp_path, monkeypatch):
     out = tmp_path / 'tiny.csv'
     with pytest.raises(ValueError, match='too short'):
         fetch_cpi_subcategory('99.9', out, 'tiny_cpi', 'test source', min_rows=50)
+
+
+from ph_economic_ai.benchmark.psa_cpi import (
+    load_rice_mom, load_meat_mom, load_fish_mom, load_dairy_eggs_mom,
+    load_vegetables_mom, load_sugar_mom,
+)
+
+_SUBCATEGORY_LOADERS = {
+    'rice_cpi': load_rice_mom, 'meat_cpi': load_meat_mom,
+    'fish_cpi': load_fish_mom, 'dairy_eggs_cpi': load_dairy_eggs_mom,
+    'vegetables_cpi': load_vegetables_mom, 'sugar_cpi': load_sugar_mom,
+}
+
+
+@pytest.mark.parametrize('column,loader', _SUBCATEGORY_LOADERS.items())
+def test_load_subcategory_mom(tmp_path, column, loader):
+    p = tmp_path / f'{column}.csv'
+    p.write_text(f'date,{column}\n2018-01,100.0\n2018-02,104.0\n2018-03,104.0\n',
+                 encoding='utf-8')
+    mom = loader(p)
+    assert mom['2018-02'] == pytest.approx(4.0)
+    assert mom['2018-03'] == pytest.approx(0.0)
+    assert '2018-01' not in mom.index
