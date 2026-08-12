@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "file": "psa_meat_cpi_monthly.csv",
+  "source": "PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.2 Meat",
+  "request_params": {
+    "coicop_prefix": "01.1.2",
+    "base_year": "2018=100",
+    "endpoints": "backcast + current PX-Web tables"
+  },
+  "transformations": [
+    "fetch both PX-Web tables",
+    "filter to the COICOP prefix",
+    "splice backcast and current on the overlap",
+    "label months YYYY-MM, sort"
+  ],
+  "units": "CPI index (2018=100)",
+  "notes": "PSA gold target for the meat_cpi nowcast.",
+  "retrieved_at": "2026-08-12T08:23:56+00:00",
+  "sha256": "f514f302a210a726fd6a32e008ec289edc25db96de0a08e8848e5cc37b2242cd",
+  "rows": 391,
+  "first_month": "1994-01",
+  "last_month": "2026-07",
+  "missing_months": []
+}
