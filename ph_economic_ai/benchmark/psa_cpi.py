@@ -160,47 +160,50 @@ def _fetch_px_table(url: str, first_year: int, coicop_prefix: str) -> dict:
     return result
 
 
-def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
-    """Fetch monthly Transport CPI from PSA OpenSTAT and freeze to CSV.
-
-    Combines two PX-Web tables:
-    - 0012M4ACP28.px : Jan 1994 – Dec 2017 (backcasted 2018-base values)
-    - 0012M4ACP22.px : Jan 2018 – present  (official 2018-base series)
-
-    The tables are fetched using the tabular 'json' response format; the
-    json-stat2 value array is sparse/incorrect on this PSA PX-Web instance.
-    """
-    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='07')
-    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='07')
+def fetch_cpi_subcategory(coicop_prefix: str, out_csv: Path, column_name: str,
+                          source_label: str, min_rows: int = 50) -> None:
+    """Fetch one PSA OpenSTAT COICOP series (backcast + current tables spliced
+    on the overlap) and freeze it to CSV with a provenance sidecar. Shared by
+    every fetch_X_cpi() wrapper in this module -- extracted so a new series is
+    a four-line wrapper, not a ~25-line copy of the same fetch/splice/write
+    logic three functions already duplicated."""
+    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix=coicop_prefix)
+    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix=coicop_prefix)
 
     # Merge; current table takes precedence for any overlap (2018 overlap)
     combined = {**series_back, **series_curr}
 
-    if len(combined) < 100:
-        raise ValueError(
-            f'transport CPI series too short ({len(combined)} rows) — '
-            'check PX-Web selection'
-        )
+    if len(combined) < min_rows:
+        raise ValueError(f'{column_name} series too short ({len(combined)} rows) — '
+                         'check PX-Web selection')
 
-    df = (
-        pd.DataFrame(sorted(combined.items()), columns=['date', 'transport_cpi'])
-        .sort_values('date')
-    )
+    df = (pd.DataFrame(sorted(combined.items()), columns=['date', column_name])
+          .sort_values('date'))
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_csv, index=False, lineterminator='\n')
-    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 07 Transport',
-                 params={'coicop_prefix': '07', 'base_year': '2018=100',
+    write_record(out_csv, source=source_label,
+                 params={'coicop_prefix': coicop_prefix, 'base_year': '2018=100',
                          'endpoints': 'backcast + current PX-Web tables'},
                  transformations=['fetch both PX-Web tables',
                                   'filter to the COICOP prefix',
                                   'splice backcast and current on the overlap',
                                   'label months YYYY-MM, sort'],
                  units='CPI index (2018=100)',
-                 notes='PSA gold target for the transport nowcast.')
-    print(
-        f'Wrote psa_transport_cpi_monthly.csv ({len(df)} rows, '
-        f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})'
-    )
+                 notes=f'PSA gold target for the {column_name} nowcast.')
+    print(f'Wrote {out_csv.name} ({len(df)} rows, '
+          f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+
+
+def fetch_transport_cpi(out_csv: Path = TRANSPORT_CSV) -> None:
+    """Fetch monthly Transport CPI from PSA OpenSTAT and freeze to CSV.
+
+    Combines two PX-Web tables:
+    - 0012M4ACP28.px : Jan 1994 – Dec 2017 (backcasted 2018-base values)
+    - 0012M4ACP22.px : Jan 2018 – present  (official 2018-base series)
+    """
+    fetch_cpi_subcategory('07', out_csv, 'transport_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 07 Transport',
+                          min_rows=100)
 
 
 # ---------------------------------------------------------------------------
@@ -212,30 +215,9 @@ FOOD_CSV = HERE / 'data' / 'psa_food_cpi_monthly.csv'
 
 def fetch_food_cpi(out_csv: Path = FOOD_CSV) -> None:
     """Fetch monthly Food (COICOP 01) CPI from PSA OpenSTAT and freeze to CSV."""
-    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='01')
-    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='01')
-
-    # Merge; current table takes precedence for any overlap (2018 overlap)
-    combined = {**series_back, **series_curr}
-
-    if len(combined) < 100:
-        raise ValueError(f'food CPI series too short ({len(combined)} rows)')
-
-    df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'food_cpi'])
-          .sort_values('date'))
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False, lineterminator='\n')
-    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 01 Food and non-alcoholic beverages',
-                 params={'coicop_prefix': '01', 'base_year': '2018=100',
-                         'endpoints': 'backcast + current PX-Web tables'},
-                 transformations=['fetch both PX-Web tables',
-                                  'filter to the COICOP prefix',
-                                  'splice backcast and current on the overlap',
-                                  'label months YYYY-MM, sort'],
-                 units='CPI index (2018=100)',
-                 notes='PSA gold target for the food nowcast.')
-    print(f'Wrote psa_food_cpi_monthly.csv ({len(df)} rows, '
-          f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+    fetch_cpi_subcategory('01', out_csv, 'food_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01 Food and non-alcoholic beverages',
+                          min_rows=100)
 
 
 def load_food_cpi(csv_path: Path = FOOD_CSV) -> pd.Series:
@@ -259,30 +241,9 @@ ELECTRICITY_CSV = HERE / 'data' / 'psa_electricity_cpi_monthly.csv'
 
 def fetch_electricity_cpi(out_csv: Path = ELECTRICITY_CSV) -> None:
     """Fetch monthly Electricity (COICOP 04.5.1) CPI from PSA OpenSTAT -> CSV."""
-    series_back = _fetch_px_table(PSA_TRANSPORT_URL_BACKCAST, first_year=1994, coicop_prefix='04.5.1')
-    series_curr = _fetch_px_table(PSA_TRANSPORT_URL_CURRENT, first_year=2018, coicop_prefix='04.5.1')
-
-    # Merge; current table takes precedence for any overlap (2018 overlap)
-    combined = {**series_back, **series_curr}
-
-    if len(combined) < 50:
-        raise ValueError(f'electricity CPI series too short ({len(combined)} rows)')
-
-    df = (pd.DataFrame(sorted(combined.items()), columns=['date', 'electricity_cpi'])
-          .sort_values('date'))
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False, lineterminator='\n')
-    write_record(out_csv, source='PSA OpenStat PX-Web CPI by commodity group, COICOP 04.5.1 Electricity',
-                 params={'coicop_prefix': '04.5.1', 'base_year': '2018=100',
-                         'endpoints': 'backcast + current PX-Web tables'},
-                 transformations=['fetch both PX-Web tables',
-                                  'filter to the COICOP prefix',
-                                  'splice backcast and current on the overlap',
-                                  'label months YYYY-MM, sort'],
-                 units='CPI index (2018=100)',
-                 notes='PSA gold target for the electricity nowcast.')
-    print(f'Wrote psa_electricity_cpi_monthly.csv ({len(df)} rows, '
-          f'{df["date"].iloc[0]}..{df["date"].iloc[-1]})')
+    fetch_cpi_subcategory('04.5.1', out_csv, 'electricity_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 04.5.1 Electricity',
+                          min_rows=50)
 
 
 def load_electricity_cpi(csv_path: Path = ELECTRICITY_CSV) -> pd.Series:

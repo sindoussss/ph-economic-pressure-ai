@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import pytest
 
-from ph_economic_ai.benchmark.psa_cpi import _label_to_ym, load_transport_cpi, load_transport_mom
+from ph_economic_ai.benchmark.psa_cpi import _label_to_ym, load_transport_cpi, load_transport_mom, fetch_cpi_subcategory
 
 
 def test_label_to_ym_handles_formats():
@@ -75,3 +75,15 @@ def test_load_electricity_mom(tmp_path):
     assert mom['2018-02'] == pytest.approx(3.0)
     assert mom['2018-03'] == pytest.approx(0.0)
     assert '2018-01' not in mom.index
+
+
+def test_fetch_cpi_subcategory_raises_on_too_few_rows(tmp_path, monkeypatch):
+    def fake_fetch_px_table(url, first_year, coicop_prefix):
+        return {'2020-01': 100.0, '2020-02': 101.0}  # only 2 rows
+
+    import ph_economic_ai.benchmark.psa_cpi as psa_cpi
+    monkeypatch.setattr(psa_cpi, '_fetch_px_table', fake_fetch_px_table)
+
+    out = tmp_path / 'tiny.csv'
+    with pytest.raises(ValueError, match='too short'):
+        fetch_cpi_subcategory('99.9', out, 'tiny_cpi', 'test source', min_rows=50)
