@@ -17,7 +17,11 @@ document. This is a genuinely blind pre-registration.
 
 Six targets, each run through both a full nowcast and a driver-only
 ablation (`benchmark/food_subcategory_nowcast.py::run_subcategory_nowcast`,
-Task 3), then through `selection.run_selection_holdout` on the same frame:
+Task 3). The frame both the nowcast entry point and
+`selection.run_selection_holdout` actually consume is built by the shared
+helper, `food_subcategory_nowcast._build_subcategory_frame` --
+`run_subcategory_nowcast` is a separate full-sample entry point built on top
+of that same helper, not itself on the selection-holdout path:
 
 | Target | Setup | Frame | Candidates | Baseline pool |
 |---|---|---|---|---|
@@ -35,8 +39,9 @@ Task 3), then through `selection.run_selection_holdout` on the same frame:
 | Sugar MoM | driver-only | same, `prev_mom` dropped | `ridge, hgb` | `random_walk, seasonal_naive, drift, mean` |
 
 Same candidate/baseline-pool split full-nowcast vs. driver-only rows already
-use for food/electricity/transport (`mean` moves from candidate to baseline
-either way).
+use for food/electricity/transport. The baseline pool is identical between
+the two setups: `mean` is never a candidate in either one -- it isn't in
+`PANEL_METHODS` at all -- it is always part of the baseline pool.
 
 ## What is unchanged
 
@@ -56,12 +61,15 @@ once Task 5's fetch completes and before any backtest actually runs.
 ## Decision rule, stated before running
 
 For each of the twelve rows (six categories × two setups) independently,
-using `run_selection_holdout`'s own `confirmed` field:
+using the returned dict's `verdict` field (`run_selection_holdout` returns
+`verdict: 'confirmed_on_holdout'` or `verdict: 'not_confirmed_on_holdout'`;
+`confirmed` is only a local variable inside `selection.py`, not part of the
+returned dict):
 
 | outcome | conclusion | action |
 |---|---|---|
 | `not_confirmed_on_holdout` | no selection-honest edge found for this category/setup | report as null in the benchmark artifacts; app-facing labels for this category stay "exploratory, not validated" |
-| `confirmed_on_holdout` | a selection-honest edge survives | do **not** promote directly to a validated claim. Check against the audit family's Bonferroni threshold (twelve new tests added to the family), same treatment `fuel_audit`'s confirmation received. Flag to the owner before any manuscript or app wording changes. |
+| `confirmed_on_holdout` | a selection-honest edge survives | do **not** promote directly to a validated claim. Check against the audit family's Bonferroni threshold. Note: `multiple_testing.build_family()` currently reads only `accuracy_report.json`'s hardcoded candidate list and does not include selection-holdout results — these twelve rows are NOT automatically part of that family. Wiring a confirmed result into the family (if any row confirms) is a separate decision requiring its own review, because growing the family from its current size retroactively tightens `bonferroni_threshold = alpha/m` for every existing member, which could flip an already-published result. Do not add these rows to the family without that review. Flag to the owner before any manuscript or app wording changes. |
 
 Twelve independent tests; no result on one changes the pre-registered
 expectation for another.
@@ -84,10 +92,15 @@ already carries.
 
 1. **[Separate, owner-gated action — not part of this implementation plan.]**
    Fetch the six series live (`psa_cpi.fetch_rice_cpi()` etc.), commit the
-   CSVs and provenance sidecars.
+   CSVs and provenance sidecars. The fetch should assert/log the first
+   available month for each series before committing the CSV, so a
+   truncated backcast is caught immediately rather than discovered later.
 2. Record actual frame sizes here, in a "Feasibility, confirmed" section,
    before running any backtest.
-3. Extend `selection.run()` with the twelve rows above.
+3. Extend `selection.run()` with the twelve rows above. If any row
+   confirms, wiring it into the Bonferroni family (per the corrected
+   decision-rule text above) is an explicit additional step requiring its
+   own review — not implied by this step alone.
 4. Run `python -m ph_economic_ai.benchmark.selection`, writing the extended
    `selection_holdout.json`.
 5. Report the verdict table verbatim in this document's own "Result"
