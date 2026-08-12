@@ -494,6 +494,161 @@ def test_estimate_line_is_an_instruction_not_a_template():
             assert _extract_guarded(sector, m)[0] is not None, f'{sector}: {m!r}'
 
 
+def test_food_category_lines_are_instructions_not_templates():
+    """Same guard as the ESTIMATE line above, for the six new food
+    sub-category lines: each must carry a worked example and must not leave
+    a copyable 'X.X' placeholder outside its own worked example."""
+    from ph_economic_ai.engine.forum import _FOOD_CATEGORY_LINES
+    from ph_economic_ai.engine.debate import _CATEGORY_LABELS, _extract_category_percents
+    assert set(_FOOD_CATEGORY_LINES) == set(_CATEGORY_LABELS)
+    for category, line in _FOOD_CATEGORY_LINES.items():
+        assert 'worked example' in line
+        assert 'your own number' in line
+        import re
+        for m in re.findall(rf'"({_CATEGORY_LABELS[category]}:[^"]+)"', line):
+            assert category in _extract_category_percents(m), f'{category}: {m!r}'
+
+
+def test_judge_sector_returns_subcategories_for_food(monkeypatch):
+    """The judge's synthesis, for food, must feed _extract_category_percents
+    and thread the result through -- not just the blended estimate."""
+    import pytest
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    def fake_complete(msgs, **kw):
+        return ('Prices are broadly steady with a modest rice uptick.\n'
+                'RICE: +0.3%\nMEAT: +0.0%\nFISH: -0.2%\n'
+                'DAIRY_EGGS: +0.0%\nVEGETABLES: +0.1%\nSUGAR: +0.0%\n'
+                'ESTIMATE: +0.1%')
+
+    monkeypatch.setattr(llm_mod, 'complete', fake_complete)
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert estimate == pytest.approx(0.1)
+    assert subcategories == {'rice': 0.3, 'meat': 0.0, 'fish': -0.2,
+                             'dairy_eggs': 0.0, 'vegetables': 0.1, 'sugar': 0.0}
+
+
+def test_judge_sector_returns_empty_subcategories_for_gas(monkeypatch):
+    """Gas and electricity have no PSA sub-categories -- the judge must not
+    try to parse category lines that were never asked for."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    monkeypatch.setattr(llm_mod, 'complete',
+                        lambda msgs, **kw: 'Steady. ESTIMATE: +0.10/L')
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert subcategories == {}
+
+
+def test_food_blended_estimate_does_not_silently_become_a_category_value(monkeypatch):
+    """CRITICAL regression: `_extract_percent`'s prose fallback grabs the FIRST
+    signed percent anywhere in the text whenever the anchored ESTIMATE: line
+    fails to parse. The food judge prompt always asks for six category lines
+    before its ESTIMATE line, so an unparseable ESTIMATE: ('broadly unchanged')
+    must not let that fallback silently adopt RICE (or any other category) as
+    the headline blended estimate."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    monkeypatch.setattr(llm_mod, 'complete', lambda msgs, **kw: (
+        'Prices look broadly steady this cycle.\n'
+        'RICE: +0.3%\nMEAT: +0.0%\nFISH: -0.2%\n'
+        'DAIRY_EGGS: +0.0%\nVEGETABLES: +0.1%\nSUGAR: +0.0%\n'
+        'ESTIMATE: broadly unchanged'  # unparseable blended line, deliberately
+    ))
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert estimate is None, (
+        f'blended estimate should be None when ESTIMATE: fails to parse, '
+        f'not silently adopt a category value -- got {estimate}'
+    )
+    assert subcategories == {'rice': 0.3, 'meat': 0.0, 'fish': -0.2,
+                             'dairy_eggs': 0.0, 'vegetables': 0.1, 'sugar': 0.0}
+
+
+def test_food_blended_estimate_does_not_leak_from_category_line_commentary(monkeypatch):
+    """Same failure class as the sibling test above, but the leak comes from
+    trailing commentary on a category line (e.g. '(down from -1.2% last
+    month)') rather than the category value's own token -- the first fix
+    round only stripped the label+value, not the rest of the line."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    monkeypatch.setattr(llm_mod, 'complete', lambda msgs, **kw: (
+        'ESTIMATE: broadly unchanged\n'
+        'RICE: +0.3% (down from -1.2% last month)\n'
+        'MEAT: +0.0%\nFISH: +0.0%\nDAIRY_EGGS: +0.0%\n'
+        'VEGETABLES: +0.0%\nSUGAR: +0.0%'
+    ))
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    estimate, statement, subcategories = f._judge_sector(ctx, finals=[])
+    assert estimate is None, (
+        f'blended estimate should be None -- got {estimate}, leaked from '
+        f'trailing commentary on the RICE line'
+    )
+    assert subcategories['rice'] == 0.3, (
+        'subcategories parsing (on the full unstripped text) must still '
+        'correctly find rice=0.3 despite the trailing commentary'
+    )
+
+
+def test_food_judge_prompt_actually_contains_the_category_lines(monkeypatch):
+    """`fake_complete`-style tests elsewhere in this file ignore `msgs` entirely
+    and return a canned response, so they would stay green even if the prompt-
+    building code that adds the six category lines were deleted. This asserts
+    directly on the prompt content sent to the judge, following the
+    `msgs[-1]['content']` idiom used at test_rebuttal_agents_do_see_the_debate
+    and test_round_one_agents_do_not_see_each_other."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    captured = {}
+    def fake_complete(msgs, **kw):
+        captured['content'] = msgs[-1]['content']
+        return ('Steady. RICE: +0.1%\nMEAT: +0.0%\nFISH: +0.0%\n'
+                'DAIRY_EGGS: +0.0%\nVEGETABLES: +0.0%\nSUGAR: +0.0%\n'
+                'ESTIMATE: +0.1%')
+
+    monkeypatch.setattr(llm_mod, 'complete', fake_complete)
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='food', unit='%', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    f._judge_sector(ctx, finals=[])
+    for label in ('RICE:', 'MEAT:', 'FISH:', 'DAIRY_EGGS:', 'VEGETABLES:', 'SUGAR:'):
+        assert label in captured['content'], f'{label} missing from food judge prompt'
+
+
+def test_gas_judge_prompt_does_not_contain_category_lines(monkeypatch):
+    """Gas has no PSA sub-categories -- its judge prompt must not carry the
+    food-only category lines."""
+    from ph_economic_ai.engine.forum import Forum
+    from ph_economic_ai.engine.auto_assemble import SectorContext
+
+    captured = {}
+    def fake_complete(msgs, **kw):
+        captured['content'] = msgs[-1]['content']
+        return 'Steady. ESTIMATE: +0.10/L'
+
+    monkeypatch.setattr(llm_mod, 'complete', fake_complete)
+    f = Forum(FakeRag(), [], as_of='2026-08-12', window='this_week')
+    ctx = SectorContext(sector='gas', unit='PHP/L', verdict_note='exploratory',
+                        anchor=None, social_counts={})
+    f._judge_sector(ctx, finals=[])
+    for label in ('RICE:', 'MEAT:', 'FISH:', 'DAIRY_EGGS:', 'VEGETABLES:', 'SUGAR:'):
+        assert label not in captured['content'], f'{label} unexpectedly in gas judge prompt'
+
+
 def test_placeholder_answer_parses_to_nothing():
     """Guards the regression directly: if an agent ever echoes a placeholder again,
     it must come through as 'no estimate' rather than a bogus number."""

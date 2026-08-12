@@ -650,6 +650,90 @@ def _extract_percent(text: str) -> Optional[float]:
     return value
 
 
+#: Food sub-category prompt labels, in the order they should appear in the
+#: judge's closing instruction. Six PSA CPI sub-categories confirmed live
+#: against openstat.psa.gov.ph during this feature's brainstorming (see
+#: docs/superpowers/specs/2026-08-12-food-subcategory-forecast-design.md).
+_CATEGORY_LABELS = {
+    'rice': 'RICE', 'meat': 'MEAT', 'fish': 'FISH',
+    'dairy_eggs': 'DAIRY_EGGS', 'vegetables': 'VEGETABLES', 'sugar': 'SUGAR',
+}
+
+
+def _extract_category_percents(text: str) -> dict[str, float]:
+    """One signed-percent line per food sub-category (RICE:, MEAT:, ...).
+
+    Deliberately a separate, self-contained parser rather than a refactor of
+    `_last_estimate_match` (which every other extractor in this file depends
+    on and is heavily tested) -- this reuses its two safe-to-share pieces,
+    `_TOLERANCE_BAND_RE` and `_MAX_REALISTIC_FOOD_PCT`, without touching the
+    well-tested ESTIMATE-line parser itself.
+
+    A category whose line is missing, unparseable, or out of bound is simply
+    absent from the returned dict -- never present as 0.0 or copied from
+    another category's value. Takes the LAST match per category, same reason
+    every other extractor in this file does: agents restate and revise.
+
+    The sign is REQUIRED (unlike `_last_estimate_match`'s ESTIMATE line, where
+    an unsigned number defaults to positive). Every one of the twelve worked
+    examples in `_FOOD_CATEGORY_LINES` carries an explicit sign, so an unsigned
+    match here is not a category read with the "+" dropped -- it is usually a
+    year-on-year figure cited with no sign context ("Rice: 8.9% year-on-year")
+    or the sign living in nearby prose the judge's own words already contradict
+    ("Rice prices are falling. RICE: 0.4%"). Guessing a sign for either would
+    fabricate a month-on-month reading; refusing (treating it as unparseable)
+    is the honest answer.
+    """
+    cleaned = _TOLERANCE_BAND_RE.sub(' ', text)
+    result: dict[str, float] = {}
+    for category, label in _CATEGORY_LABELS.items():
+        hits = re.findall(
+            rf'\b{label}\s*:\s*\**\s*([+\-])\s*(\d+\.?\d*)\s*%',
+            cleaned, flags=re.IGNORECASE,
+        )
+        if not hits:
+            continue
+        sign, raw = hits[-1]
+        value = (-1 if sign == '-' else 1) * float(raw)
+        if abs(value) <= _MAX_REALISTIC_FOOD_PCT:
+            result[category] = value
+    return result
+
+
+_CATEGORY_LINE_RE = re.compile(
+    r'\b(?:' + '|'.join(re.escape(lbl) for lbl in _CATEGORY_LABELS.values()) +
+    r')\s*:\s*\**\s*[+\-]?\s*\d+\.?\d*\s*%[^\n]*',
+    re.IGNORECASE,
+)
+
+
+def _strip_category_lines(text: str) -> str:
+    """Remove every RICE:/MEAT:/.../SUGAR: line -- label, value, AND any
+    trailing commentary on that same line -- from text, so the blended
+    ESTIMATE:'s prose fallback (which grabs the first signed percent it sees
+    anywhere) can't accidentally pick up a category value, or a stray signed
+    percent in that line's own trailing commentary, instead. Built
+    generically from `_CATEGORY_LABELS` rather than a separate hardcoded list,
+    so it can't drift out of sync with the six labels.
+
+    Why this exists: `_extract_percent`'s prose fallback (a regex matching a
+    leading plus-or-minus sign followed by a number and a percent sign)
+    matches the FIRST signed percent anywhere in the text whenever the
+    anchored ESTIMATE: line fails to parse (e.g. the judge writes
+    "ESTIMATE: broadly unchanged"). The food judge prompt appends the six
+    category lines AFTER its ESTIMATE line -- the judge is asked for the
+    blended ESTIMATE first, then the six categories -- so that fallback
+    would silently grab a category value (typically RICE, the first category
+    line) and it would become the app's headline "Food" estimate with no
+    signal anything went wrong. Stripping the category lines -- the whole
+    line, not just the label+value token, since trailing commentary can
+    itself contain a signed percent -- before the blended extraction closes
+    that hole without touching the well-tested
+    `_extract_percent`/`_last_estimate_match` themselves.
+    """
+    return _CATEGORY_LINE_RE.sub(' ', text)
+
+
 #: Per-sector agreement band for `consensus()`: PHP/L for gas, percentage
 #: points for food, PHP/kWh for electricity. Must track `forum._BAND` and (for
 #: gas) `swarm._AGREEMENT_BAND` -- three places measuring the same three

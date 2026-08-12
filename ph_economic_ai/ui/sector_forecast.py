@@ -10,7 +10,7 @@ from typing import Optional
 # (key, label, value format string)
 _SECTORS = [
     ('gas',  'Gas / fuel',  '{:+.2f} ₱/L'),
-    ('food', 'Food',        '{:+.2f} %'),
+    ('food', 'Food (basket avg)', '{:+.2f} %'),
     ('elec', 'Electricity', '{:+.4f} ₱/kWh'),
 ]
 _BAR_SCALE = {'gas': 5.0, 'food': 5.0, 'elec': 2.0}   # per-sector "full bar" move (display only)

@@ -227,6 +227,20 @@ def test_the_estimates_field_cannot_be_hit_positionally():
     assert r.direction_agreement == 90 and r.estimates == []
 
 
+def test_the_subcategories_field_cannot_be_hit_positionally():
+    """Same guard as the estimates field above, for subcategories -- kw_only=True
+    is what actually protects a dataclass built positionally elsewhere in this
+    codebase, not field-ordering alone."""
+    from ph_economic_ai.engine.pressure_brief import SectorReading
+    with pytest.raises(TypeError):
+        SectorReading('gas', 'rising', 1.0, '₱/L', 100, 0, [], [], [1.0], {'rice': 0.1})
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100, 90, ['d'], ['s'], estimates=[1.0])
+    assert r.subcategories == {}
+    r2 = SectorReading('gas', 'rising', 1.0, '₱/L', 100, 90, ['d'], ['s'],
+                       estimates=[1.0], subcategories={'rice': 0.1})
+    assert r2.subcategories == {'rice': 0.1}
+
+
 def test_the_backlog_accounts_for_every_stored_run():
     """The strip said 34 runs stored and then explained 32. A reader who
     subtracts finds two runs the screen declined to account for; those two were

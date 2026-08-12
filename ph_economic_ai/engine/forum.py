@@ -30,7 +30,8 @@ from ph_economic_ai.engine.auto_assemble import (
 from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
-    ESTIMATE_LINE, _extract_price, _parse_think, unfilled_scaffold)
+    ESTIMATE_LINE, _extract_price, _parse_think, unfilled_scaffold,
+    _extract_category_percents, _strip_category_lines)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
 # Per-sector estimate parsing, agreement band, and the "flat" threshold.
@@ -130,6 +131,33 @@ _TOLERANCE = {
 # layer all three import, and this name is an alias so the Forum's call sites stay
 # readable.
 _EST_LINE = ESTIMATE_LINE
+
+#: Six worked-example lines the food judge must append after its ESTIMATE
+#: line, one per PSA sub-category. Same instructions-not-template pattern
+#: _EST_LINE already established (RSK-012's lesson): a small model copies a
+#: bare template verbatim, so every line needs its own worked example.
+_FOOD_CATEGORY_LINES = {
+    'rice': ('RICE: <the percent month-on-month CHANGE you expect for rice specifically, '
+             'signed> (worked example: "RICE: +0.2%" or "RICE: -0.1%". Write your own '
+             'number; never write X.X.)'),
+    'meat': ('MEAT: <the percent month-on-month CHANGE you expect for meat specifically, '
+             'signed> (worked example: "MEAT: +0.3%" or "MEAT: -0.2%". Write your own '
+             'number; never write X.X.)'),
+    'fish': ('FISH: <the percent month-on-month CHANGE you expect for fish and seafood '
+             'specifically, signed> (worked example: "FISH: +0.8%" or "FISH: -0.4%". '
+             'Write your own number; never write X.X.)'),
+    'dairy_eggs': ('DAIRY_EGGS: <the percent month-on-month CHANGE you expect for milk, '
+                  'dairy and eggs specifically, signed> (worked example: '
+                  '"DAIRY_EGGS: +0.1%" or "DAIRY_EGGS: -0.1%". Write your own number; '
+                  'never write X.X.)'),
+    'vegetables': ('VEGETABLES: <the percent month-on-month CHANGE you expect for '
+                   'vegetables specifically, signed> (worked example: '
+                   '"VEGETABLES: +0.5%" or "VEGETABLES: -0.3%". Write your own number; '
+                   'never write X.X.)'),
+    'sugar': ('SUGAR: <the percent month-on-month CHANGE you expect for sugar and '
+             'confectionery specifically, signed> (worked example: "SUGAR: +0.1%" or '
+             '"SUGAR: -0.1%". Write your own number; never write X.X.)'),
+}
 
 # Capability channels: each agent stays strictly in its lane so the three do NOT
 # converge on the same paragraph — the point of a forum over a single model.
@@ -524,7 +552,11 @@ class Forum:
     def _judge_sector(self, ctx: SectorContext, finals: list[AgentResponse]):
         """Synthesise the debate into one present read (like the swarm's master
         judge) — resolving disagreement rather than averaging. Returns
-        (estimate | None, verdict_text).
+        (estimate | None, verdict_text, subcategories).
+
+        `subcategories` is the food judge's six PSA sub-category reads (rice,
+        meat, fish, dairy_eggs, vegetables, sugar), parsed from its closing
+        lines — empty for every other sector, which never asks for them.
 
         `finals` is each agent's LATEST turn, so a rebuttal supersedes that agent's
         opening statement and every agent is represented exactly once.
@@ -565,6 +597,13 @@ class Forum:
         except Exception:
             judge_evidence = ''
 
+        # Food-only: six worked-example lines asking for a per-category read
+        # alongside the blended ESTIMATE. Gas and electricity have no PSA
+        # sub-categories, so their prompt is unchanged.
+        category_lines = (
+            '\n' + '\n'.join(_FOOD_CATEGORY_LINES.values())
+            if ctx.sector == 'food' else ''
+        )
         msgs = [
             {'role': 'system', 'content': _JUDGE_SYSTEM},
             {'role': 'user', 'content': (
@@ -578,18 +617,33 @@ class Forum:
                 + (f"Retrieved evidence (for CHECKING the analysts, not for adding "
                    f"new drivers):\n{judge_evidence}\n\n" if judge_evidence else "")
                 + "Weigh the analysts, resolve their disagreement, and give the single "
-                "present read. End with:\n" + _EST_LINE[ctx.sector])},
+                "present read. End with:\n" + _EST_LINE[ctx.sector] + category_lines)},
         ]
         try:
-            text = llm.complete(msgs, tier=self._deep, max_tokens=280,
+            text = llm.complete(msgs, tier=self._deep,
+                                max_tokens=280 + (120 if ctx.sector == 'food' else 0),
                                 seed=llm.derive_seed(self._as_of, ctx.sector, 'judge'))
         except Exception:
-            return None, ''
+            return None, '', {}
         _, statement = _parse_think(text)
         # The judge is guarded too: it reads agent numbers, so it can repeat an
         # implausible one back.
-        accepted, _ = _extract_guarded(ctx.sector, statement)
-        return accepted, statement.strip()
+        #
+        # Food-only: the six category lines are stripped BEFORE the blended
+        # estimate is extracted. `_extract_percent`'s prose fallback grabs the
+        # first signed percent anywhere in the text whenever the anchored
+        # ESTIMATE: line fails to parse (e.g. "ESTIMATE: broadly unchanged") --
+        # and this sector's prompt appends the six category lines AFTER the
+        # ESTIMATE instruction (the judge answers ESTIMATE first, then the six
+        # categories), so those six other signed percents still exist later in
+        # the response. Without the strip, that fallback would silently adopt
+        # a category value (typically RICE, the first category line) as the
+        # headline blended "Food" estimate. `subcategories` and the returned
+        # verdict text still use the full, unstripped `statement`.
+        subcategories = _extract_category_percents(statement) if ctx.sector == 'food' else {}
+        blended_src = _strip_category_lines(statement) if ctx.sector == 'food' else statement
+        accepted, _ = _extract_guarded(ctx.sector, blended_src)
+        return accepted, statement.strip(), subcategories
 
     def _emit(self, kind: str, data: dict):
         if self._on_event:
@@ -728,14 +782,16 @@ class Forum:
         # divergent few, so filtering by round number would silently reduce the
         # consensus to those 4 and discard the other 46 reads.
         finals = _latest_per_agent(history)
-        judged, verdict = self._judge_sector(ctx, finals)
+        judged, verdict, subcategories = self._judge_sector(ctx, finals)
         self._emit('judge', {'sector': ctx.sector, 'text': verdict,
                              'estimate': judged, 'unit': ctx.unit})
-        return self._aggregate(ctx, history, judged=judged, cited=cited)
+        return self._aggregate(ctx, history, judged=judged, cited=cited,
+                               subcategories=subcategories)
 
     def _aggregate(self, ctx: SectorContext, history: list[AgentResponse],
                    judged: Optional[float] = None,
-                   cited: Optional[set] = None) -> SectorReading:
+                   cited: Optional[set] = None,
+                   subcategories: Optional[dict] = None) -> SectorReading:
         finals = _latest_per_agent(history)
         ests = [r.price_estimate for r in finals if r.price_estimate is not None]
         confidence = 0
@@ -791,7 +847,8 @@ class Forum:
             # distinct values and their span; a percentage alone cannot be
             # checked against anything else on the screen.
             estimates=[round(float(e), 2) for e in ests],
-            drivers=drivers, sources=sources)
+            drivers=drivers, sources=sources,
+            subcategories=subcategories or {})
 
     def _synthesize(self, readings: list[SectorReading]) -> str:
         body = '\n'.join(
