@@ -26,7 +26,16 @@ def window(app):
     reg = MagicMock()
     reg.predict.return_value = np.array([60.0])
     reg.feature_importances_ = np.array([0.5, 0.3, 0.2])
-    return SimMainWindow(df, reg)
+    win = SimMainWindow(df, reg)
+    yield win
+    # __init__ starts a real DOECheckerThread (main_window.py); Qt's own
+    # contract is that destroying a QThread while it's still running is
+    # undefined behavior (see closeEvent's own comment). .close() triggers
+    # closeEvent(), which stops and joins it -- the same cleanup
+    # test_monitor.py's inline try/finally already does for its one window.
+    # Without this, every test using this fixture leaks a running thread for
+    # the rest of the process's life (RSK-056).
+    win.close()
 
 
 def test_main_window_has_swarm_panel(window):
@@ -212,3 +221,30 @@ def test_push_sector_forecasts_passes_agreement_values(window):
     assert captured['gas_agreement'] == 70
     assert captured['food_agreement'] == 62
     assert captured['elec_agreement'] == 81
+
+
+def test_the_window_fixture_leaves_no_running_doe_checker_behind(window):
+    """Every earlier test in this file that used `window` got its own
+    SimMainWindow, which starts a real DOECheckerThread (a native QThread) at
+    construction. Qt's own contract: destroying a QThread while it's still
+    running is undefined behavior (RSK-040's closeEvent comment). If the
+    fixture doesn't stop each window's thread in teardown, they pile up for
+    the rest of the process's life -- confirmed via CI's own crash dump for
+    RSK-056: 11 DOECheckerThreads found alive simultaneously, all idle in
+    ground_truth.py's `_stop_event.wait()`, in a worker process that had run
+    this file's tests. Placed last so the whole file's fixture-teardown
+    history is checked, not just one instance."""
+    import gc
+    from ph_economic_ai.engine.ground_truth import DOECheckerThread
+    gc.collect()
+    # `window` itself is still running here -- its own teardown hasn't fired
+    # yet (that happens after this test function returns) -- so it's excluded.
+    leaked = [t for t in gc.get_objects()
+             if isinstance(t, DOECheckerThread) and t is not window._doe_checker
+             and t.isRunning()]
+    assert leaked == [], (
+        f'{len(leaked)} DOECheckerThread(s) from earlier tests in this file '
+        'are still running -- the window fixture must stop each one in '
+        'teardown, the same way test_monitor.py\'s inline try/finally: '
+        'win.close() already does'
+    )

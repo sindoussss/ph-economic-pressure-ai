@@ -388,10 +388,28 @@ def test_the_leaderboard_does_not_double_render_on_a_second_refresh(tmp_path):
     ghost agent badge. Found by counting live QWidget children directly, not
     from a screenshot -- `layout.count()` alone cannot see this, since takeAt(0)
     removes the item from the layout's own bookkeeping immediately regardless
-    of whether the widget itself is actually gone."""
+    of whether the widget itself is actually gone.
+
+    Deliberately does NOT call `QApplication.processEvents()` anywhere in this
+    test (confirmed unnecessary: newly-added widgets are visible immediately
+    with no event-loop tick needed -- verified directly, not assumed).
+    `processEvents()` forces Qt's deferred-delete queue to run early for the
+    WHOLE process, not just this test's own widgets -- exactly the mechanism
+    `RSK-048` already found segfaults under this CI environment's
+    Linux/offscreen/xdist-parallel runner (a different test forced the same
+    queue and crashed on a half-torn-down widget from elsewhere in the same
+    worker process). `RSK-048`'s own fix was to stop forcing that queue rather
+    than make it safer; this test follows the same resolution rather than
+    reintroducing the pattern it already proved risky. `app` is still bound
+    to a local variable even though nothing calls a method on it here --
+    PyQt6/sip can garbage-collect the QApplication wrapper if nothing holds a
+    Python-level reference to it, even though the underlying Qt singleton
+    persists; dropping this binding entirely (tried and reverted during this
+    fix) crashes deterministically on this exact test, a genuine but separate
+    hazard from the one this docstring is otherwise about."""
     import sys
     from PyQt6.QtWidgets import QApplication, QWidget
-    app = QApplication.instance() or QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)  # noqa: F841 -- keep bound, see docstring
 
     from ph_economic_ai.engine.store import AgentTrustStore
     from ph_economic_ai.ui.agent_performance import AgentPerformancePanel
@@ -407,10 +425,9 @@ def test_the_leaderboard_does_not_double_render_on_a_second_refresh(tmp_path):
                    if isinstance(c, QWidget) and c.objectName() == '' and not c.isHidden()])
 
     panel.refresh()
-    app.processEvents()
     assert visible_row_count() == 3
 
-    panel.refresh()  # second refresh, no processEvents() before checking
+    panel.refresh()  # second refresh -- no widget-churn or event processing
     assert visible_row_count() == 3, (
         'old rows are still visible underneath the new ones after a second refresh')
     store.close()
