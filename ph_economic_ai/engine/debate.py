@@ -702,15 +702,17 @@ def _extract_category_percents(text: str) -> dict[str, float]:
 
 _CATEGORY_LINE_RE = re.compile(
     r'\b(?:' + '|'.join(re.escape(lbl) for lbl in _CATEGORY_LABELS.values()) +
-    r')\s*:\s*\**\s*[+\-]?\s*\d+\.?\d*\s*%',
+    r')\s*:\s*\**\s*[+\-]?\s*\d+\.?\d*\s*%[^\n]*',
     re.IGNORECASE,
 )
 
 
 def _strip_category_lines(text: str) -> str:
-    """Remove every RICE:/MEAT:/.../SUGAR: line from text, so the blended
+    """Remove every RICE:/MEAT:/.../SUGAR: line -- label, value, AND any
+    trailing commentary on that same line -- from text, so the blended
     ESTIMATE:'s prose fallback (which grabs the first signed percent it sees
-    anywhere) can't accidentally pick up a category value instead. Built
+    anywhere) can't accidentally pick up a category value, or a stray signed
+    percent in that line's own trailing commentary, instead. Built
     generically from `_CATEGORY_LABELS` rather than a separate hardcoded list,
     so it can't drift out of sync with the six labels.
 
@@ -718,12 +720,15 @@ def _strip_category_lines(text: str) -> str:
     leading plus-or-minus sign followed by a number and a percent sign)
     matches the FIRST signed percent anywhere in the text whenever the
     anchored ESTIMATE: line fails to parse (e.g. the judge writes
-    "ESTIMATE: broadly unchanged"). The food judge prompt now always asks
-    for six category lines before its ESTIMATE line, so that fallback would
-    silently grab a category value (typically RICE, asked first) and it
-    would become the app's headline "Food" estimate with no signal anything
-    went wrong. Stripping the category lines before the blended extraction
-    closes that hole without touching the well-tested
+    "ESTIMATE: broadly unchanged"). The food judge prompt appends the six
+    category lines AFTER its ESTIMATE line -- the judge is asked for the
+    blended ESTIMATE first, then the six categories -- so that fallback
+    would silently grab a category value (typically RICE, the first category
+    line) and it would become the app's headline "Food" estimate with no
+    signal anything went wrong. Stripping the category lines -- the whole
+    line, not just the label+value token, since trailing commentary can
+    itself contain a signed percent -- before the blended extraction closes
+    that hole without touching the well-tested
     `_extract_percent`/`_last_estimate_match` themselves.
     """
     return _CATEGORY_LINE_RE.sub(' ', text)

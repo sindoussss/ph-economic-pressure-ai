@@ -633,9 +633,11 @@ class Forum:
         # estimate is extracted. `_extract_percent`'s prose fallback grabs the
         # first signed percent anywhere in the text whenever the anchored
         # ESTIMATE: line fails to parse (e.g. "ESTIMATE: broadly unchanged") --
-        # and this sector's prompt guarantees six other signed percents exist
-        # earlier in the response. Without the strip, that fallback would
-        # silently adopt a category value (typically RICE, asked first) as the
+        # and this sector's prompt appends the six category lines AFTER the
+        # ESTIMATE instruction (the judge answers ESTIMATE first, then the six
+        # categories), so those six other signed percents still exist later in
+        # the response. Without the strip, that fallback would silently adopt
+        # a category value (typically RICE, the first category line) as the
         # headline blended "Food" estimate. `subcategories` and the returned
         # verdict text still use the full, unstripped `statement`.
         subcategories = _extract_category_percents(statement) if ctx.sector == 'food' else {}
