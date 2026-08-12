@@ -16,7 +16,7 @@ def test_categories_list_has_six_entries():
 def test_run_subcategory_nowcast_wires_through(monkeypatch, category):
     n = 130
     idx = pd.date_range('2005-01', periods=n, freq='MS').strftime('%Y-%m')
-    rng = np.random.default_rng(hash(category) % (2**31))
+    rng = np.random.default_rng(5 + fsn.CATEGORIES.index(category))
     rice = 12 + np.cumsum(rng.normal(0, 0.2, n))
     feats = pd.DataFrame({
         'rice': rice,

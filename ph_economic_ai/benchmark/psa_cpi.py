@@ -281,94 +281,112 @@ SUGAR_CSV = HERE / 'data' / 'psa_sugar_cpi_monthly.csv'
 def fetch_rice_cpi(out_csv: Path = RICE_CSV) -> None:
     """Fetch monthly Rice (COICOP 01.1.1.12) CPI from PSA OpenSTAT -> CSV."""
     fetch_cpi_subcategory('01.1.1.12', out_csv, 'rice_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.1.12 Rice')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.1.12 Rice',
+                          min_rows=100)
 
 
 def load_rice_cpi(csv_path: Path = RICE_CSV) -> pd.Series:
+    """Monthly Rice CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['rice_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_rice_mom(csv_path: Path = RICE_CSV) -> pd.Series:
+    """Month-over-month Rice inflation % from the committed gold."""
     return cpi_to_mom(load_rice_cpi(csv_path))
 
 
 def fetch_meat_cpi(out_csv: Path = MEAT_CSV) -> None:
     """Fetch monthly Meat (COICOP 01.1.2) CPI from PSA OpenSTAT -> CSV."""
     fetch_cpi_subcategory('01.1.2', out_csv, 'meat_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.2 Meat')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.2 Meat',
+                          min_rows=100)
 
 
 def load_meat_cpi(csv_path: Path = MEAT_CSV) -> pd.Series:
+    """Monthly Meat CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['meat_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_meat_mom(csv_path: Path = MEAT_CSV) -> pd.Series:
+    """Month-over-month Meat inflation % from the committed gold."""
     return cpi_to_mom(load_meat_cpi(csv_path))
 
 
 def fetch_fish_cpi(out_csv: Path = FISH_CSV) -> None:
     """Fetch monthly Fish and other seafood (COICOP 01.1.3) CPI from PSA OpenSTAT -> CSV."""
     fetch_cpi_subcategory('01.1.3', out_csv, 'fish_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.3 Fish and other seafood')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.3 Fish and other seafood',
+                          min_rows=100)
 
 
 def load_fish_cpi(csv_path: Path = FISH_CSV) -> pd.Series:
+    """Monthly Fish CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['fish_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_fish_mom(csv_path: Path = FISH_CSV) -> pd.Series:
+    """Month-over-month Fish inflation % from the committed gold."""
     return cpi_to_mom(load_fish_cpi(csv_path))
 
 
 def fetch_dairy_eggs_cpi(out_csv: Path = DAIRY_EGGS_CSV) -> None:
     """Fetch monthly Milk, dairy products & eggs (COICOP 01.1.4) CPI -> CSV."""
     fetch_cpi_subcategory('01.1.4', out_csv, 'dairy_eggs_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.4 Milk, other dairy products and eggs')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.4 Milk, other dairy products and eggs',
+                          min_rows=100)
 
 
 def load_dairy_eggs_cpi(csv_path: Path = DAIRY_EGGS_CSV) -> pd.Series:
+    """Monthly Dairy & eggs CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['dairy_eggs_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_dairy_eggs_mom(csv_path: Path = DAIRY_EGGS_CSV) -> pd.Series:
+    """Month-over-month Dairy & eggs inflation % from the committed gold."""
     return cpi_to_mom(load_dairy_eggs_cpi(csv_path))
 
 
 def fetch_vegetables_cpi(out_csv: Path = VEGETABLES_CSV) -> None:
     """Fetch monthly Vegetables, tubers, plantains & pulses (COICOP 01.1.7) CPI -> CSV."""
     fetch_cpi_subcategory('01.1.7', out_csv, 'vegetables_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.7 Vegetables, tubers, plantains, cooking bananas and pulses')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.7 Vegetables, tubers, plantains, cooking bananas and pulses',
+                          min_rows=100)
 
 
 def load_vegetables_cpi(csv_path: Path = VEGETABLES_CSV) -> pd.Series:
+    """Monthly Vegetables CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['vegetables_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_vegetables_mom(csv_path: Path = VEGETABLES_CSV) -> pd.Series:
+    """Month-over-month Vegetables inflation % from the committed gold."""
     return cpi_to_mom(load_vegetables_cpi(csv_path))
 
 
 def fetch_sugar_cpi(out_csv: Path = SUGAR_CSV) -> None:
     """Fetch monthly Sugar, confectionery & desserts (COICOP 01.1.8) CPI -> CSV."""
     fetch_cpi_subcategory('01.1.8', out_csv, 'sugar_cpi',
-                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.8 Sugar, confectionery and desserts')
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.8 Sugar, confectionery and desserts',
+                          min_rows=100)
 
 
 def load_sugar_cpi(csv_path: Path = SUGAR_CSV) -> pd.Series:
+    """Monthly Sugar CPI index (2018=100) indexed by 'YYYY-MM', sorted."""
     df = pd.read_csv(csv_path, dtype={'date': str})
     s = pd.Series(df['sugar_cpi'].astype(float).values, index=df['date'].astype(str).values)
     return s[~s.index.duplicated(keep='last')].sort_index()
 
 
 def load_sugar_mom(csv_path: Path = SUGAR_CSV) -> pd.Series:
+    """Month-over-month Sugar inflation % from the committed gold."""
     return cpi_to_mom(load_sugar_cpi(csv_path))

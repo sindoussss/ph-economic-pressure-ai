@@ -10,6 +10,13 @@ via nowcast.run_mom_nowcast / run_driver_only_ablation as-is.
 Deliberately reuses the existing food predictor set rather than researching
 bespoke per-category predictors — real future work, out of scope here (see
 docs/superpowers/specs/2026-08-12-food-subcategory-forecast-design.md §2).
+
+Not yet wired into any production entry point (`run.py`, `accuracy_report.json`,
+the app's category cards) -- that's deliberately deferred, gated by the
+selection-holdout pre-registration at
+docs/preregistration/2026-08-12-food-subcategory-selection-holdout.md. Until
+that runs, this module is exercised only by its tests; that is intentional,
+not dead code awaiting deletion.
 """
 import pandas as pd
 
