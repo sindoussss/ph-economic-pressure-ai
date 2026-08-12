@@ -257,3 +257,118 @@ def load_electricity_cpi(csv_path: Path = ELECTRICITY_CSV) -> pd.Series:
 def load_electricity_mom(csv_path: Path = ELECTRICITY_CSV) -> pd.Series:
     """Month-over-month Electricity inflation % from the committed gold."""
     return cpi_to_mom(load_electricity_cpi(csv_path))
+
+
+# ---------------------------------------------------------------------------
+# Food sub-categories (COICOP 01.1.x) — monthly index (2018=100)
+#
+# Confirmed live against openstat.psa.gov.ph's own "Commodity Description"
+# dimension (not assumed from documentation): these six COICOP codes exist
+# as directly selectable series in the same PX-Web table the top-level food
+# series already comes from. PSA's CPI does not split poultry from
+# beef/pork — '01.1.2 Meat' is one category at every COICOP depth this API
+# exposes, a permanent limitation, not a gap to work around here.
+# ---------------------------------------------------------------------------
+
+RICE_CSV = HERE / 'data' / 'psa_rice_cpi_monthly.csv'
+MEAT_CSV = HERE / 'data' / 'psa_meat_cpi_monthly.csv'
+FISH_CSV = HERE / 'data' / 'psa_fish_cpi_monthly.csv'
+DAIRY_EGGS_CSV = HERE / 'data' / 'psa_dairy_eggs_cpi_monthly.csv'
+VEGETABLES_CSV = HERE / 'data' / 'psa_vegetables_cpi_monthly.csv'
+SUGAR_CSV = HERE / 'data' / 'psa_sugar_cpi_monthly.csv'
+
+
+def fetch_rice_cpi(out_csv: Path = RICE_CSV) -> None:
+    """Fetch monthly Rice (COICOP 01.1.1.12) CPI from PSA OpenSTAT -> CSV."""
+    fetch_cpi_subcategory('01.1.1.12', out_csv, 'rice_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.1.12 Rice')
+
+
+def load_rice_cpi(csv_path: Path = RICE_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['rice_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_rice_mom(csv_path: Path = RICE_CSV) -> pd.Series:
+    return cpi_to_mom(load_rice_cpi(csv_path))
+
+
+def fetch_meat_cpi(out_csv: Path = MEAT_CSV) -> None:
+    """Fetch monthly Meat (COICOP 01.1.2) CPI from PSA OpenSTAT -> CSV."""
+    fetch_cpi_subcategory('01.1.2', out_csv, 'meat_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.2 Meat')
+
+
+def load_meat_cpi(csv_path: Path = MEAT_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['meat_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_meat_mom(csv_path: Path = MEAT_CSV) -> pd.Series:
+    return cpi_to_mom(load_meat_cpi(csv_path))
+
+
+def fetch_fish_cpi(out_csv: Path = FISH_CSV) -> None:
+    """Fetch monthly Fish and other seafood (COICOP 01.1.3) CPI from PSA OpenSTAT -> CSV."""
+    fetch_cpi_subcategory('01.1.3', out_csv, 'fish_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.3 Fish and other seafood')
+
+
+def load_fish_cpi(csv_path: Path = FISH_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['fish_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_fish_mom(csv_path: Path = FISH_CSV) -> pd.Series:
+    return cpi_to_mom(load_fish_cpi(csv_path))
+
+
+def fetch_dairy_eggs_cpi(out_csv: Path = DAIRY_EGGS_CSV) -> None:
+    """Fetch monthly Milk, dairy products & eggs (COICOP 01.1.4) CPI -> CSV."""
+    fetch_cpi_subcategory('01.1.4', out_csv, 'dairy_eggs_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.4 Milk, other dairy products and eggs')
+
+
+def load_dairy_eggs_cpi(csv_path: Path = DAIRY_EGGS_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['dairy_eggs_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_dairy_eggs_mom(csv_path: Path = DAIRY_EGGS_CSV) -> pd.Series:
+    return cpi_to_mom(load_dairy_eggs_cpi(csv_path))
+
+
+def fetch_vegetables_cpi(out_csv: Path = VEGETABLES_CSV) -> None:
+    """Fetch monthly Vegetables, tubers, plantains & pulses (COICOP 01.1.7) CPI -> CSV."""
+    fetch_cpi_subcategory('01.1.7', out_csv, 'vegetables_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.7 Vegetables, tubers, plantains, cooking bananas and pulses')
+
+
+def load_vegetables_cpi(csv_path: Path = VEGETABLES_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['vegetables_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_vegetables_mom(csv_path: Path = VEGETABLES_CSV) -> pd.Series:
+    return cpi_to_mom(load_vegetables_cpi(csv_path))
+
+
+def fetch_sugar_cpi(out_csv: Path = SUGAR_CSV) -> None:
+    """Fetch monthly Sugar, confectionery & desserts (COICOP 01.1.8) CPI -> CSV."""
+    fetch_cpi_subcategory('01.1.8', out_csv, 'sugar_cpi',
+                          'PSA OpenStat PX-Web CPI by commodity group, COICOP 01.1.8 Sugar, confectionery and desserts')
+
+
+def load_sugar_cpi(csv_path: Path = SUGAR_CSV) -> pd.Series:
+    df = pd.read_csv(csv_path, dtype={'date': str})
+    s = pd.Series(df['sugar_cpi'].astype(float).values, index=df['date'].astype(str).values)
+    return s[~s.index.duplicated(keep='last')].sort_index()
+
+
+def load_sugar_mom(csv_path: Path = SUGAR_CSV) -> pd.Series:
+    return cpi_to_mom(load_sugar_cpi(csv_path))
