@@ -26,3 +26,12 @@ def test_none_and_flat():
 
 def test_always_three_rows_in_order():
     assert [r['key'] for r in sector_forecast_rows()] == ['gas', 'food', 'elec']
+
+
+def test_food_row_is_labelled_as_a_basket_average():
+    """FOOD (basket avg) — the compact card shows one blended number, but
+    since it's now broken into six categories on the Monitor detail view,
+    this label must not read as if it speaks for every category."""
+    rows = sector_forecast_rows(gas=1.0, food=0.4, elec=0.01)
+    food_row = next(r for r in rows if r['key'] == 'food')
+    assert 'basket avg' in food_row['label'].lower()
