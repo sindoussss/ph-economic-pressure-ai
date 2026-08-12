@@ -41,6 +41,13 @@ class SectorReading:
     # `AgentResponse` rebuild that dropped `retrieval` (`RSK-019`). Keyword-only
     # makes the position irrelevant, so the next field cannot repeat it.
     estimates: list[float] = field(default_factory=list, kw_only=True)
+    # Per-PSA-sub-category signed reads (rice, meat, fish, dairy_eggs,
+    # vegetables, sugar), when the food judge produced them -- keys present
+    # only for categories with an actual parsed value; a category with no
+    # parseable line is absent here, never 0.0. Empty for gas/electricity,
+    # which have no sub-categories. kw_only for the same reason `estimates`
+    # is: a positionally-built call site must not silently reassign this.
+    subcategories: dict[str, float] = field(default_factory=dict, kw_only=True)
 
     def to_dict(self) -> dict:
         return asdict(self)
