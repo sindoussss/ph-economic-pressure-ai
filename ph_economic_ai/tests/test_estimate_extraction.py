@@ -138,3 +138,12 @@ def test_category_percents_takes_the_last_line_per_category():
 def test_category_percents_empty_text_returns_empty_dict():
     from ph_economic_ai.engine.debate import _extract_category_percents
     assert _extract_category_percents('The outlook is broadly stable.') == {}
+
+
+def test_category_percents_rice_does_not_false_match_inside_price():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = ('The average retail PRICE: +2.0% this month, but rice supply is '
+            'stable and unaffected. MEAT: -0.3%')
+    result = _extract_category_percents(text)
+    assert 'rice' not in result
+    assert result['meat'] == -0.3
