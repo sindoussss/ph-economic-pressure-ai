@@ -33,6 +33,15 @@ _SECTOR_COLOR = {'gas': '#B42318', 'food': '#067647', 'electricity': '#B54708'}
 _EYEBROW = ('font-family:Consolas,monospace;font-size:10px;letter-spacing:2px;'
             f'color:{_T3};')
 
+#: Display order/labels for the Food card's per-sub-category breakdown row.
+#: Keys match `SectorReading.subcategories` (Task 1) -- the PSA sub-baskets
+#: the food judge parses (Task 3). A category absent from `subcategories`
+#: had no parseable read this cycle and shows an em-dash, never 0.0%.
+_CATEGORY_DISPLAY_LABELS = {
+    'rice': 'Rice', 'meat': 'Meat', 'fish': 'Fish', 'dairy_eggs': 'Dairy & Eggs',
+    'vegetables': 'Vegetables', 'sugar': 'Sugar',
+}
+
 
 def _clear(layout) -> None:
     while layout.count():
@@ -840,6 +849,35 @@ class PressureMonitorPanel(QWidget):
             drv.setStyleSheet(f'color:{_T2};font-size:12px;margin-top:8px;')
             drv.setWordWrap(True)
             lay.addWidget(drv)
+
+        # PER-CATEGORY BREAKDOWN, food only. Gated on the dict actually being
+        # populated (not merely present, since `subcategories` defaults to `{}`
+        # rather than `None` -- see Task 1) so gas/electricity, and a food read
+        # that for some reason carries no category data, get no row at all
+        # rather than six em-dashes pretending to be information.
+        if r.sector == 'food' and getattr(r, 'subcategories', None):
+            parts = []
+            for category, label in _CATEGORY_DISPLAY_LABELS.items():
+                value = r.subcategories.get(category)
+                text = f'{label} {value:+.1f}%' if value is not None else f'{label} —'
+                parts.append(text)
+            breakdown = QLabel('  ·  '.join(parts))
+            breakdown.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:6px;')
+            breakdown.setWordWrap(True)
+            lay.addWidget(breakdown)
+
+            # Without this, the six category values sit directly under the
+            # headline estimate with nothing telling a reader they are the
+            # judge's own separate per-category reads -- not components that
+            # sum or average to the number above. One shade more muted than
+            # the breakdown row itself (_T3 vs _T2), matching how this file
+            # already de-emphasises secondary/caveat text relative to content.
+            note = QLabel('Separate per-category reads from the same debate '
+                          '— not components of the figure above.')
+            note.setStyleSheet(f'color:{_T3};font-size:10px;font-style:italic;margin-top:2px;')
+            note.setWordWrap(True)
+            lay.addWidget(note)
+
         return card
 
     def _outlook_row(self, s) -> QFrame:

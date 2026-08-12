@@ -73,6 +73,46 @@ def test_panel_renders_without_thread(app):
     assert panel._outlook.count() == 1
 
 
+def test_food_card_shows_subcategory_breakdown(app):
+    """Rice/meat/fish/dairy&eggs/vegetables/sugar each get their own signed
+    caption; a missing category reads as unavailable, never 0.0%; no value
+    ever shows a literal '+' concatenated with a negative number (the exact
+    RSK-053 shape, checked explicitly here because a new signed-percentage
+    line is exactly where it would recur)."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from PyQt6.QtWidgets import QLabel
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3, 0.4, 0.5],
+                      subcategories={'rice': 0.1, 'meat': -0.3, 'fish': 0.8,
+                                     'vegetables': 0.5})   # dairy_eggs, sugar absent
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+    assert 'Rice +0.1%' in texts
+    assert 'Meat -0.3%' in texts
+    assert 'Fish +0.8%' in texts
+    assert 'Vegetables +0.5%' in texts
+    assert 'Dairy' in texts and '—' in texts   # missing category shows unavailable
+    assert '+-' not in texts
+    # A reader must not mistake the six category reads for components that
+    # sum/average to the headline estimate above them -- the caption says so.
+    assert 'not components of the figure above' in texts
+
+
+def test_gas_card_has_no_subcategory_breakdown(app):
+    """Gas/electricity cards are untouched by the food-only breakdown row --
+    it must not appear at all, not even empty, for non-food sectors."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from PyQt6.QtWidgets import QLabel
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1])
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+    assert 'Rice' not in texts and 'Meat' not in texts and 'Dairy' not in texts
+
+
 def test_panel_shows_live_forum_cards(app):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     panel = PressureMonitorPanel(FakeRag())

@@ -96,3 +96,70 @@ def test_gas_bounded_accepts_a_realistic_change_at_the_boundary():
 def test_no_estimate_anywhere_returns_none():
     for fn in (_extract_percent, _extract_price, _extract_electricity_change):
         assert fn('The outlook is broadly stable.') is None
+
+
+def test_category_percents_parses_all_six():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = (
+        'RICE: +0.2%\nMEAT: -0.3%\nFISH: +0.8%\n'
+        'DAIRY_EGGS: +0.0%\nVEGETABLES: -0.1%\nSUGAR: +0.0%\n'
+    )
+    result = _extract_category_percents(text)
+    assert result == {
+        'rice': 0.2, 'meat': -0.3, 'fish': 0.8,
+        'dairy_eggs': 0.0, 'vegetables': -0.1, 'sugar': 0.0,
+    }
+
+
+def test_category_percents_missing_category_is_absent_not_zero():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = 'RICE: +0.2%\nMEAT: -0.3%\n'  # only two of six
+    result = _extract_category_percents(text)
+    assert result == {'rice': 0.2, 'meat': -0.3}
+    assert 'fish' not in result
+    assert 'sugar' not in result
+
+
+def test_category_percents_rejects_implausible_value():
+    from ph_economic_ai.engine.debate import _extract_category_percents, _MAX_REALISTIC_FOOD_PCT
+    text = f'RICE: +{_MAX_REALISTIC_FOOD_PCT + 5:.1f}%\nMEAT: -0.3%\n'
+    result = _extract_category_percents(text)
+    assert 'rice' not in result  # implausible, dropped
+    assert result['meat'] == -0.3
+
+
+def test_category_percents_takes_the_last_line_per_category():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = 'RICE: +0.5%\nOn reflection, RICE: +0.2%\n'
+    result = _extract_category_percents(text)
+    assert result['rice'] == pytest.approx(0.2)
+
+
+def test_category_percents_empty_text_returns_empty_dict():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    assert _extract_category_percents('The outlook is broadly stable.') == {}
+
+
+def test_category_percents_rice_does_not_false_match_inside_price():
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = ('The average retail PRICE: +2.0% this month, but rice supply is '
+            'stable and unaffected. MEAT: -0.3%')
+    result = _extract_category_percents(text)
+    assert 'rice' not in result
+    assert result['meat'] == -0.3
+
+
+def test_category_percents_requires_an_explicit_sign():
+    """The sign capture group used to be optional, which let two bad things
+    happen: a year-on-year figure with no sign context ('Rice: 8.9%
+    year-on-year') got accepted as a month-on-month category read, and text
+    where the judge's own words argue a fall ('Rice prices are falling.
+    RICE: 0.4%') got recorded as +0.4 anyway. The prompt always asks for a
+    SIGNED value, so an unsigned number is correctly unparseable/absent
+    rather than guessed."""
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = ('Rice: 8.9% year-on-year is the headline, but month-on-month is '
+            'calmer. MEAT: -0.3%')
+    result = _extract_category_percents(text)
+    assert 'rice' not in result, 'unsigned value must not be silently accepted as a signed MoM read'
+    assert result['meat'] == -0.3
