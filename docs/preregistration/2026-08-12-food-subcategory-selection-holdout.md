@@ -134,6 +134,52 @@ already carries.
 
 ## Result
 
-*(Not run. This section is added after Task 5's live fetch and the actual
-backtest run — both deliberately outside this implementation plan's scope,
-per `DEC-010`.)*
+Run once, 2026-08-12, via `ph_economic_ai.benchmark.selection.run()` after
+extending it with the twelve rows below (Mechanical steps 3-4). The 11
+pre-existing `selection_holdout.json` rows (`headline_mom`, `fuel_audit`,
+`fx_forecast`, `yoy_forecast`, `headline_mom_long`, `food_mom_full`,
+`food_mom_driver_only`, `electricity_mom_full`,
+`electricity_mom_driver_only`, `transport_mom_full`,
+`transport_mom_driver_only`) reproduced exactly against the
+currently-committed artifact before this run's 23-row result replaced it —
+`verdict`, `selection_skill`, `holdout_skill`, and `holdout_dm_p` all
+matched. All twelve new rows had `n=228`, `cut=160`, `n_holdout_predictions=68`
+— none hit `insufficient_data` and none fell anywhere near the ~24-row power
+floor flagged in "What would make this run uninformative" above.
+
+| category | setup | selected | n_candidates | selection_skill | holdout_skill | shrinkage | holdout_dm_p | n_holdout | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| rice | full | arima | 4 | +0.0266 | +0.0935 | -0.0669 | 0.3857 | 68 | `not_confirmed_on_holdout` |
+| rice | driver-only | ridge | 2 | -0.4771 | +0.0731 | -0.5502 | 0.7774 | 68 | `not_confirmed_on_holdout` |
+| meat | full | arima | 4 | +0.0938 | +0.1055 | -0.0118 | 0.1189 | 68 | `not_confirmed_on_holdout` |
+| meat | driver-only | ridge | 2 | -0.0909 | -0.0280 | -0.0629 | 0.3781 | 68 | `not_confirmed_on_holdout` |
+| fish | full | arima | 4 | -0.0291 | +0.0060 | -0.0350 | 0.9613 | 68 | `not_confirmed_on_holdout` |
+| fish | driver-only | ridge | 2 | -0.1141 | -0.0345 | -0.0796 | 0.7860 | 68 | `not_confirmed_on_holdout` |
+| dairy_eggs | full | arima | 4 | +0.1616 | -0.0054 | +0.1670 | 0.9417 | 68 | `not_confirmed_on_holdout` |
+| dairy_eggs | driver-only | ridge | 2 | -0.0197 | -0.3499 | +0.3302 | 0.0201 | 68 | `not_confirmed_on_holdout` |
+| vegetables | full | arima | 4 | +0.0148 | +0.0617 | -0.0469 | 0.2567 | 68 | `not_confirmed_on_holdout` |
+| vegetables | driver-only | ridge | 2 | -0.0486 | -0.0293 | -0.0193 | 0.1193 | 68 | `not_confirmed_on_holdout` |
+| sugar | full | arima | 4 | -0.0673 | -0.0010 | -0.0663 | 0.9943 | 68 | `not_confirmed_on_holdout` |
+| sugar | driver-only | ridge | 2 | -0.4354 | -0.8206 | +0.3852 | 0.0218 | 68 | `not_confirmed_on_holdout` |
+
+All twelve baseline pools were `random_walk, seasonal_naive, drift, mean`;
+the specific `best_naive` fixed at selection time varied by row (visible in
+the full JSON, not repeated in this table per the document's own column
+list above).
+
+Note, stated without editorializing: two driver-only rows
+(`dairy_eggs_mom_driver_only`, `sugar_mom_driver_only`) have
+`holdout_dm_p < 0.05` but still read `not_confirmed_on_holdout`, because
+their `holdout_skill` is negative — the confirmation criterion is
+`holdout_skill > 0 and holdout_p < 0.05 and dm_stat < 0` jointly, and a
+significant DM test on a *negative*-skill row means the selected model was
+significantly *worse* than the fixed naive, not better.
+
+**Applying the pre-registered decision rule to every row:** all twelve rows
+returned `not_confirmed_on_holdout`. Per the Decision rule table above, the
+action for every one of the twelve is: report as null in the benchmark
+artifacts; app-facing labels for rice, meat, fish, dairy & eggs, vegetables,
+and sugar (both full-nowcast and driver-only framings) stay "exploratory,
+not validated." No row returned `confirmed_on_holdout`, so the Bonferroni-
+family-wiring branch of the decision rule does not apply to this run — no
+review of that kind is needed as a result of these twelve rows.
