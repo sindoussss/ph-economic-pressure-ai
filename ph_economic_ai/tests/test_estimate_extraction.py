@@ -147,3 +147,19 @@ def test_category_percents_rice_does_not_false_match_inside_price():
     result = _extract_category_percents(text)
     assert 'rice' not in result
     assert result['meat'] == -0.3
+
+
+def test_category_percents_requires_an_explicit_sign():
+    """The sign capture group used to be optional, which let two bad things
+    happen: a year-on-year figure with no sign context ('Rice: 8.9%
+    year-on-year') got accepted as a month-on-month category read, and text
+    where the judge's own words argue a fall ('Rice prices are falling.
+    RICE: 0.4%') got recorded as +0.4 anyway. The prompt always asks for a
+    SIGNED value, so an unsigned number is correctly unparseable/absent
+    rather than guessed."""
+    from ph_economic_ai.engine.debate import _extract_category_percents
+    text = ('Rice: 8.9% year-on-year is the headline, but month-on-month is '
+            'calmer. MEAT: -0.3%')
+    result = _extract_category_percents(text)
+    assert 'rice' not in result, 'unsigned value must not be silently accepted as a signed MoM read'
+    assert result['meat'] == -0.3
