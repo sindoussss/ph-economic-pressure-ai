@@ -650,6 +650,46 @@ def _extract_percent(text: str) -> Optional[float]:
     return value
 
 
+#: Food sub-category prompt labels, in the order they should appear in the
+#: judge's closing instruction. Six PSA CPI sub-categories confirmed live
+#: against openstat.psa.gov.ph during this feature's brainstorming (see
+#: docs/superpowers/specs/2026-08-12-food-subcategory-forecast-design.md).
+_CATEGORY_LABELS = {
+    'rice': 'RICE', 'meat': 'MEAT', 'fish': 'FISH',
+    'dairy_eggs': 'DAIRY_EGGS', 'vegetables': 'VEGETABLES', 'sugar': 'SUGAR',
+}
+
+
+def _extract_category_percents(text: str) -> dict[str, float]:
+    """One signed-percent line per food sub-category (RICE:, MEAT:, ...).
+
+    Deliberately a separate, self-contained parser rather than a refactor of
+    `_last_estimate_match` (which every other extractor in this file depends
+    on and is heavily tested) -- this reuses its two safe-to-share pieces,
+    `_TOLERANCE_BAND_RE` and `_MAX_REALISTIC_FOOD_PCT`, without touching the
+    well-tested ESTIMATE-line parser itself.
+
+    A category whose line is missing, unparseable, or out of bound is simply
+    absent from the returned dict -- never present as 0.0 or copied from
+    another category's value. Takes the LAST match per category, same reason
+    every other extractor in this file does: agents restate and revise.
+    """
+    cleaned = _TOLERANCE_BAND_RE.sub(' ', text)
+    result: dict[str, float] = {}
+    for category, label in _CATEGORY_LABELS.items():
+        hits = re.findall(
+            rf'{label}\s*:\s*\**\s*([+\-])?\s*(\d+\.?\d*)\s*%',
+            cleaned, flags=re.IGNORECASE,
+        )
+        if not hits:
+            continue
+        sign, raw = hits[-1]
+        value = (-1 if sign == '-' else 1) * float(raw)
+        if abs(value) <= _MAX_REALISTIC_FOOD_PCT:
+            result[category] = value
+    return result
+
+
 #: Per-sector agreement band for `consensus()`: PHP/L for gas, percentage
 #: points for food, PHP/kWh for electricity. Must track `forum._BAND` and (for
 #: gas) `swarm._AGREEMENT_BAND` -- three places measuring the same three
