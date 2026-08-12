@@ -51,12 +51,38 @@ confirmation criterion `holdout_skill > 0 and holdout_p < 0.05 and
 dm_stat < 0` — all identical to every other target this protocol has ever
 been run against.
 
-## Feasibility
+## Feasibility, confirmed
 
-Not yet checkable — none of the six series have been fetched. This document
-is committed *before* Task 5 (fetching) runs, per this project's `DEC-010`
-discipline: the frame sizes will be recorded here, in this same document,
-once Task 5's fetch completes and before any backtest actually runs.
+All six series were fetched live from PSA OpenSTAT on 2026-08-12 (Mechanical
+step 1). Each came back with the same depth as the existing electricity
+series: 391 rows, 1994-01..2026-07 — no truncated backcast for any of the
+six.
+
+Each category's frame was then built with
+`food_subcategory_nowcast._build_subcategory_frame` (Mechanical step 2),
+*before* any backtest ran:
+
+| category | frame rows | date range |
+|---|---|---|
+| rice | 228 | 2007-08 .. 2026-07 |
+| meat | 228 | 2007-08 .. 2026-07 |
+| fish | 228 | 2007-08 .. 2026-07 |
+| dairy_eggs | 228 | 2007-08 .. 2026-07 |
+| vegetables | 228 | 2007-08 .. 2026-07 |
+| sugar | 228 | 2007-08 .. 2026-07 |
+
+All six categories join to the identical range (2007-08..2026-07, 228 rows)
+because the frame is bounded by the food predictor panel's own coverage
+(`food_nowcast.load_food_features()`), not by the PSA CPI series, which are
+all much longer (391 rows back to 1994) than the predictor panel.
+
+None of the six falls under the ~60-70 row full-frame floor this document
+flagged as worth watching (228 rows is well clear of it, matching the
+existing `food_mom_full`/`food_mom_driver_only` frame's own size). Whether
+any individual row's *holdout* segment clears the ~24-row power floor
+(2x `MIN_HOLDOUT_PREDICTIONS`) is determined by `run_selection_holdout`'s own
+`split_point` once the backtest actually runs (Mechanical step 4) and is
+reported per-row in the Result section below, not here.
 
 ## Decision rule, stated before running
 
