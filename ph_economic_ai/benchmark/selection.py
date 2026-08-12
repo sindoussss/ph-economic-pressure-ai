@@ -213,6 +213,18 @@ def run() -> dict:
     out['transport_mom_driver_only'] = run_selection_holdout(
         driver_only(transport), DRIVER_ONLY_METHODS, BASELINE_POOL)
 
+    # Six PSA food sub-categories, pre-registered
+    # docs/preregistration/2026-08-12-food-subcategory-selection-holdout.md --
+    # same candidate/baseline-pool split food/electricity/transport already use,
+    # applied to targets that did not exist when those were tested.
+    from ph_economic_ai.benchmark.food_subcategory_nowcast import (
+        CATEGORIES, _build_subcategory_frame)
+    for _cat in CATEGORIES:
+        _frame = _build_subcategory_frame(_cat, load_food_features())
+        out[f'{_cat}_mom_full'] = run_selection_holdout(_frame, PANEL_METHODS, BASELINE_POOL)
+        out[f'{_cat}_mom_driver_only'] = run_selection_holdout(
+            driver_only(_frame), DRIVER_ONLY_METHODS, BASELINE_POOL)
+
     return out
 
 
