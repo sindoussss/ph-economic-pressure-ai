@@ -178,6 +178,72 @@ def test_food_card_peso_strip_shows_dash_when_one_category_key_is_absent(app, mo
     assert 'exploratory projection, not a validated prediction' in texts
 
 
+def test_food_card_peso_strip_caption_reports_the_oldest_as_of_month(app, monkeypatch):
+    """Each category's get_anchor() call is independent and can fall back to
+    a different cache age -- two categories in the same rendered strip can
+    legitimately carry different as_of months. The caption must report the
+    OLDEST month actually used, not whichever category happened to resolve
+    LAST in the loop (rice, meat, fish, vegetables order). Rice and fish and
+    vegetables all resolve to 2026-07 while meat (processed second, not
+    last) resolves to the older 2026-05 -- so the pre-fix bug (which simply
+    overwrote as_of_month on every successful iteration) would have reported
+    vegetables' 2026-07, the LAST successful category, not the true oldest."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
+    from PyQt6.QtWidgets import QLabel
+
+    def fake_get_anchor(category, *a, **kw):
+        prices = {
+            'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'meat': {'price': 185.40, 'as_of': '2026-05', 'fetched_on': '2026-08-13'},
+            'fish': {'price': 90.00, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'vegetables': {'price': 62.10, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        }
+        return prices.get(category)
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3, 0.4, 0.5],
+                      subcategories={'rice': 0.3, 'meat': -0.3, 'fish': 0.8,
+                                     'vegetables': 0.5})
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+
+    assert 'as of 2026-05 or later' in texts   # the true oldest, from meat
+    assert 'as of 2026-07' not in texts        # the (wrong) last-resolved month
+
+
+def test_food_card_peso_strip_treats_a_malformed_anchor_entry_as_unavailable(app, monkeypatch):
+    """A malformed cache/anchor entry (missing 'price' or 'as_of') must not
+    crash _sector_card via direct dict indexing -- it reads as unavailable
+    for that category ('—'), the same as a fetch failure, and does not
+    contribute an as_of month to the caption."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
+    from PyQt6.QtWidgets import QLabel
+
+    def fake_get_anchor(category, *a, **kw):
+        prices = {
+            'rice': {'as_of': '2026-07'},   # malformed: missing 'price'
+            'meat': {'price': 185.40, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'fish': None,
+            'vegetables': None,
+        }
+        return prices.get(category)
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3, 0.4, 0.5],
+                      subcategories={'rice': 0.3, 'meat': -0.3, 'fish': 0.8,
+                                     'vegetables': 0.5})
+    card = panel._sector_card(r)   # must not raise
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+    assert 'Rice —' in texts
+    assert 'Meat ₱185.40 → ₱184.84' in texts
+
+
 def test_food_card_omits_the_peso_strip_when_no_category_has_both_pieces(app, monkeypatch):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     from ph_economic_ai.engine import peso_anchor

@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -294,3 +294,184 @@ def test_get_anchor_returns_none_when_fetch_fails_and_no_cache_exists(tmp_path, 
     cache_path = tmp_path / 'nope.json'
     monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
     assert peso_anchor.get_anchor('rice', cache_path=cache_path, today=date(2026, 8, 13)) is None
+
+
+def test_load_cache_returns_empty_dict_when_file_holds_a_non_dict_json_value(tmp_path):
+    """A real JSON file can just as easily hold a list, string, or number as
+    an object -- the missing/corrupt-file handling above must extend to a
+    wrong-shaped-but-valid JSON file too, never returning it as-is for
+    callers that assume a dict."""
+    p = tmp_path / 'list.json'
+    p.write_text('[1, 2, 3]', encoding='utf-8')
+    assert peso_anchor._load_cache(p) == {}
+
+
+# ── Fix 2: a single unparseable price cell must not discard an
+# already-found good row ────────────────────────────────────────────────────
+
+def test_fetch_live_skips_a_comma_formatted_price_row_but_keeps_a_good_one(monkeypatch):
+    """A comma-formatted price ('1,250.00') makes float() raise ValueError.
+    Before the fix that propagated out of the row loop entirely and was
+    caught by the function's outer except, discarding the good row found
+    earlier in the same response. Row parsing must be isolated per-row, the
+    same shape psa_cpi.py::_fetch_px_table already uses."""
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '0', '1'], 'values': ['48.20']},      # 2018-02, good, found first
+        {'key': ['0', '5', '1', '0'], 'values': ['1,250.00']},   # unparseable: comma
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 48.20, 'as_of': '2018-02'}
+
+
+def test_fetch_live_skips_a_dash_price_row_but_keeps_a_good_one(monkeypatch):
+    """A bare dash ('-') is another real PSA 'no data' marker distinct from
+    '..'/''/None -- float('-') also raises ValueError and must be isolated
+    the same way."""
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '0', '1'], 'values': ['48.20']},   # 2018-02, good, found first
+        {'key': ['0', '5', '1', '0'], 'values': ['-']},       # unparseable: dash
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 48.20, 'as_of': '2018-02'}
+
+
+# ── Fix 3: a `None` entry in the Year variable's labels must never
+# silently produce/cache a "None-02"-shaped as_of ──────────────────────────
+
+def test_fetch_live_skips_a_row_with_a_none_year_label(monkeypatch):
+    """Same PX-Web 'untranslated/missing label' shape already handled for
+    Commodity, but here in Year. The row with the None-labelled year is
+    deliberately the one that WOULD be picked as "latest" if 'None-02' were
+    allowed through: the string 'None-02' sorts greater than '2019-01'
+    lexicographically. Before the fix this silently produced and cached
+    that garbage as_of; after the fix the row is skipped and the function
+    falls through to the next valid row."""
+    r = MagicMock()
+    r.json.return_value = {
+        'variables': [
+            {'code': 'Geolocation', 'values': ['0'], 'valueTexts': ['Philippines']},
+            {'code': 'Commodity', 'values': ['5'],
+             'valueTexts': ['RICE, REGULAR-MILLED, 1 KG']},
+            {'code': 'Year', 'values': ['0', '1'], 'valueTexts': [None, '2019']},
+            {'code': 'Period', 'values': ['0', '1', '12'],
+             'valueTexts': ['January', 'February', 'Annual']},
+        ]
+    }
+    post = _fake_post_response([
+        {'key': ['0', '5', '0', '1'], 'values': ['99.99']},   # year id '0' -> None label
+        {'key': ['0', '5', '1', '0'], 'values': ['48.20']},   # year id '1' -> 2019, valid
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: r)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    result = peso_anchor._fetch_live('rice')
+    assert result is not None
+    assert 'None' not in result['as_of']
+    assert result == {'price': 48.20, 'as_of': '2019-01'}
+
+
+def test_fetch_live_returns_none_when_every_row_has_a_none_year_label(monkeypatch):
+    """If no row survives the None-year guard, the function returns None
+    rather than falling through to a garbage as_of."""
+    r = MagicMock()
+    r.json.return_value = {
+        'variables': [
+            {'code': 'Geolocation', 'values': ['0'], 'valueTexts': ['Philippines']},
+            {'code': 'Commodity', 'values': ['5'],
+             'valueTexts': ['RICE, REGULAR-MILLED, 1 KG']},
+            {'code': 'Year', 'values': ['0'], 'valueTexts': [None]},
+            {'code': 'Period', 'values': ['0', '12'], 'valueTexts': ['January', 'Annual']},
+        ]
+    }
+    post = _fake_post_response([{'key': ['0', '5', '0', '0'], 'values': ['99.99']}])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: r)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') is None
+
+
+# ── Fix 4: the branch's #1 named constraint -- 2M/2018NEW/, never
+# 2M/RP or 2M/NRP -- had zero regression coverage ──────────────────────────
+
+def test_fetch_live_calls_the_2018new_folder_never_rp_or_nrp(monkeypatch):
+    """Every other fetch test mocks requests.get/post with a lambda that
+    ignores the URL entirely, so nothing else in this suite would catch a
+    regression to PSA's 2M/RP or 2M/NRP folders -- both confirmed frozen at
+    2021 (see the module docstring); using either would silently anchor the
+    app to five-year-old prices with no error."""
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([{'key': ['0', '5', '1', '1'], 'values': ['55.41']}])
+    captured_urls = []
+
+    def fake_get(url, *a, **kw):
+        captured_urls.append(url)
+        return meta
+
+    def fake_post(url, *a, **kw):
+        captured_urls.append(url)
+        return post
+
+    monkeypatch.setattr(peso_anchor.requests, 'get', fake_get)
+    monkeypatch.setattr(peso_anchor.requests, 'post', fake_post)
+
+    peso_anchor._fetch_live('rice')
+
+    assert captured_urls, 'the fetch should have made at least one HTTP call'
+    for url in captured_urls:
+        assert '2M/2018NEW/' in url
+        assert '2M/RP' not in url
+        assert '2M/NRP' not in url
+
+
+# ── Fix 5: negative-cache a failed fetch so a persistent PSA outage
+# doesn't repeatedly re-attempt the same slow network call ────────────────
+
+def test_get_anchor_does_not_refetch_within_the_failure_cooldown(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
+
+    first = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today)
+    assert first is None
+
+    def fail_if_called(category):
+        raise AssertionError('should not re-fetch within the failure cooldown')
+    monkeypatch.setattr(peso_anchor, '_fetch_live', fail_if_called)
+
+    second = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today)
+    assert second is None
+
+
+def test_recently_failed_is_true_immediately_after_marking(tmp_path):
+    cache = {}
+    now = datetime(2026, 8, 13, 10, 0, 0)
+    peso_anchor._mark_failed(cache, 'rice', now)
+    assert peso_anchor._recently_failed(cache, 'rice', now) is True
+
+
+def test_recently_failed_is_false_once_the_cooldown_window_elapses():
+    """The cooldown is a floor against retrying the SAME failure on every
+    render within a short window -- it must not become a permanent outage
+    flag. One minute past the 1-hour cooldown, a fresh attempt is allowed
+    again."""
+    cache = {}
+    failed_at = datetime(2026, 8, 13, 10, 0, 0)
+    peso_anchor._mark_failed(cache, 'rice', failed_at)
+    later = failed_at + timedelta(hours=1, minutes=1)
+    assert peso_anchor._recently_failed(cache, 'rice', later) is False
+
+
+def test_clear_failed_removes_the_marker_for_only_that_category():
+    cache = {}
+    now = datetime(2026, 8, 13, 10, 0, 0)
+    peso_anchor._mark_failed(cache, 'rice', now)
+    peso_anchor._mark_failed(cache, 'meat', now)
+    peso_anchor._clear_failed(cache, 'rice')
+    assert peso_anchor._recently_failed(cache, 'rice', now) is False
+    assert peso_anchor._recently_failed(cache, 'meat', now) is True
