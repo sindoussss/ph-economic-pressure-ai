@@ -126,6 +126,43 @@ def test_fetch_live_parses_a_successful_response(monkeypatch):
     assert peso_anchor._fetch_live('rice') == {'price': 55.41, 'as_of': '2019-02'}
 
 
+def test_fetch_live_sends_the_hardcoded_national_geolocation_id(monkeypatch):
+    """Geolocation must be the hardcoded national id '0' -- matching the
+    established psa_cpi.py::_fetch_px_table precedent for this exact field
+    -- not resolved positionally from the metadata's values list. This
+    table family carries ~119 regional/provincial Geolocation entries
+    alongside the national one, so the metadata here deliberately lists a
+    non-national entry FIRST: if the query body were still built from
+    geo_var['values'][0], this test would catch the silent substitution by
+    asserting on the actual POST body sent to PSA."""
+    meta = MagicMock()
+    meta.json.return_value = {
+        'variables': [
+            {'code': 'Geolocation', 'values': ['13700000000', '0'],
+             'valueTexts': ['National Capital Region', 'Philippines']},
+            {'code': 'Commodity', 'values': ['5'],
+             'valueTexts': ['RICE, REGULAR-MILLED, 1 KG']},
+            {'code': 'Year', 'values': ['0', '1'], 'valueTexts': ['2018', '2019']},
+            {'code': 'Period', 'values': ['0', '1', '12'],
+             'valueTexts': ['January', 'February', 'Annual']},
+        ]
+    }
+    post = _fake_post_response([{'key': ['0', '5', '1', '1'], 'values': ['55.41']}])
+    captured = {}
+
+    def fake_post(url, json=None, **kw):
+        captured['json'] = json
+        return post
+
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', fake_post)
+
+    peso_anchor._fetch_live('rice')
+
+    geo_query = next(q for q in captured['json']['query'] if q['code'] == 'Geolocation')
+    assert geo_query == {'code': 'Geolocation', 'selection': {'filter': 'item', 'values': ['0']}}
+
+
 def test_fetch_live_picks_the_most_recent_row_when_several_exist(monkeypatch):
     meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
     post = _fake_post_response([
@@ -173,6 +210,28 @@ def test_fetch_live_returns_none_when_the_response_is_malformed(monkeypatch):
     post = _fake_post_response([{'key': ['0', '5'], 'values': ['55.41']}])
     monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
     monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') is None
+
+
+def test_fetch_live_returns_none_when_a_commodity_label_is_none(monkeypatch):
+    """A real PX-Web response shape: an untranslated/missing label comes
+    back as None in valueTexts, not an empty string. The None entry is
+    positioned before the real match so the loop's `txt.strip()` actually
+    reaches it -- if AttributeError weren't caught alongside the others,
+    this would crash instead of returning None."""
+    r = MagicMock()
+    r.json.return_value = {
+        'variables': [
+            {'code': 'Geolocation', 'values': ['0'], 'valueTexts': ['Philippines']},
+            {'code': 'Commodity', 'values': ['4', '5'],
+             'valueTexts': [None, 'RICE, REGULAR-MILLED, 1 KG']},
+            {'code': 'Year', 'values': ['0', '1'], 'valueTexts': ['2018', '2019']},
+            {'code': 'Period', 'values': ['0', '1', '12'],
+             'valueTexts': ['January', 'February', 'Annual']},
+        ]
+    }
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: r)
 
     assert peso_anchor._fetch_live('rice') is None
 

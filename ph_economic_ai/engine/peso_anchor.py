@@ -132,7 +132,6 @@ def _fetch_live(category: str) -> Optional[dict]:
         if commodity_id is None:
             return None
 
-        geo_var = by_code['Geolocation']
         year_var = by_code['Year']
         period_var = by_code['Period']
         month_ids = [pid for pid, txt in zip(period_var['values'], period_var['valueTexts'])
@@ -141,7 +140,7 @@ def _fetch_live(category: str) -> Optional[dict]:
         body = {
             'query': [
                 {'code': 'Geolocation',
-                 'selection': {'filter': 'item', 'values': [geo_var['values'][0]]}},
+                 'selection': {'filter': 'item', 'values': ['0']}},
                 {'code': 'Commodity',
                  'selection': {'filter': 'item', 'values': [commodity_id]}},
                 {'code': 'Year',
@@ -180,11 +179,15 @@ def _fetch_live(category: str) -> Optional[dict]:
             return None
         price, as_of = latest
         return {'price': price, 'as_of': as_of}
-    except (requests.RequestException, KeyError, ValueError, TypeError, IndexError):
+    except (requests.RequestException, KeyError, ValueError, TypeError,
+            IndexError, AttributeError):
         # IndexError is reachable from several spots above (e.g.
-        # geo_var['values'][0], row['values'][0], row['key'][2:4],
-        # year_labels[year_idx]) whenever PSA returns a variable with an
-        # empty values/valueTexts list or a data row with a short key --
+        # row['values'][0], row['key'][2:4], year_labels[year_idx])
+        # whenever PSA returns a variable with an empty values/valueTexts
+        # list or a data row with a short key. AttributeError is reachable
+        # from txt.strip() in the Commodity-label matching loop whenever
+        # PSA returns None for an untranslated/missing valueTexts entry --
+        # a real PX-Web response shape, not hypothetical. Both are
         # malformed-but-not-impossible responses that must fall back to
         # cache (get_anchor), not crash the caller, same as every other
         # failure mode here.
