@@ -127,18 +127,19 @@ def test_fetch_live_parses_a_successful_response(monkeypatch):
 
 
 def test_fetch_live_sends_the_hardcoded_national_geolocation_id(monkeypatch):
-    """Geolocation must be the hardcoded national id '0' -- matching the
-    established psa_cpi.py::_fetch_px_table precedent for this exact field
-    -- not resolved positionally from the metadata's values list. This
-    table family carries ~119 regional/provincial Geolocation entries
-    alongside the national one, so the metadata here deliberately lists a
-    non-national entry FIRST: if the query body were still built from
-    geo_var['values'][0], this test would catch the silent substitution by
-    asserting on the actual POST body sent to PSA."""
+    """Geolocation must be the hardcoded national id '000000000' -- the
+    real PSGC-style id PSA's own 2M/2018NEW/ retail-commodity tables use
+    for "Philippines" (confirmed against the live API: this table family
+    carries ~119 regional/provincial Geolocation entries, each keyed by a
+    9-digit PSGC code, not a small sequential index) -- not resolved
+    positionally from the metadata's values list. The metadata here
+    deliberately lists a non-national entry FIRST: if the query body were
+    still built from geo_var['values'][0], this test would catch the
+    silent substitution by asserting on the actual POST body sent to PSA."""
     meta = MagicMock()
     meta.json.return_value = {
         'variables': [
-            {'code': 'Geolocation', 'values': ['13700000000', '0'],
+            {'code': 'Geolocation', 'values': ['130000000', '000000000'],
              'valueTexts': ['National Capital Region', 'Philippines']},
             {'code': 'Commodity', 'values': ['5'],
              'valueTexts': ['RICE, REGULAR-MILLED, 1 KG']},
@@ -147,7 +148,7 @@ def test_fetch_live_sends_the_hardcoded_national_geolocation_id(monkeypatch):
              'valueTexts': ['January', 'February', 'Annual']},
         ]
     }
-    post = _fake_post_response([{'key': ['0', '5', '1', '1'], 'values': ['55.41']}])
+    post = _fake_post_response([{'key': ['000000000', '5', '1', '1'], 'values': ['55.41']}])
     captured = {}
 
     def fake_post(url, json=None, **kw):
@@ -160,7 +161,8 @@ def test_fetch_live_sends_the_hardcoded_national_geolocation_id(monkeypatch):
     peso_anchor._fetch_live('rice')
 
     geo_query = next(q for q in captured['json']['query'] if q['code'] == 'Geolocation')
-    assert geo_query == {'code': 'Geolocation', 'selection': {'filter': 'item', 'values': ['0']}}
+    assert geo_query == {'code': 'Geolocation',
+                          'selection': {'filter': 'item', 'values': ['000000000']}}
 
 
 def test_fetch_live_picks_the_most_recent_row_when_several_exist(monkeypatch):

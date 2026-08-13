@@ -101,9 +101,14 @@ _PSA_TABLE_URL = 'https://openstat.psa.gov.ph/PXWeb/api/v1/en/DB/2M/2018NEW/{tab
 def _fetch_live(category: str) -> Optional[dict]:
     """One PSA OpenSTAT PX-Web call for `category`'s specific commodity
     item, under 2M/2018NEW/ -- the confirmed-live folder (never 2M/RP or
-    2M/NRP, both confirmed frozen at 2021). Geolocation is always '0'
-    (Philippines, national), matching every other PSA fetch already in
-    this codebase. The commodity id is resolved at request time by
+    2M/NRP, both confirmed frozen at 2021). Geolocation is always
+    '000000000' (Philippines, national) -- this table family keys
+    Geolocation by 9-digit PSGC code, not the small sequential index
+    ('0', '1', ...) psa_cpi.py's own table family uses for the same
+    concept; confirmed against the live API for all four category tables
+    after a hardcoded '0' silently returned zero rows (PSA had no
+    Geolocation value matching '0', so the query matched nothing and
+    failed with no error). The commodity id is resolved at request time by
     matching CATEGORY_ITEMS[category]['commodity'] against the table's own
     valueTexts (label text, not a numeric index) -- the same resolution
     shape psa_cpi.py::_resolve_commodity_id already uses for CPI, since
@@ -145,7 +150,7 @@ def _fetch_live(category: str) -> Optional[dict]:
         body = {
             'query': [
                 {'code': 'Geolocation',
-                 'selection': {'filter': 'item', 'values': ['0']}},
+                 'selection': {'filter': 'item', 'values': ['000000000']}},
                 {'code': 'Commodity',
                  'selection': {'filter': 'item', 'values': [commodity_id]}},
                 {'code': 'Year',
