@@ -161,6 +161,49 @@ def band_provenance(band: dict) -> str:
             f'error ({n} of {_MIN_GRADED()} graded runs available)')
 
 
+def band_provenance_tooltip(band: dict) -> str:
+    """Plain-language companion to `band_provenance`, for a hover tooltip.
+
+    Same underlying fact, aimed at a reader who does not already know what
+    'calibrated' means in a forecasting context -- the precise wording in
+    `band_provenance` itself stays exactly as-is."""
+    if band.get('calibrated'):
+        return (f'This range has been checked against {band.get("n_graded", 0)} '
+                f'of this app’s own past forecasts.')
+    return ("This isn't a proven range — it's the app's best guess at how "
+            "wide the swing could be, not something checked against real "
+            "outcomes yet.")
+
+
+#: Plain-language tooltip for the agent-estimate spread line (`spread_line`).
+SPREAD_LINE_TOOLTIP = (
+    "This app runs several AI agents that each independently guess the price "
+    "change. This shows how many gave different answers and how far apart "
+    "they were."
+)
+
+#: Plain-language tooltip for the narrowed-room caveat (`agreement_caveat`).
+AGREEMENT_CAVEAT_TOOLTIP = (
+    "A high agreement number can be misleading if most agents just repeated "
+    "the same guess instead of agreeing independently. This flags when "
+    "that's happening."
+)
+
+#: Plain-language tooltip for the "direction agreement N% (not a probability)" line.
+DIRECTION_AGREEMENT_TOOLTIP = (
+    "This is NOT the odds of the price actually rising or falling — it's "
+    "just how many agents agreed on which direction, which is a different "
+    "thing."
+)
+
+#: Plain-language tooltip for the anchor-record / Diebold-Mariano line (gas only).
+ANCHOR_RECORD_TOOLTIP = (
+    "This checks whether the app's method reliably beats just assuming 'no "
+    "change.' The test says the improvement isn't big enough to be sure it "
+    "isn't luck."
+)
+
+
 def _MIN_GRADED() -> int:
     from ph_economic_ai.engine.interval import MIN_GRADED_FOR_CALIBRATION
     return MIN_GRADED_FOR_CALIBRATION
