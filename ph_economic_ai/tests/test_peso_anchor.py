@@ -84,3 +84,154 @@ def test_is_usable_if_stale_false_for_a_missing_fetched_on():
 
 def test_category_items_covers_exactly_the_four_confirmed_categories():
     assert set(peso_anchor.CATEGORY_ITEMS) == {'rice', 'meat', 'fish', 'vegetables'}
+
+
+import json as jsonlib
+from unittest.mock import MagicMock
+
+
+def test_fetch_live_returns_none_for_a_category_not_in_scope():
+    assert peso_anchor._fetch_live('sugar') is None
+
+
+def _fake_meta_response(commodity_label):
+    r = MagicMock()
+    r.json.return_value = {
+        'variables': [
+            {'code': 'Geolocation', 'values': ['0'], 'valueTexts': ['Philippines']},
+            {'code': 'Commodity', 'values': ['5'], 'valueTexts': [commodity_label]},
+            {'code': 'Year', 'values': ['0', '1'], 'valueTexts': ['2018', '2019']},
+            {'code': 'Period', 'values': ['0', '1', '12'],
+             'valueTexts': ['January', 'February', 'Annual']},
+        ]
+    }
+    return r
+
+
+def _fake_post_response(rows):
+    r = MagicMock()
+    r.content = jsonlib.dumps({'data': rows}).encode('utf-8')
+    r.raise_for_status = lambda: None
+    return r
+
+
+def test_fetch_live_parses_a_successful_response(monkeypatch):
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    # key = [Geolocation, Commodity, Year, Period] value-ids;
+    # year id '1' -> 2019 (index 1), period id '1' -> February.
+    post = _fake_post_response([{'key': ['0', '5', '1', '1'], 'values': ['55.41']}])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 55.41, 'as_of': '2019-02'}
+
+
+def test_fetch_live_picks_the_most_recent_row_when_several_exist(monkeypatch):
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '0', '0'], 'values': ['50.00']},   # 2018-01
+        {'key': ['0', '5', '1', '1'], 'values': ['55.41']},   # 2019-02, latest
+        {'key': ['0', '5', '0', '11'], 'values': ['51.00']},  # not present here, illustrative
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 55.41, 'as_of': '2019-02'}
+
+
+def test_fetch_live_skips_annual_and_blank_rows(monkeypatch):
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '1', '12'], 'values': ['999.00']},  # Annual, must be skipped
+        {'key': ['0', '5', '0', '0'], 'values': ['..']},       # blank, must be skipped
+        {'key': ['0', '5', '0', '1'], 'values': ['48.20']},    # 2018-02, the only real row
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 48.20, 'as_of': '2018-02'}
+
+
+def test_fetch_live_returns_none_when_the_network_call_raises(monkeypatch):
+    def raise_error(*a, **kw):
+        raise peso_anchor.requests.RequestException('boom')
+    monkeypatch.setattr(peso_anchor.requests, 'get', raise_error)
+    assert peso_anchor._fetch_live('rice') is None
+
+
+def test_fetch_live_returns_none_when_the_commodity_label_is_not_found(monkeypatch):
+    meta = _fake_meta_response('SOME OTHER ITEM, 1 KG')
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    assert peso_anchor._fetch_live('rice') is None
+
+
+def test_fetch_live_returns_none_when_the_response_is_malformed(monkeypatch):
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    # A data row with a key shorter than the expected 4 entries: indexing
+    # row['key'][2] / row['key'][3] would raise IndexError if that
+    # exception weren't caught alongside the others.
+    post = _fake_post_response([{'key': ['0', '5'], 'values': ['55.41']}])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') is None
+
+
+def test_get_anchor_returns_none_for_a_category_not_in_scope():
+    assert peso_anchor.get_anchor('sugar') is None
+
+
+def test_get_anchor_uses_a_fresh_same_day_cache_without_fetching(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    peso_anchor._save_cache(
+        {'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'}},
+        cache_path)
+
+    def fail_if_called(category):
+        raise AssertionError('should not fetch when cache is fresh')
+    monkeypatch.setattr(peso_anchor, '_fetch_live', fail_if_called)
+
+    result = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today)
+    assert result == {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'}
+
+
+def test_get_anchor_fetches_and_caches_when_todays_entry_is_missing(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    monkeypatch.setattr(peso_anchor, '_fetch_live',
+                        lambda category: {'price': 52.90, 'as_of': '2026-08'})
+
+    result = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today)
+    assert result == {'price': 52.90, 'as_of': '2026-08', 'fetched_on': '2026-08-13'}
+    assert peso_anchor._load_cache(cache_path)['rice']['price'] == 52.90
+
+
+def test_get_anchor_falls_back_to_a_usable_stale_cache_when_the_fetch_fails(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    peso_anchor._save_cache(
+        {'rice': {'price': 51.00, 'as_of': '2026-06', 'fetched_on': '2026-07-01'}},
+        cache_path)
+    monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
+
+    result = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today)
+    assert result == {'price': 51.00, 'as_of': '2026-06', 'fetched_on': '2026-07-01'}
+
+
+def test_get_anchor_returns_none_when_fetch_fails_and_cache_is_too_stale(tmp_path, monkeypatch):
+    from datetime import timedelta
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    too_old = (today - timedelta(days=61)).isoformat()
+    peso_anchor._save_cache(
+        {'rice': {'price': 45.00, 'as_of': '2026-06', 'fetched_on': too_old}}, cache_path)
+    monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
+
+    assert peso_anchor.get_anchor('rice', cache_path=cache_path, today=today) is None
+
+
+def test_get_anchor_returns_none_when_fetch_fails_and_no_cache_exists(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'nope.json'
+    monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
+    assert peso_anchor.get_anchor('rice', cache_path=cache_path, today=date(2026, 8, 13)) is None
