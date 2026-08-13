@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 )
 
 from ph_economic_ai.engine import interval as _interval
-from ph_economic_ai.engine import peso_anchor
 from ph_economic_ai.engine import price_calendar as _calendar
 from ph_economic_ai.engine.monitor import MonitorThread
 from ph_economic_ai.engine.knowledge_graph import KnowledgeGraphBuilder
@@ -878,54 +877,9 @@ class PressureMonitorPanel(QWidget):
             note.setStyleSheet(f'color:{_T3};font-size:10px;font-style:italic;margin-top:2px;')
             note.setWordWrap(True)
             lay.addWidget(note)
-
-            # PESO ANCHOR + PROJECTION, food only, rice/meat/fish/vegetables only
-            # (the four PSA-anchored categories from Task 2). A category needs
-            # both a real PSA price and this cycle's debate percentage to show a
-            # projection -- either missing shows '—' for that slot rather than
-            # inventing a stand-in value.
-            anchor_parts = []
-            as_of_months = []
-            for category in ('rice', 'meat', 'fish', 'vegetables'):
-                label = _CATEGORY_DISPLAY_LABELS[category]
-                pct = r.subcategories.get(category)
-                anchor = peso_anchor.get_anchor(category) if pct is not None else None
-                # .get(), not direct indexing: a malformed cache entry (e.g.
-                # missing 'price' or 'as_of') must read as "unavailable for
-                # this category" -- an em-dash -- not crash the whole card.
-                price = anchor.get('price') if anchor is not None else None
-                as_of = anchor.get('as_of') if anchor is not None else None
-                if pct is not None and price is not None and as_of is not None:
-                    projected = peso_anchor.project(price, pct)
-                    anchor_parts.append(
-                        f"{label} ₱{price:.2f} → ₱{projected:.2f}")
-                    as_of_months.append(as_of)
-                else:
-                    anchor_parts.append(f'{label} —')
-
-            if as_of_months:
-                # Each category's get_anchor() call is independent and can
-                # fall back to a different cache age, so two categories in
-                # this same strip can legitimately carry different as_of
-                # months. Report the OLDEST one actually used -- a floor,
-                # not a claim that every price shown is from that exact
-                # month -- rather than whichever category happened to
-                # resolve last in the loop above. 'YYYY-MM' strings sort
-                # correctly lexicographically, so plain min() works.
-                oldest_month = min(as_of_months)
-                strip = QLabel('  ·  '.join(anchor_parts))
-                strip.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:8px;')
-                strip.setWordWrap(True)
-                lay.addWidget(strip)
-
-                caption = QLabel(
-                    f'PSA retail price (as of {oldest_month} or later) × this '
-                    "debate's forecast — exploratory projection, not a "
-                    'validated prediction.')
-                caption.setStyleSheet(
-                    f'color:{_T3};font-size:10px;font-style:italic;margin-top:2px;')
-                caption.setWordWrap(True)
-                lay.addWidget(caption)
+            # The peso-anchor strip (₱ prices + projection) that used to render
+            # here now lives on the Report page's Food card instead -- Monitor
+            # keeps only the percentage breakdown above.
 
         return card
 

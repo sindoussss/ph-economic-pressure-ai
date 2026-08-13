@@ -585,3 +585,59 @@ def test_recently_failed_is_false_for_a_future_timestamped_marker():
     future_failed_at = now + timedelta(minutes=5)
     peso_anchor._mark_failed(cache, 'rice', future_failed_at)
     assert peso_anchor._recently_failed(cache, 'rice', now) is False
+
+
+# --- anchor_strip(): shared pure-formatting helper for Monitor and Report ---
+
+def test_anchor_strip_returns_none_when_no_category_has_both_pieces(monkeypatch):
+    monkeypatch.setattr(peso_anchor, 'get_anchor', lambda category, *a, **kw: None)
+    assert peso_anchor.anchor_strip({}) is None
+    assert peso_anchor.anchor_strip({'rice': 0.3}) is None
+
+
+def test_anchor_strip_builds_text_and_caption_from_price_and_percent(monkeypatch):
+    prices = {
+        'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        'meat': {'price': 185.40, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        'fish': None,
+        'vegetables': {'price': 62.10, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+    }
+    monkeypatch.setattr(peso_anchor, 'get_anchor', lambda category, *a, **kw: prices.get(category))
+
+    result = peso_anchor.anchor_strip(
+        {'rice': 0.3, 'meat': -0.3, 'fish': 0.8, 'vegetables': 0.5})
+
+    assert result['text'] == (
+        'Rice ₱52.36 → ₱52.52  ·  Meat ₱185.40 → ₱184.84  ·  Fish —  ·  '
+        'Vegetables ₱62.10 → ₱62.41')
+    assert 'as of 2026-07 or later' in result['caption']
+    assert 'exploratory projection, not a validated prediction' in result['caption']
+
+
+def test_anchor_strip_reports_the_oldest_as_of_month(monkeypatch):
+    prices = {
+        'rice': {'price': 52.36, 'as_of': '2026-05', 'fetched_on': '2026-08-13'},
+        'meat': {'price': 185.40, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        'fish': None,
+        'vegetables': None,
+    }
+    monkeypatch.setattr(peso_anchor, 'get_anchor', lambda category, *a, **kw: prices.get(category))
+
+    result = peso_anchor.anchor_strip({'rice': 0.3, 'meat': -0.3})
+
+    assert 'as of 2026-05 or later' in result['caption']
+
+
+def test_anchor_strip_only_calls_get_anchor_for_categories_with_a_percent(monkeypatch):
+    """A category never fetched at all when this cycle's debate produced no
+    percentage for it -- matching the existing Monitor behaviour, not a new
+    cost paid on every render for categories with nothing to anchor."""
+    calls = []
+
+    def fake_get_anchor(category, *a, **kw):
+        calls.append(category)
+        return {'price': 10.0, 'as_of': '2026-07', 'fetched_on': '2026-08-13'}
+
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+    peso_anchor.anchor_strip({'rice': 0.3})
+    assert calls == ['rice']
