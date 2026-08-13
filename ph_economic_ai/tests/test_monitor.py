@@ -141,6 +141,43 @@ def test_food_card_shows_peso_anchor_strip(app, monkeypatch):
     assert 'exploratory projection, not a validated prediction' in texts
 
 
+def test_food_card_peso_strip_shows_dash_when_one_category_key_is_absent(app, monkeypatch):
+    """The prior test covers a category whose PSA fetch failed (present in
+    `subcategories`, `get_anchor` returns None). This covers the different
+    shape a review traced by hand but never asserted: a category simply
+    absent from `subcategories` entirely -- e.g. the debate never produced a
+    meat percentage this cycle -- while its siblings carry real percentages
+    in the same dict. That one slot must still read '—' without suppressing
+    the rest of the strip, exactly the RSK-053 shape of "the code path was
+    touched but the rendered text was never asserted"."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
+    from PyQt6.QtWidgets import QLabel
+
+    def fake_get_anchor(category, *a, **kw):
+        prices = {
+            'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'fish': {'price': 90.00, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'vegetables': {'price': 62.10, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        }
+        return prices.get(category)
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3, 0.4, 0.5],
+                      subcategories={'rice': 0.3, 'fish': 0.8,
+                                     'vegetables': 0.5})   # 'meat' key absent entirely
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+
+    assert 'Rice ₱52.36 → ₱52.52' in texts
+    assert 'Fish ₱90.00 → ₱90.72' in texts
+    assert 'Vegetables ₱62.10 → ₱62.41' in texts
+    assert 'Meat —' in texts
+    assert 'exploratory projection, not a validated prediction' in texts
+
+
 def test_food_card_omits_the_peso_strip_when_no_category_has_both_pieces(app, monkeypatch):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     from ph_economic_ai.engine import peso_anchor
