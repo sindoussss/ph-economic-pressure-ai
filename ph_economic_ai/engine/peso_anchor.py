@@ -164,18 +164,20 @@ def _fetch_live(category: str) -> Optional[dict]:
 
         latest = None
         for row in data['data']:
-            raw = row['values'][0]
-            if raw in ('..', '', None):
-                continue
-            # Each row's own parsing (price + year/period resolution) is
-            # isolated here, same shape as psa_cpi.py::_fetch_px_table's own
-            # per-row try/except -- one malformed cell (a comma-formatted
-            # price, a dash, a data row with a short key, or a `None` entry
-            # in the Year variable's labels -- the same "untranslated/
-            # missing label" PX-Web shape already handled for Commodity
-            # below) must skip only that row, not discard a `latest` value
-            # already found from an earlier, perfectly good row.
+            # Each row's own parsing (value extraction, price, and
+            # year/period resolution) is isolated here, same shape as
+            # psa_cpi.py::_fetch_px_table's own per-row try/except -- one
+            # malformed row (an empty or missing `values` list, a comma-
+            # formatted price, a dash, a data row with a short key, or a
+            # `None` entry in the Year variable's labels -- the same
+            # "untranslated/missing label" PX-Web shape already handled for
+            # Commodity below) must skip only that row, not discard a
+            # `latest` value already found from an earlier, perfectly good
+            # row.
             try:
+                raw = row['values'][0]
+                if raw in ('..', '', None):
+                    continue
                 year_id, period_id = row['key'][2], row['key'][3]
                 month_name = period_labels.get(period_id)
                 if month_name is None or month_name == 'Annual':
@@ -191,7 +193,7 @@ def _fetch_live(category: str) -> Optional[dict]:
                 if not yyyy or not str(yyyy).isdigit() or len(str(yyyy)) != 4:
                     continue
                 price = float(raw)
-            except (ValueError, TypeError, IndexError, AttributeError):
+            except (ValueError, TypeError, IndexError, KeyError, AttributeError):
                 logging.debug('peso_anchor: skipped an unparseable row for %s', category)
                 continue
             as_of = f'{yyyy}-{month_num:02d}'
@@ -205,10 +207,13 @@ def _fetch_live(category: str) -> Optional[dict]:
         return {'price': price, 'as_of': as_of}
     except (requests.RequestException, KeyError, ValueError, TypeError,
             IndexError, AttributeError) as exc:
-        # IndexError is reachable from several spots above (e.g.
-        # row['values'][0], year_labels[year_idx]) whenever PSA returns a
-        # variable with an empty values/valueTexts list. AttributeError is
-        # reachable from txt.strip() in the Commodity-label matching loop
+        # IndexError/KeyError are reachable from metadata parsing above
+        # (e.g. by_code['Commodity'], commodity_var['valueTexts']) whenever
+        # PSA returns a variable with an empty/missing values list --
+        # per-row causes (row['values'][0], year_labels[year_idx]) are now
+        # isolated inside the per-row try/except above and skip just that
+        # row instead of reaching here. AttributeError is reachable from
+        # txt.strip() in the Commodity-label matching loop
         # whenever PSA returns None for an untranslated/missing valueTexts
         # entry -- a real PX-Web response shape, not hypothetical. Both are
         # malformed-but-not-impossible responses that must fall back to
@@ -222,16 +227,21 @@ def _fetch_live(category: str) -> Optional[dict]:
 #: category. Not the documented synchronous-fetch design (already accepted,
 #: not in scope to relitigate) -- just a floor so a persistent PSA outage
 #: doesn't repeat the same ~50s-per-category network call on every single
-#: Monitor render within a short window. Keyed under a reserved '_failed'
-#: top-level cache entry, never inside a category's own entry, so it never
-#: rides along with (and is never mistaken for) a real price reading.
+#: Monitor render within a short window. Keyed under a reserved
+#: '_failed_attempts' top-level cache entry, never inside a category's own
+#: entry, so it never rides along with (and is never mistaken for) a real
+#: price reading.
 _FAILURE_COOLDOWN = timedelta(hours=1)
 _FAILURES_KEY = '_failed_attempts'
 
 
 def _recently_failed(cache: dict, category: str, now: datetime) -> bool:
     """True if the last fetch attempt for `category` failed within
-    `_FAILURE_COOLDOWN`."""
+    `_FAILURE_COOLDOWN`. A `failed_at` timestamped in the future (clock
+    skew, or a cache file copied between machines with different clocks)
+    must not keep the cooldown active indefinitely -- same hazard
+    `_is_usable_if_stale` already guards on the other side of the cache
+    with its own `0 <= age_days` check."""
     failures = cache.get(_FAILURES_KEY)
     if not isinstance(failures, dict):
         return False
@@ -242,7 +252,8 @@ def _recently_failed(cache: dict, category: str, now: datetime) -> bool:
         failed_at = datetime.fromisoformat(failed_at_raw)
     except (ValueError, TypeError):
         return False
-    return now - failed_at < _FAILURE_COOLDOWN
+    elapsed = now - failed_at
+    return timedelta() <= elapsed < _FAILURE_COOLDOWN
 
 
 def _mark_failed(cache: dict, category: str, now: datetime) -> None:
@@ -256,21 +267,26 @@ def _clear_failed(cache: dict, category: str) -> None:
 
 
 def get_anchor(category: str, cache_path: Path = CACHE_PATH,
-               today: Optional[date] = None) -> Optional[dict]:
+               today: Optional[date] = None,
+               now: Optional[datetime] = None) -> Optional[dict]:
     """Today's price for `category`: {'price': float, 'as_of': 'YYYY-MM',
     'fetched_on': 'YYYY-MM-DD'}, or None if `category` isn't one of the
     four in scope, the live fetch fails and no usable cache exists, or the
     only cached entry is older than STALE_AFTER_DAYS. `today` is
-    injectable for tests; defaults to the real current date.
+    injectable for tests; defaults to the real current date. `now` is
+    injectable the same way, for the negative-cache cooldown check;
+    defaults to the real current datetime.
 
-    A fetch that fails (and has no usable stale cache to fall back to)
-    negative-caches for `_FAILURE_COOLDOWN`: the next call within that
-    window skips `_fetch_live` entirely rather than repeating the same
-    doomed, slow network call on every render during a PSA outage."""
+    A fetch that fails negative-caches for `_FAILURE_COOLDOWN` regardless
+    of whether a usable stale cache entry is found to fall back to: the
+    next call within that window skips `_fetch_live` entirely rather than
+    repeating the same doomed, slow network call on every render during a
+    PSA outage -- including (especially) the dominant real-world case
+    where a stale cache keeps every call succeeding anyway."""
     if category not in CATEGORY_ITEMS:
         return None
     today = today or date.today()
-    now = datetime.now()
+    now = now or datetime.now()
     cache = _load_cache(cache_path)
     entry = cache.get(category)
     if entry and _is_fresh(entry, today):
@@ -289,9 +305,10 @@ def get_anchor(category: str, cache_path: Path = CACHE_PATH,
         _save_cache(cache, cache_path)
         return entry
 
+    _mark_failed(cache, category, now)
+    _save_cache(cache, cache_path)
+
     if entry and _is_usable_if_stale(entry, today):
         return entry
 
-    _mark_failed(cache, category, now)
-    _save_cache(cache, cache_path)
     return None

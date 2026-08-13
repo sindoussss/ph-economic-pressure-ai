@@ -475,3 +475,111 @@ def test_clear_failed_removes_the_marker_for_only_that_category():
     peso_anchor._clear_failed(cache, 'rice')
     assert peso_anchor._recently_failed(cache, 'rice', now) is False
     assert peso_anchor._recently_failed(cache, 'meat', now) is True
+
+
+# ── Second residual-review round ────────────────────────────────────────────
+
+# Fix 1: raw = row['values'][0] must be inside the per-row try/except too,
+# not just float(raw) and the year/period resolution -- an empty or missing
+# `values` list must not discard an already-found good row.
+
+def test_fetch_live_skips_a_row_with_an_empty_values_list_but_keeps_a_good_one(monkeypatch):
+    """Before the fix, `raw = row['values'][0]` sat outside the per-row
+    try/except. An empty `values` list raises IndexError from that line,
+    which propagated past the per-row guard straight to the function's
+    outer except -- discarding the good 2019-02 row already found, and
+    returning None for the whole fetch instead of just skipping this one
+    malformed row."""
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '1', '1'], 'values': ['55.41']},  # 2019-02, good, found first
+        {'key': ['0', '5', '0', '0'], 'values': []},         # malformed: empty values list
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 55.41, 'as_of': '2019-02'}
+
+
+def test_fetch_live_skips_a_row_missing_the_values_key_but_keeps_a_good_one(monkeypatch):
+    """Same hazard, but the row is missing the 'values' key entirely --
+    row['values'][0] raises KeyError rather than IndexError. Both must be
+    isolated to just that row by the per-row try/except."""
+    meta = _fake_meta_response('RICE, REGULAR-MILLED, 1 KG')
+    post = _fake_post_response([
+        {'key': ['0', '5', '1', '1'], 'values': ['55.41']},  # 2019-02, good, found first
+        {'key': ['0', '5', '0', '0']},                       # malformed: no 'values' key
+    ])
+    monkeypatch.setattr(peso_anchor.requests, 'get', lambda *a, **kw: meta)
+    monkeypatch.setattr(peso_anchor.requests, 'post', lambda *a, **kw: post)
+
+    assert peso_anchor._fetch_live('rice') == {'price': 55.41, 'as_of': '2019-02'}
+
+
+# Fix 2: the negative-cache failure marker must be written whenever a fetch
+# fails, whether or not a usable stale cache entry is found to fall back to
+# -- otherwise the dominant real-world case (a working app with cached data,
+# hitting a temporary PSA outage) pays the full slow-fetch cost on every
+# single call despite the cache fallback succeeding every time.
+
+def test_get_anchor_marks_failure_even_when_a_stale_cache_fallback_succeeds(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    now = datetime(2026, 8, 13, 9, 0, 0)
+    peso_anchor._save_cache(
+        {'rice': {'price': 51.00, 'as_of': '2026-06', 'fetched_on': '2026-07-01'}},
+        cache_path)
+
+    calls = []
+
+    def fake_fetch_live(category):
+        calls.append(category)
+        return None
+    monkeypatch.setattr(peso_anchor, '_fetch_live', fake_fetch_live)
+
+    first = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today, now=now)
+    assert first == {'price': 51.00, 'as_of': '2026-06', 'fetched_on': '2026-07-01'}
+    assert calls == ['rice']
+
+    def fail_if_called(category):
+        raise AssertionError('should not re-fetch within the failure cooldown')
+    monkeypatch.setattr(peso_anchor, '_fetch_live', fail_if_called)
+
+    second = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today, now=now)
+    assert second == {'price': 51.00, 'as_of': '2026-06', 'fetched_on': '2026-07-01'}
+
+
+# Fix 3: `now` is injectable in get_anchor, matching the existing `today`
+# parameter, so the full expiry-then-success negative-cache cycle can be
+# exercised through get_anchor's own public API.
+
+def test_get_anchor_retries_after_the_cooldown_expires_through_the_public_api(tmp_path, monkeypatch):
+    cache_path = tmp_path / 'cache.json'
+    today = date(2026, 8, 13)
+    t0 = datetime(2026, 8, 13, 9, 0, 0)
+
+    monkeypatch.setattr(peso_anchor, '_fetch_live', lambda category: None)
+    first = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today, now=t0)
+    assert first is None
+
+    t1 = t0 + peso_anchor._FAILURE_COOLDOWN + timedelta(minutes=1)
+    monkeypatch.setattr(
+        peso_anchor, '_fetch_live',
+        lambda category: {'price': 53.10, 'as_of': '2026-08'})
+
+    second = peso_anchor.get_anchor('rice', cache_path=cache_path, today=today, now=t1)
+    assert second == {'price': 53.10, 'as_of': '2026-08', 'fetched_on': '2026-08-13'}
+
+    cache = peso_anchor._load_cache(cache_path)
+    assert cache.get(peso_anchor._FAILURES_KEY, {}).get('rice') is None
+
+
+# Fix 4: a future-timestamped failure marker (clock skew, or a cache file
+# copied between machines) must not keep the cooldown active indefinitely.
+
+def test_recently_failed_is_false_for_a_future_timestamped_marker():
+    cache = {}
+    now = datetime(2026, 8, 13, 10, 0, 0)
+    future_failed_at = now + timedelta(minutes=5)
+    peso_anchor._mark_failed(cache, 'rice', future_failed_at)
+    assert peso_anchor._recently_failed(cache, 'rice', now) is False
