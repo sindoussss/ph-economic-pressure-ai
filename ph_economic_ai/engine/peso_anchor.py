@@ -54,6 +54,58 @@ def project(anchor_price: float, pct_change: float) -> float:
     return anchor_price * (1 + pct_change / 100)
 
 
+#: Display labels for the four PSA-anchored categories. Deliberately not
+#: shared with the UI layer's own six-category label map (which also covers
+#: dairy_eggs/sugar, outside this module's scope) -- this module stays free
+#: of any UI-layer import, engine code never depends on ui/.
+_DISPLAY_LABELS = {'rice': 'Rice', 'meat': 'Meat', 'fish': 'Fish', 'vegetables': 'Vegetables'}
+
+
+def anchor_strip(subcategories: dict) -> Optional[dict]:
+    """{'text': str, 'caption': str} for the four PSA-anchored categories
+    that have both a live/cached price and this cycle's debate percentage in
+    `subcategories`, or None if none do. A category missing either piece
+    shows '—' in its own slot rather than inventing a stand-in value or
+    suppressing the rest of the strip.
+
+    Pure formatting -- no PyQt -- so Monitor and Report can both build their
+    own widget from the returned strings without duplicating this logic.
+    `get_anchor()` is only called for a category that actually has a
+    percentage this cycle, same cost discipline the original inline version
+    had."""
+    parts = []
+    as_of_months = []
+    for category, label in _DISPLAY_LABELS.items():
+        pct = subcategories.get(category)
+        anchor = get_anchor(category) if pct is not None else None
+        # .get(), not direct indexing: a malformed cache entry (e.g. missing
+        # 'price' or 'as_of') must read as "unavailable for this category"
+        # -- an em-dash -- not raise.
+        price = anchor.get('price') if anchor is not None else None
+        as_of = anchor.get('as_of') if anchor is not None else None
+        if pct is not None and price is not None and as_of is not None:
+            projected = project(price, pct)
+            parts.append(f'{label} ₱{price:.2f} → ₱{projected:.2f}')
+            as_of_months.append(as_of)
+        else:
+            parts.append(f'{label} —')
+
+    if not as_of_months:
+        return None
+    # Each category's get_anchor() call is independent and can fall back to
+    # a different cache age, so two categories in this same strip can
+    # legitimately carry different as_of months. Report the OLDEST one
+    # actually used -- a floor, not a claim every price shown is from that
+    # exact month. 'YYYY-MM' strings sort correctly lexicographically.
+    oldest_month = min(as_of_months)
+    return {
+        'text': '  ·  '.join(parts),
+        'caption': (f'PSA retail price (as of {oldest_month} or later) × this '
+                    "debate's forecast — exploratory projection, not a "
+                    'validated prediction.'),
+    }
+
+
 def _load_cache(cache_path: Path = CACHE_PATH) -> dict:
     """The cache file as a dict, or {} if it doesn't exist yet, is corrupt,
     or (rare, but a real JSON file can hold a list/string/number just as

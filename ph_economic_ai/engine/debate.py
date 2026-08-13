@@ -348,6 +348,56 @@ _FOOD_ANCHOR = (
     f'Philippines are ±0.3% to ±2.5%. Output only the signed monthly CHANGE percentage. '
 )
 
+#: Food sub-category prompt labels, in the order they should appear in an
+#: agent's or judge's closing instruction. Six PSA CPI sub-categories
+#: confirmed live against openstat.psa.gov.ph during this feature's
+#: brainstorming (see
+#: docs/superpowers/specs/2026-08-12-food-subcategory-forecast-design.md).
+_CATEGORY_LABELS = {
+    'rice': 'RICE', 'meat': 'MEAT', 'fish': 'FISH',
+    'dairy_eggs': 'DAIRY_EGGS', 'vegetables': 'VEGETABLES', 'sugar': 'SUGAR',
+}
+
+#: Six worked-example lines an agent must append after its ESTIMATE line, one
+#: per PSA sub-category. Same instructions-not-template pattern ESTIMATE_LINE
+#: already established (RSK-012's lesson): a small model copies a bare
+#: template verbatim, so every line needs its own worked example. Lives here
+#: (not forum.py, which originated it) because DebateEngine's own FOOD_AGENTS
+#: prompts need it too, matching this file's existing role as "the layer all
+#: three [DebateEngine, forum, swarm] import" for food-category constants.
+#: Defined before FOOD_AGENTS below, which concatenates it at module load.
+_FOOD_CATEGORY_LINES = {
+    'rice': ('RICE: <the percent month-on-month CHANGE you expect for rice specifically, '
+             'signed> (worked example: "RICE: +0.2%" or "RICE: -0.1%". Write your own '
+             'number; never write X.X.)'),
+    'meat': ('MEAT: <the percent month-on-month CHANGE you expect for meat specifically, '
+             'signed> (worked example: "MEAT: +0.3%" or "MEAT: -0.2%". Write your own '
+             'number; never write X.X.)'),
+    'fish': ('FISH: <the percent month-on-month CHANGE you expect for fish and seafood '
+             'specifically, signed> (worked example: "FISH: +0.8%" or "FISH: -0.4%". '
+             'Write your own number; never write X.X.)'),
+    'dairy_eggs': ('DAIRY_EGGS: <the percent month-on-month CHANGE you expect for milk, '
+                  'dairy and eggs specifically, signed> (worked example: '
+                  '"DAIRY_EGGS: +0.1%" or "DAIRY_EGGS: -0.1%". Write your own number; '
+                  'never write X.X.)'),
+    'vegetables': ('VEGETABLES: <the percent month-on-month CHANGE you expect for '
+                   'vegetables specifically, signed> (worked example: '
+                   '"VEGETABLES: +0.5%" or "VEGETABLES: -0.3%". Write your own number; '
+                   'never write X.X.)'),
+    'sugar': ('SUGAR: <the percent month-on-month CHANGE you expect for sugar and '
+             'confectionery specifically, signed> (worked example: "SUGAR: +0.1%" or '
+             '"SUGAR: -0.1%". Write your own number; never write X.X.)'),
+}
+
+#: Every FOOD_AGENTS entry ends its system_prompt with this: the blended
+#: ESTIMATE line, then the six category lines, matching the order the food
+#: judge's own prompt already uses (blended estimate first, categories
+#: after) -- the same order _strip_category_lines relies on when protecting
+#: consensus()'s price_estimate extraction below from the category numbers.
+_FOOD_AGENT_CLOSING = (
+    ESTIMATE_LINE['food'] + '\n' + '\n'.join(_FOOD_CATEGORY_LINES.values())
+)
+
 FOOD_AGENTS: list[Agent] = [
     Agent(
         name='Agri Analyst',
@@ -357,7 +407,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are an agricultural economist specializing in Philippine food markets. '
             'Using the gas price context and weather data provided, estimate the monthly '
             'food price index CHANGE. '
-            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
+            'End your response with:\n' + _FOOD_AGENT_CLOSING
         ),
         rag_sources=['neda_2024_2026', 'WBPhilFood', 'NFARiceRetail'],
     ),
@@ -369,7 +419,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a logistics expert analyzing how fuel price changes cascade into '
             'Philippine food distribution costs. Using the gas price context, estimate '
             'transport cost contribution to food price change. '
-            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
+            'End your response with:\n' + _FOOD_AGENT_CLOSING
         ),
         rag_sources=['YahooFinanceCrude', 'OpenMeteoManila'],
     ),
@@ -381,7 +431,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a climate-agriculture analyst. Using the rainfall and temperature '
             'data provided (weighted average across Central Luzon, Bicol, and Davao), '
             'assess crop stress and estimate weather-driven food price pressure. '
-            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
+            'End your response with:\n' + _FOOD_AGENT_CLOSING
         ),
         rag_sources=['PAGASAWeather', 'OpenMeteoManila'],
     ),
@@ -393,7 +443,7 @@ FOOD_AGENTS: list[Agent] = [
             'You are a trade policy analyst focused on Philippine food security. '
             'Challenge or support previous estimates based on NFA buffer stocks, '
             'import quotas, and tariff policy. '
-            'End your response with exactly one line: ' + ESTIMATE_LINE['food']
+            'End your response with:\n' + _FOOD_AGENT_CLOSING
         ),
         rag_sources=['neda_2024_2026', 'WBPhilFood', 'NFARiceRetail'],
     ),
@@ -650,16 +700,6 @@ def _extract_percent(text: str) -> Optional[float]:
     return value
 
 
-#: Food sub-category prompt labels, in the order they should appear in the
-#: judge's closing instruction. Six PSA CPI sub-categories confirmed live
-#: against openstat.psa.gov.ph during this feature's brainstorming (see
-#: docs/superpowers/specs/2026-08-12-food-subcategory-forecast-design.md).
-_CATEGORY_LABELS = {
-    'rice': 'RICE', 'meat': 'MEAT', 'fish': 'FISH',
-    'dairy_eggs': 'DAIRY_EGGS', 'vegetables': 'VEGETABLES', 'sugar': 'SUGAR',
-}
-
-
 def _extract_category_percents(text: str) -> dict[str, float]:
     """One signed-percent line per food sub-category (RICE:, MEAT:, ...).
 
@@ -863,12 +903,24 @@ class DebateEngine:
                     if on_token:
                         on_token(agent.name, token)
                 thinking, statement = _parse_think(full_text)
+                # Food agents' own statements now carry six category lines
+                # (FOOD_AGENTS' prompt, above) after their blended ESTIMATE
+                # line, same order the food judge's own prompt already uses.
+                # _extract_percent's prose fallback grabs the first signed
+                # percent anywhere in the text whenever the anchored
+                # ESTIMATE: line fails to parse -- without stripping the
+                # category lines first, that fallback would silently adopt a
+                # category value (typically RICE) as this agent's own
+                # headline price_estimate, the exact leak forum.py's judge
+                # prompt already had to guard against once.
+                extract_src = (_strip_category_lines(statement)
+                               if self._sector == 'food' else statement)
                 response = AgentResponse(
                     agent_name=agent.name,
                     round_num=round_num,
                     thinking=thinking,
                     statement=statement,
-                    price_estimate=self._price_extractor(statement),
+                    price_estimate=self._price_extractor(extract_src),
                 )
                 self._history.append(response)
                 if on_agent_done:
@@ -907,14 +959,36 @@ class DebateEngine:
         _, statement = _parse_think(full_text)
         return statement
 
+    def _final_round_subcategories(self, final: list) -> dict[str, float]:
+        """Per-category average across the final round's food agents.
+
+        Food only -- gas/electricity agents never carry category lines.
+        Extraction is independent of `price_estimate`: an agent whose
+        blended ESTIMATE line failed to parse can still contribute a
+        category read, and vice versa, matching how `_extract_category_percents`
+        and the blended estimate are already extracted independently in
+        forum.py's judge. A category absent from every agent's statement is
+        simply absent from the result -- never 0.0 or copied from another
+        category."""
+        if self._sector != 'food':
+            return {}
+        per_category: dict[str, list[float]] = {}
+        for r in final:
+            for category, value in _extract_category_percents(r.statement).items():
+                per_category.setdefault(category, []).append(value)
+        return {category: sum(values) / len(values)
+                for category, values in per_category.items()}
+
     def consensus(self) -> dict:
         """Compute final round consensus from history. Returns summary dict."""
         final_round = max((r.round_num for r in self._history), default=0)
         final = [r for r in self._history if r.round_num == final_round]
+        subcategories = self._final_round_subcategories(final)
         estimates = [r.price_estimate for r in final if r.price_estimate is not None]
         if not estimates:
             return {'weighted_avg': None, 'low': None, 'high': None,
-                    'confidence_pct': 0, 'verdicts': []}
+                    'confidence_pct': 0, 'verdicts': [],
+                    'subcategories': subcategories}
         avg = sum(estimates) / len(estimates)
         band = _CONSENSUS_BAND.get(self._sector, 0.20)
         within = sum(1 for e in estimates if abs(e - avg) <= band)
@@ -928,6 +1002,7 @@ class DebateEngine:
                  'statement': r.statement}
                 for r in final
             ],
+            'subcategories': subcategories,
         }
 
 

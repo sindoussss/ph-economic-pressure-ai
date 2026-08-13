@@ -144,6 +144,26 @@ def test_food_verdict_on_failed_debate_falls_back_honestly(window):
     assert 'no agent produced a usable estimate' in window._food_verdict
 
 
+def test_on_food_complete_captures_subcategories(window):
+    window._last_scenario = {'oil_pct': 1.0, 'usd_pct': 0.0}
+    window._food_engine = _FakeDebateEngine({
+        'weighted_avg': 0.3, 'confidence_pct': 100, 'verdicts': [],
+        'subcategories': {'rice': 0.3, 'meat': -0.2},
+    })
+    window._on_food_complete([1])
+    assert window._food_subcategories == {'rice': 0.3, 'meat': -0.2}
+
+
+def test_on_food_complete_resets_subcategories_on_a_failed_debate(window):
+    """A prior run's subcategories must not linger and get shown alongside a
+    completely different (or failed) run's food number."""
+    window._food_subcategories = {'rice': 0.3}
+    window._last_scenario = {}
+    window._food_engine = None
+    window._on_food_complete([])
+    assert window._food_subcategories == {}
+
+
 def test_electricity_verdict_names_distinct_values(window):
     window._last_scenario = {'oil_pct': 1.0, 'usd_pct': 0.0}
     window._elec_engine = _FakeDebateEngine({
@@ -221,6 +241,17 @@ def test_push_sector_forecasts_passes_agreement_values(window):
     assert captured['gas_agreement'] == 70
     assert captured['food_agreement'] == 62
     assert captured['elec_agreement'] == 81
+
+
+def test_push_sector_forecasts_passes_food_subcategories(window):
+    """The peso-anchor strip on Report's Food card is driven by this run's
+    own food debate output -- _on_food_complete's DebateEngine.consensus()
+    result -- not Monitor's separate ForumEngine run."""
+    window._food_subcategories = {'rice': 0.3, 'meat': -0.2}
+    captured = {}
+    window._stage4.set_sector_forecasts = lambda *args, **kw: captured.update(kw)
+    window._push_sector_forecasts()
+    assert captured['food_subcategories'] == {'rice': 0.3, 'meat': -0.2}
 
 
 def test_the_window_fixture_leaves_no_running_doe_checker_behind(window):

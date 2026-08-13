@@ -338,9 +338,17 @@ class Stage4ReportPanel(QWidget):
         return box
 
     def set_sector_forecasts(self, gas=None, food=None, elec=None,
-                             gas_agreement=0, food_agreement=0, elec_agreement=0):
-        """Render the gas/food/electricity next-month forecasts as a card grid."""
+                             gas_agreement=0, food_agreement=0, elec_agreement=0,
+                             food_subcategories=None):
+        """Render the gas/food/electricity next-month forecasts as a card grid.
+
+        food_subcategories: this run's own food debate output (DebateEngine.
+        consensus()['subcategories']) -- the same run food/food_agreement
+        came from, not Monitor's separate ForumEngine run. Drives the peso-
+        anchor strip on the Food card only; None or {} shows no strip,
+        matching every other optional piece of this card grid."""
         from ph_economic_ai.ui.sector_forecast import sector_forecast_rows
+        from ph_economic_ai.engine import peso_anchor
         agreements = {'gas': gas_agreement, 'food': food_agreement, 'elec': elec_agreement}
         try:
             while self._sector_holder_layout.count():
@@ -367,6 +375,13 @@ class Stage4ReportPanel(QWidget):
                 block = self._explanation_block(_ROW_KEY_TO_SECTOR.get(r['key'], r['key']))
                 if block is not None:
                     layout.addWidget(block)
+                if r['key'] == 'food':
+                    strip = peso_anchor.anchor_strip(food_subcategories or {})
+                    if strip is not None:
+                        layout.addWidget(_theme.muted(strip['text'], size=10))
+                        caption = _theme.muted(strip['caption'], size=9)
+                        caption.setWordWrap(True)
+                        layout.addWidget(caption)
             self._sector_holder_layout.addWidget(row_widget)
             self._sector_holder.setVisible(True)
             self._build_sector_trajectories(gas, food, elec)
