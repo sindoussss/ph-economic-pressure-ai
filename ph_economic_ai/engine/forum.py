@@ -31,7 +31,7 @@ from ph_economic_ai.engine.debate import (
     Agent, AgentResponse, _MAX_REALISTIC_ELEC_PHP_KWH, _MAX_REALISTIC_FOOD_PCT,
     _MAX_REALISTIC_FUEL_PHP_L, _extract_electricity_change, _extract_percent,
     ESTIMATE_LINE, _extract_price, _parse_think, unfilled_scaffold,
-    _extract_category_percents, _strip_category_lines)
+    _extract_category_percents, _strip_category_lines, _FOOD_CATEGORY_LINES)
 from ph_economic_ai.engine.pressure_brief import PressureBrief, SectorReading
 
 # Per-sector estimate parsing, agreement band, and the "flat" threshold.
@@ -132,32 +132,9 @@ _TOLERANCE = {
 # readable.
 _EST_LINE = ESTIMATE_LINE
 
-#: Six worked-example lines the food judge must append after its ESTIMATE
-#: line, one per PSA sub-category. Same instructions-not-template pattern
-#: _EST_LINE already established (RSK-012's lesson): a small model copies a
-#: bare template verbatim, so every line needs its own worked example.
-_FOOD_CATEGORY_LINES = {
-    'rice': ('RICE: <the percent month-on-month CHANGE you expect for rice specifically, '
-             'signed> (worked example: "RICE: +0.2%" or "RICE: -0.1%". Write your own '
-             'number; never write X.X.)'),
-    'meat': ('MEAT: <the percent month-on-month CHANGE you expect for meat specifically, '
-             'signed> (worked example: "MEAT: +0.3%" or "MEAT: -0.2%". Write your own '
-             'number; never write X.X.)'),
-    'fish': ('FISH: <the percent month-on-month CHANGE you expect for fish and seafood '
-             'specifically, signed> (worked example: "FISH: +0.8%" or "FISH: -0.4%". '
-             'Write your own number; never write X.X.)'),
-    'dairy_eggs': ('DAIRY_EGGS: <the percent month-on-month CHANGE you expect for milk, '
-                  'dairy and eggs specifically, signed> (worked example: '
-                  '"DAIRY_EGGS: +0.1%" or "DAIRY_EGGS: -0.1%". Write your own number; '
-                  'never write X.X.)'),
-    'vegetables': ('VEGETABLES: <the percent month-on-month CHANGE you expect for '
-                   'vegetables specifically, signed> (worked example: '
-                   '"VEGETABLES: +0.5%" or "VEGETABLES: -0.3%". Write your own number; '
-                   'never write X.X.)'),
-    'sugar': ('SUGAR: <the percent month-on-month CHANGE you expect for sugar and '
-             'confectionery specifically, signed> (worked example: "SUGAR: +0.1%" or '
-             '"SUGAR: -0.1%". Write your own number; never write X.X.)'),
-}
+# _FOOD_CATEGORY_LINES now lives in engine.debate (imported above) -- the
+# layer both DebateEngine's own food agents and this module's judge prompt
+# share, so the two can't drift out of sync with each other.
 
 # Capability channels: each agent stays strictly in its lane so the three do NOT
 # converge on the same paragraph — the point of a forum over a single model.

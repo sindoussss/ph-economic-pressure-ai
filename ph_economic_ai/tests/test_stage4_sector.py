@@ -117,3 +117,66 @@ def test_calling_set_sector_forecasts_twice_shows_the_latest_values(app):
     panel.set_sector_forecasts(0.15, 0.30, 0.05, gas_agreement=40)
     labels = [c.text() for c in panel._sector_holder.findChildren(QLabel)]
     assert any('40%' in t for t in labels)
+
+
+def test_food_card_shows_peso_anchor_strip(app, monkeypatch):
+    """Report's Food card gets the peso-anchor strip that used to live on
+    Monitor -- driven by food_subcategories (this run's own debate output,
+    from DebateEngine.consensus()'s new 'subcategories' key), not Monitor's
+    separate ForumEngine run."""
+    from ph_economic_ai.ui import stage4_report
+    from ph_economic_ai.engine import peso_anchor
+
+    def fake_get_anchor(category, *a, **kw):
+        prices = {
+            'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'meat': {'price': 185.40, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'fish': None,
+            'vegetables': {'price': 62.10, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        }
+        return prices.get(category)
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+
+    panel = stage4_report.Stage4ReportPanel()
+    panel.set_sector_forecasts(
+        -0.08, 0.20, -0.10,
+        food_subcategories={'rice': 0.3, 'meat': -0.3, 'fish': 0.8, 'vegetables': 0.5})
+    texts = ' || '.join(l.text() for l in panel._sector_holder.findChildren(QLabel))
+
+    assert 'Rice ₱52.36 → ₱52.52' in texts
+    assert 'Meat ₱185.40 → ₱184.84' in texts
+    assert 'Fish —' in texts
+    assert 'Vegetables ₱62.10 → ₱62.41' in texts
+    assert 'exploratory projection, not a validated prediction' in texts
+
+
+def test_food_card_omits_the_peso_strip_when_no_food_subcategories(app):
+    """Backward-compatible default: callers that never pass
+    food_subcategories (or pass {}) get no peso strip -- no crash, and
+    nothing implying data that was never provided."""
+    from ph_economic_ai.ui.stage4_report import Stage4ReportPanel
+    panel = Stage4ReportPanel()
+    panel.set_sector_forecasts(-0.08, 0.20, -0.10)
+    texts = ' || '.join(l.text() for l in panel._sector_holder.findChildren(QLabel))
+    assert 'exploratory projection' not in texts
+
+
+def test_gas_and_electricity_cards_never_show_a_peso_strip(app, monkeypatch):
+    """food_subcategories only ever anchors the Food card -- gas/electricity
+    must not pick up a stray peso strip even though they're built in the
+    same loop."""
+    from ph_economic_ai.ui import stage4_report
+    from ph_economic_ai.engine import peso_anchor
+    monkeypatch.setattr(
+        peso_anchor, 'get_anchor',
+        lambda category, *a, **kw: {'price': 52.36, 'as_of': '2026-07',
+                                    'fetched_on': '2026-08-13'})
+    panel = stage4_report.Stage4ReportPanel()
+    panel.set_sector_forecasts(
+        -0.08, 0.20, -0.10, food_subcategories={'rice': 0.3})
+    # Exactly one peso strip -- the food card's -- not one per sector card.
+    # (Gas/electricity's own value labels legitimately contain '₱' too, as
+    # part of their ₱/L, ₱/kWh units, so that substring alone can't be the
+    # check here -- the strip's own caption text is unique to it.)
+    all_texts = [l.text() for l in panel._sector_holder.findChildren(QLabel)]
+    assert sum('exploratory projection' in t for t in all_texts) == 1
