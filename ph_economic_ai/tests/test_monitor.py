@@ -73,14 +73,23 @@ def test_panel_renders_without_thread(app):
     assert panel._outlook.count() == 1
 
 
-def test_food_card_shows_subcategory_breakdown(app):
+def test_food_card_shows_subcategory_breakdown(app, monkeypatch):
     """Rice/meat/fish/dairy&eggs/vegetables/sugar each get their own signed
     caption; a missing category reads as unavailable, never 0.0%; no value
     ever shows a literal '+' concatenated with a negative number (the exact
     RSK-053 shape, checked explicitly here because a new signed-percentage
     line is exactly where it would recur)."""
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
     from PyQt6.QtWidgets import QLabel
+    # This reading's percentages happen to cover rice/meat/fish/vegetables --
+    # the same four categories the peso-anchor strip (added later in this
+    # file, same `if food and subcategories` gate) looks up. Without this
+    # stub, a purely offline unit test would silently start making live PSA
+    # network calls whenever a cache miss occurs, since `get_anchor` is only
+    # skipped when the percentage itself is absent, not when the test hasn't
+    # asked for peso behaviour at all.
+    monkeypatch.setattr(peso_anchor, 'get_anchor', lambda category, *a, **kw: None)
     panel = PressureMonitorPanel(FakeRag())
     r = SectorReading('food', 'rising', 0.4, '%', 64,
                       estimates=[0.3, 0.4, 0.5],
