@@ -99,6 +99,65 @@ def test_food_card_shows_subcategory_breakdown(app):
     assert 'not components of the figure above' in texts
 
 
+def test_food_card_shows_peso_anchor_strip(app, monkeypatch):
+    """Rice/meat/fish/vegetables get a peso anchor + projected price; a
+    category missing either the anchor or the debate percentage shows '—'
+    in that slot, never inventing a stand-in value."""
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
+    from PyQt6.QtWidgets import QLabel
+
+    def fake_get_anchor(category, *a, **kw):
+        prices = {
+            'rice': {'price': 52.36, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'meat': {'price': 185.40, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+            'fish': None,  # simulate a fetch failure for this one category
+            'vegetables': {'price': 62.10, 'as_of': '2026-07', 'fetched_on': '2026-08-13'},
+        }
+        return prices.get(category)
+    monkeypatch.setattr(peso_anchor, 'get_anchor', fake_get_anchor)
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3, 0.4, 0.5],
+                      subcategories={'rice': 0.3, 'meat': -0.3, 'fish': 0.8,
+                                     'vegetables': 0.5})
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+
+    assert 'Rice ₱52.36 → ₱52.52' in texts
+    assert 'Meat ₱185.40 → ₱184.84' in texts
+    assert 'Fish —' in texts   # anchor fetch failed even though a percentage exists
+    assert 'Vegetables ₱62.10 → ₱62.41' in texts
+    assert 'exploratory projection, not a validated prediction' in texts
+
+
+def test_food_card_omits_the_peso_strip_when_no_category_has_both_pieces(app, monkeypatch):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.engine import peso_anchor
+    from PyQt6.QtWidgets import QLabel
+
+    monkeypatch.setattr(peso_anchor, 'get_anchor', lambda category, *a, **kw: None)
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('food', 'rising', 0.4, '%', 64,
+                      estimates=[0.3], subcategories={'sugar': 0.1})  # not a peso-anchor category
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+    assert 'exploratory projection' not in texts
+
+
+def test_gas_card_is_unaffected_by_the_peso_strip(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from PyQt6.QtWidgets import QLabel
+
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.20, '₱/L', 70, estimates=[1.2])
+    card = panel._sector_card(r)
+    texts = ' || '.join(w.text() for w in card.findChildren(QLabel))
+    assert 'exploratory projection' not in texts
+
+
 def test_gas_card_has_no_subcategory_breakdown(app):
     """Gas/electricity cards are untouched by the food-only breakdown row --
     it must not appear at all, not even empty, for non-food sectors."""
