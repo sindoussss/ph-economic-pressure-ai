@@ -264,6 +264,79 @@ def test_consensus_uses_gas_band_not_the_narrower_default():
     assert result['confidence_pct'] == 100
 
 
+def test_consensus_always_carries_a_subcategories_key():
+    """Every consensus() return path -- including the empty-history early
+    return -- must carry 'subcategories', so main_window.py can rely on the
+    key existing rather than needing a defensive .get() at every call site."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(DEFAULT_AGENTS[:1], rag, {}, sector='gas')
+    assert engine.consensus()['subcategories'] == {}
+
+
+def test_consensus_extracts_food_subcategories_from_agent_statements():
+    """A food agent's own statement, not just the food judge's, can carry
+    category lines now that FOOD_AGENTS' prompt asks for them -- consensus()
+    must parse and average them the same way forum.py's judge does."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(FOOD_AGENTS[:2], rag, {}, sector='food')
+    engine._history = [
+        AgentResponse('A', 1, '', 'ESTIMATE: +0.4%\nRICE: +0.2%\nMEAT: -0.3%', 0.4),
+        AgentResponse('B', 1, '', 'ESTIMATE: +0.2%\nRICE: +0.4%\nFISH: +0.8%', 0.2),
+    ]
+    result = engine.consensus()
+    assert result['subcategories'] == pytest.approx(
+        {'rice': 0.3, 'meat': -0.3, 'fish': 0.8})
+
+
+def test_consensus_subcategories_only_computed_for_food():
+    """Gas/electricity agents never carry category lines; even if a gas
+    statement happened to contain text matching a category label, it must
+    not be reported as a food sub-category read."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(DEFAULT_AGENTS[:1], rag, {}, sector='gas')
+    engine._history = [
+        AgentResponse('A', 1, '', 'ESTIMATE: +0.85/L\nRICE: +0.2%', 0.85),
+    ]
+    assert engine.consensus()['subcategories'] == {}
+
+
+def test_consensus_subcategory_missing_from_every_agent_is_simply_absent():
+    """A category no agent mentioned must not appear as 0.0 or any other
+    stand-in value -- absence from the dict IS the honest answer, matching
+    forum.py's own _extract_category_percents convention."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(FOOD_AGENTS[:1], rag, {}, sector='food')
+    engine._history = [
+        AgentResponse('A', 1, '', 'ESTIMATE: +0.4%\nRICE: +0.2%', 0.4),
+    ]
+    result = engine.consensus()
+    assert 'sugar' not in result['subcategories']
+    assert result['subcategories'] == {'rice': 0.2}
+
+
+def test_food_agent_category_lines_do_not_leak_into_its_own_price_estimate():
+    """The exact leak forum.py's judge prompt already had to guard against:
+    _extract_percent's prose fallback grabs the first signed percent
+    anywhere in the text whenever the anchored ESTIMATE: line fails to
+    parse. A food agent whose ESTIMATE line is unparseable, but whose
+    category lines ARE parseable, must report price_estimate=None -- not
+    silently adopt RICE's value as its own headline estimate."""
+    rag = _make_mock_rag()
+    engine = DebateEngine(FOOD_AGENTS[:1], rag, {}, sector='food')
+    fake_stream = ['ESTIMATE: broadly unchanged\nRICE: +0.2%\nMEAT: -0.3%']
+    with patch('ph_economic_ai.engine.debate.llm.stream',
+               return_value=iter(fake_stream)):
+        engine.run(rounds=1)
+    assert engine._history[0].price_estimate is None
+
+
+def test_food_agents_prompt_requests_all_six_category_lines():
+    from ph_economic_ai.engine.debate import _CATEGORY_LABELS
+    for agent in FOOD_AGENTS:
+        for label in _CATEGORY_LABELS.values():
+            assert f'{label}:' in agent.system_prompt
+
+
 def test_run_clears_history_on_rerun():
     rag = _make_mock_rag()
     engine = DebateEngine(DEFAULT_AGENTS[:1], rag,

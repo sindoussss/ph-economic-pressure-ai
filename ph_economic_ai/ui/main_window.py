@@ -273,6 +273,7 @@ class SimMainWindow(QMainWindow):
         self._gas_estimate = None
         self._food_estimate = None
         self._elec_estimate = None
+        self._food_subcategories: dict = {}
         self._sector_responses: dict = {}
         self._gas_agreement = 0
         self._food_agreement = 0
@@ -465,6 +466,7 @@ class SimMainWindow(QMainWindow):
         self._gas_estimate = None
         self._food_estimate = None
         self._elec_estimate = None
+        self._food_subcategories: dict = {}
         self._sector_responses: dict = {}
         self._gas_agreement = 0
         self._food_agreement = 0
@@ -762,7 +764,8 @@ class SimMainWindow(QMainWindow):
             self._stage4.set_sector_forecasts(
                 self._gas_estimate, self._food_estimate, self._elec_estimate,
                 gas_agreement=self._gas_agreement, food_agreement=self._food_agreement,
-                elec_agreement=self._elec_agreement)
+                elec_agreement=self._elec_agreement,
+                food_subcategories=self._food_subcategories)
         except Exception:
             pass
 
@@ -771,11 +774,13 @@ class SimMainWindow(QMainWindow):
         anchor = self._food_anchor(scenario)
         raw_avg, conf = None, 0
         verdicts = []
+        self._food_subcategories = {}
         if responses and self._food_engine:
             c = self._food_engine.consensus()
             raw_avg = c.get('weighted_avg')
             conf = c.get('confidence_pct', 0)
             verdicts = c.get('verdicts') or []
+            self._food_subcategories = c.get('subcategories') or {}
         # Persistence-anchored: trust the agents near their own trend, clamp a
         # drift, and fall back to the trend outright when the debate produced
         # nothing — so food is never a blank, even on total debate failure.
