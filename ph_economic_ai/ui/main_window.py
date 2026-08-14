@@ -25,6 +25,7 @@ from ph_economic_ai.engine.store import AgentTrustStore
 from ph_economic_ai.engine.quality_scorer import QualityScorer
 from ph_economic_ai.engine.evolution import get_evolved_debate_agents, get_evolved_swarm_agents
 from ph_economic_ai.engine.ground_truth import DOECheckerThread
+from ph_economic_ai.engine.ground_truth_monthly import PSAMonthlyCheckerThread
 from ph_economic_ai.ui.economy_overview import EconomyOverviewWidget
 from ph_economic_ai.ui.landing import LandingPanel
 from ph_economic_ai.ui.stage2_setup import Scenario  # dataclass still used downstream
@@ -293,6 +294,10 @@ class SimMainWindow(QMainWindow):
         self._recalled_from: int | None = None
         self._doe_checker: DOECheckerThread = DOECheckerThread(self._store)
         self._doe_checker.start()
+        # Gas is graded weekly against DOE pump prices (above). Food is graded
+        # monthly against settled PSA CPI prints, one sample per calendar month.
+        self._psa_checker: PSAMonthlyCheckerThread = PSAMonthlyCheckerThread(self._store)
+        self._psa_checker.start()
 
         self.setWindowTitle('Strata · Philippine Economic Simulation')
         self.setMinimumSize(1200, 720)
@@ -390,6 +395,10 @@ class SimMainWindow(QMainWindow):
     def closeEvent(self, event):
         self._doe_checker.stop()
         self._doe_checker.wait()
+        # Same join discipline as the DOE checker: Qt aborts the process if a
+        # QThread is destroyed while still running (RSK-056).
+        self._psa_checker.stop()
+        self._psa_checker.wait()
         # Qt aborts the process if a QThread is destroyed while still running.
         # _kg_worker (entity enrichment, spawned in Stage3SwarmPanel after a
         # swarm run) has no owner-level join anywhere else -- closing the app

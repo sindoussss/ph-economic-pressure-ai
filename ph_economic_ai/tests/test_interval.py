@@ -127,11 +127,28 @@ def test_store_graded_errors_feed_the_band(tmp_path):
 # label it "calibrated", which is worse than showing no band at all.
 
 def test_an_ungraded_sector_never_reports_calibrated():
+    """Electricity, which has no comparable outcome series at all. Food was the
+    example here until it gained monthly grading; it is now covered by
+    `test_a_graded_sector_still_refuses_another_sectors_errors`, which checks the
+    sharper property that survives grading."""
+    fuel_errors = [0.3] * 20
+    b = iv.band(0.05, fuel_errors, 0.5, sector='electricity')
+    assert b['calibrated'] is False
+    assert b['n_graded'] == 0
+    assert 'no graded outcome series' in b['source']
+
+
+def test_a_graded_sector_still_refuses_another_sectors_errors():
+    """Food is graded now, so `GRADED_SECTORS` no longer drops what it is handed.
+    Provenance does: a bare list means fuel, and fuel error is PHP/L."""
     fuel_errors = [0.3] * 20
     b = iv.band(0.31, fuel_errors, 0.5, sector='food')
     assert b['calibrated'] is False
     assert b['n_graded'] == 0
-    assert 'no graded outcome series' in b['source']
+    assert b['half_width'] == iv.FALLBACK_HALFWIDTH['food'][0.5]
+
+    own = iv.band(0.31, [0.3] * 20, 0.5, sector='food', errors_from='food')
+    assert own['calibrated'] is True
 
 
 def test_fuel_errors_do_not_leak_into_a_percentage_band():

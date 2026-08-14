@@ -616,14 +616,28 @@ class PressureMonitorPanel(QWidget):
             return _calendar.describe_next_fuel_adjustment()
         return _calendar.describe_next_cpi_release()
 
-    def _graded_errors(self) -> list:
-        """Past absolute errors, for calibrating the band. Empty is fine: the band
-        then reports itself as uncalibrated rather than pretending."""
+    def _graded_errors(self, sector: str = 'gas') -> list:
+        """Past absolute errors for THIS sector, for calibrating its band. Empty
+        is fine: the band then reports itself as uncalibrated rather than
+        pretending.
+
+        Per sector, and that is load-bearing rather than tidy. `get_graded_errors`
+        returns fuel error in PHP/L; food's errors are percentage points. Passing
+        one list for every sector -- as this did -- was safe only because
+        `interval.band` dropped errors for sectors outside `GRADED_SECTORS`. Now
+        that food is graded, that guard no longer covers it, and handing food the
+        fuel history would put PHP/L half-widths around a percentage and label
+        the result calibrated. Each sector reads its own series or none.
+        """
         store = self._store
         if store is None:
             return []
         try:
-            return store.get_graded_errors()
+            if sector == 'gas':
+                return store.get_graded_errors()
+            if sector in _interval.GRADED_SECTORS:
+                return store.get_sector_graded_errors(sector)
+            return []
         except Exception:
             return []
 
@@ -760,9 +774,14 @@ class PressureMonitorPanel(QWidget):
         # 50% band leads because it is narrow enough to act on; the 90% band is the
         # honest full picture, one click away rather than hidden.
         if r.estimate is not None:
-            errors = self._graded_errors()
-            b50 = _interval.band(r.estimate, errors, _interval.DEFAULT_LEVEL, r.sector)
-            b90 = _interval.band(r.estimate, errors, _interval.EXPANDED_LEVEL, r.sector)
+            # `errors_from` is this sector's own history by construction --
+            # `_graded_errors` reads per sector -- and saying so is what lets the
+            # band use it. A bare list defaults to fuel provenance and is dropped.
+            errors = self._graded_errors(r.sector)
+            b50 = _interval.band(r.estimate, errors, _interval.DEFAULT_LEVEL,
+                                 r.sector, errors_from=r.sector)
+            b90 = _interval.band(r.estimate, errors, _interval.EXPANDED_LEVEL,
+                                 r.sector, errors_from=r.sector)
 
             rng = QLabel(f"{b50['low']:+.2f} to {b50['high']:+.2f} {r.unit}  ·  50% range")
             rng.setStyleSheet(f'color:{_T2};font-size:12px;margin-top:2px;')

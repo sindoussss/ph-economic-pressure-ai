@@ -214,20 +214,40 @@ def test_the_estimates_reach_the_card_not_just_their_percentage():
 
 
 def test_an_ungradable_sector_is_not_promised_a_threshold():
-    """Food and electricity are never graded against an observed price. "0 of
-    12 graded runs" implies 12 are reachable by waiting; they are not."""
-    food = honesty.band_provenance(_interval.band(-0.3, [], sector='food'))
-    assert 'cannot become calibrated by waiting' in food
-    assert '12' not in food
+    """Electricity is never graded against an observed outcome. "0 of 12 graded
+    runs" implies 12 are reachable by waiting; for it they are not.
+
+    Food used to be the example here. It is now graded per calendar month
+    against the PSA CPI print, so it HAS a reachable threshold and is covered by
+    the food case below. Electricity still has none: its estimate is ₱/kWh of the
+    generation charge and the PSA series is a percentage of the whole-bill index,
+    so no amount of waiting produces a comparable outcome.
+    """
+    elec = honesty.band_provenance(_interval.band(-0.05, [], sector='electricity'))
+    assert 'cannot become calibrated by waiting' in elec
+    assert '12' not in elec
 
     fuel = honesty.band_provenance(_interval.band(-1.28, [], sector='gas'))
     assert f'0 of {_interval.MIN_GRADED_FOR_CALIBRATION}' in fuel
     assert 'cannot become calibrated' not in fuel
 
+    food = honesty.band_provenance(_interval.band(-0.3, [], sector='food'))
+    assert f'0 of {_interval.MIN_GRADED_FOR_CALIBRATION} graded months' in food
+    assert 'cannot become calibrated' not in food
+
 
 def test_the_band_says_which_sectors_can_ever_be_graded():
     assert _interval.band(0.0, [], sector='gas')['gradable'] is True
-    assert _interval.band(0.0, [], sector='food')['gradable'] is False
+    assert _interval.band(0.0, [], sector='food')['gradable'] is True
+    assert _interval.band(0.0, [], sector='electricity')['gradable'] is False
+
+
+def test_the_band_says_what_one_graded_sample_is():
+    """A month and a run are not interchangeable units of evidence: many runs
+    inside one month are one sample, so labelling food's months "runs" would
+    inflate the apparent evidence."""
+    assert _interval.band(0.0, [], sector='gas')['sample_unit'] == 'runs'
+    assert _interval.band(0.0, [], sector='food')['sample_unit'] == 'months'
 
 
 def test_the_estimates_field_cannot_be_hit_positionally():
