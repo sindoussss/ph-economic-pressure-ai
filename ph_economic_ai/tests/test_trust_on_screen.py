@@ -75,6 +75,22 @@ def test_a_calibrated_band_also_gets_a_line():
     assert str(_interval.MIN_GRADED_FOR_CALIBRATION) in line
 
 
+def test_the_uncalibrated_tooltip_never_uses_the_word_calibrated_unqualified():
+    """A low-literacy reader hovering the uncalibrated line must not land on
+    text that just repeats the same jargon word without explaining it."""
+    line = honesty.band_provenance_tooltip(_interval.band(-1.28, [], sector='gas'))
+    assert 'checked against real outcomes' in line
+    assert 'calibrated' not in line.lower()
+
+
+def test_the_calibrated_tooltip_names_how_many_past_forecasts():
+    errors = [0.2] * _interval.MIN_GRADED_FOR_CALIBRATION
+    band = _interval.band(-1.28, errors, sector='gas')
+    line = honesty.band_provenance_tooltip(band)
+    assert str(_interval.MIN_GRADED_FOR_CALIBRATION) in line
+    assert 'checked against' in line
+
+
 # -- 3. the track record, including why it is empty ---------------------------
 
 def test_an_empty_record_does_not_read_as_a_dead_app():

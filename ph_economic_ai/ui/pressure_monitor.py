@@ -786,6 +786,7 @@ class PressureMonitorPanel(QWidget):
                 f'color:{_INK if not b50["calibrated"] else _T2};font-size:11px;'
                 f'font-weight:{600 if not b50["calibrated"] else 400};margin-top:4px;')
             prov.setWordWrap(True)
+            prov.setToolTip(_honesty.band_provenance_tooltip(b50))
             lay.addWidget(prov)
 
             more = QPushButton('show 90% range')
@@ -814,6 +815,7 @@ class PressureMonitorPanel(QWidget):
                     al = QLabel(anchor)
                     al.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:2px;')
                     al.setWordWrap(True)
+                    al.setToolTip(_honesty.ANCHOR_RECORD_TOOLTIP)
                     lay.addWidget(al)
 
         # WHAT THE AGENTS SAID. The distinct values and their span lead; the
@@ -825,6 +827,7 @@ class PressureMonitorPanel(QWidget):
             getattr(r, 'estimates', None), r.unit, r.confidence))
         spread.setStyleSheet(f'color:{_T2};font-size:11px;margin-top:6px;')
         spread.setWordWrap(True)
+        spread.setToolTip(_honesty.SPREAD_LINE_TOOLTIP)
         lay.addWidget(spread)
 
         caveat = _honesty.agreement_caveat(
@@ -835,6 +838,7 @@ class PressureMonitorPanel(QWidget):
             cav = QLabel(caveat)
             cav.setStyleSheet(f'color:{_INK};font-size:11px;margin-top:2px;')
             cav.setWordWrap(True)
+            cav.setToolTip(_honesty.AGREEMENT_CAVEAT_TOOLTIP)
             lay.addWidget(cav)
 
         da = getattr(r, 'direction_agreement', 0)
@@ -843,6 +847,7 @@ class PressureMonitorPanel(QWidget):
                       f"{', '.join(r.sources) or 'no sources'}")
         meta.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:6px;')
         meta.setWordWrap(True)
+        meta.setToolTip(_honesty.DIRECTION_AGREEMENT_TOOLTIP)
         lay.addWidget(meta)
         if r.drivers:
             drv = QLabel('· ' + '\n· '.join(d for d in r.drivers if d))

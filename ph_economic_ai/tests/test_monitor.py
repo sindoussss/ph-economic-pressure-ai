@@ -154,6 +154,88 @@ def test_gas_card_has_no_subcategory_breakdown(app):
     assert 'Rice' not in texts and 'Meat' not in texts and 'Dairy' not in texts
 
 
+def _find_label(card, substr):
+    from PyQt6.QtWidgets import QLabel
+    for w in card.findChildren(QLabel):
+        if substr in w.text():
+            return w
+    return None
+
+
+def test_range_provenance_label_carries_a_plain_language_tooltip(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.ui import honesty as _honesty
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1])
+    card = panel._sector_card(r)
+    label = _find_label(card, 'range NOT calibrated')
+    assert label is not None
+    assert label.toolTip() == _honesty.band_provenance_tooltip(
+        _find_band_for(panel, r))
+
+
+def _find_band_for(panel, r):
+    from ph_economic_ai.engine import interval as _interval
+    return _interval.band(r.estimate, [], sector=r.sector)
+
+
+def test_spread_label_carries_a_plain_language_tooltip(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.ui import honesty as _honesty
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1])
+    card = panel._sector_card(r)
+    label = _find_label(card, 'agent estimates')
+    assert label is not None
+    assert label.toolTip() == _honesty.SPREAD_LINE_TOOLTIP
+
+
+def test_direction_agreement_label_carries_a_plain_language_tooltip(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.ui import honesty as _honesty
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1], direction_agreement=82)
+    card = panel._sector_card(r)
+    label = _find_label(card, 'not a probability')
+    assert label is not None
+    assert label.toolTip() == _honesty.DIRECTION_AGREEMENT_TOOLTIP
+
+
+def test_anchor_record_label_carries_a_plain_language_tooltip_gas_only(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.ui import honesty as _honesty
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[0.9, 1.0, 1.1])
+    card = panel._sector_card(r)
+    anchor_text = _honesty.anchor_record_line()
+    if not anchor_text:
+        return  # artifact not present in this environment -- nothing to assert
+    label = _find_label(card, anchor_text[:30])
+    assert label is not None
+    assert label.toolTip() == _honesty.ANCHOR_RECORD_TOOLTIP
+
+
+def test_narrowed_room_caveat_carries_a_plain_language_tooltip(app):
+    from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
+    from ph_economic_ai.ui import honesty as _honesty
+    panel = PressureMonitorPanel(FakeRag())
+    r = SectorReading('gas', 'rising', 1.0, '₱/L', 100,
+                      drivers=['drives it'], sources=['RedditPH'],
+                      estimates=[1.0, 1.0, 1.0, 1.0])   # 1 distinct value -- collapsed
+    card = panel._sector_card(r)
+    label = _find_label(card, 'room has narrowed')
+    assert label is not None
+    assert label.toolTip() == _honesty.AGREEMENT_CAVEAT_TOOLTIP
+
+
 def test_panel_shows_live_forum_cards(app):
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     panel = PressureMonitorPanel(FakeRag())
