@@ -36,7 +36,7 @@ def test_populate_swarm_updates_detail(app):
 
     import pandas as pd
     df = pd.DataFrame({
-        'date': pd.date_range('2024-01', periods=3, freq='M'),
+        'date': pd.date_range('2024-01', periods=3, freq='ME'),
         'gas_price': [58.0, 59.0, 60.0],
         'oil_price': [80.0, 81.0, 82.0],
         'usd_php': [56.0, 56.5, 57.0],
@@ -60,7 +60,7 @@ def test_consensus_marked_exploratory(app):
                          confidence=0.8, reasoning='', survivor_names=('a', 'b'))
     mv = MasterVerdict(final_estimate=1.5, confidence_pct=80, dissenting_regions=[],
                        reasoning='', regional_verdicts=[rv])
-    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='M'),
+    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='ME'),
                        'gas_price': [58., 59., 60.], 'oil_price': [80., 81., 82.],
                        'usd_php': [56., 56.5, 57.], 'cpi': [120., 121., 122.],
                        'remittances': [2.5, 2.6, 2.7], 'demand_index': [70., 71., 72.]})
@@ -82,7 +82,7 @@ def test_restyle_keeps_consensus_content(app):
                          confidence=0.8, reasoning='', survivor_names=('a', 'b'))
     mv = MasterVerdict(final_estimate=1.5, confidence_pct=80, dissenting_regions=[],
                        reasoning='', regional_verdicts=[rv])
-    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='M'),
+    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='ME'),
                        'gas_price': [58., 59., 60.], 'oil_price': [80., 81., 82.],
                        'usd_php': [56., 56.5, 57.], 'cpi': [120., 121., 122.],
                        'remittances': [2.5, 2.6, 2.7], 'demand_index': [70., 71., 72.]})

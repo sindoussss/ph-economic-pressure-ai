@@ -14,8 +14,20 @@ import pandas as pd
 
 
 def to_periods(index) -> pd.PeriodIndex:
-    """A monthly PeriodIndex from a 'YYYY-MM' string index."""
-    return pd.PeriodIndex(pd.to_datetime(index, format='%Y-%m'), freq='M')
+    """A monthly PeriodIndex from a 'YYYY-MM' string index.
+
+    `exact=False` is what keeps the documented leniency: a daily string like
+    '2020-01-15' collapses to its month rather than raising. pandas used to
+    tolerate the trailing '-15' against a '%Y-%m' format and now enforces the
+    format exactly, so without this the leniency the tests pin -- and the
+    duplicate-month guard in `calendar_lag`, which can only fire once parsing
+    succeeds -- both broke on the parse instead.
+
+    The explicit format is kept rather than dropped for free parsing, so a
+    genuinely malformed index still raises here instead of being guessed at.
+    """
+    return pd.PeriodIndex(
+        pd.to_datetime(index, format='%Y-%m', exact=False), freq='M')
 
 
 def missing_months(index) -> list[str]:

@@ -16,7 +16,7 @@ def test_interact_ask_tab_has_exploratory_caption(app):
     from ph_economic_ai.engine.rag import RagEngine
     from ph_economic_ai.engine.debate import DEFAULT_AGENTS
     from ph_economic_ai.ui.stage5_interact import Stage5InteractPanel
-    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='M'),
+    df = pd.DataFrame({'date': pd.date_range('2024-01', periods=3, freq='ME'),
                        'gas_price': [58., 59., 60.]})
     reg = MagicMock(); reg.predict.return_value = np.array([60.])
     panel = Stage5InteractPanel(RagEngine(), list(DEFAULT_AGENTS), reg, df, 0.0)

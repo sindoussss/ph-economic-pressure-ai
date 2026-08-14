@@ -245,7 +245,11 @@ def assert_complete_months(index, label: str) -> None:
     This makes that failure loud at build time instead of leaving it to be found in
     the results. Call it on anything written to `data/`.
     """
-    idx = pd.PeriodIndex(pd.to_datetime(sorted(index), format='%Y-%m'), freq='M')
+    # `exact=False` for the same reason as `calendar_index.to_periods`: pandas
+    # now enforces the format exactly, so a daily string raises on the parse
+    # rather than collapsing to its month.
+    idx = pd.PeriodIndex(
+        pd.to_datetime(sorted(index), format='%Y-%m', exact=False), freq='M')
     if len(idx) == 0:
         raise SystemExit(f'{label}: empty index')
     expected = pd.period_range(idx.min(), idx.max(), freq='M')
