@@ -146,19 +146,25 @@ def band_provenance(band: dict) -> str:
     from a screen that forgot to warn them. The line is always present and only
     its content changes, so its absence is never the message.
     """
+    # What one sample IS, per sector. Gas grades a run against a pricing week;
+    # food grades a calendar MONTH, and many runs inside a month are one sample.
+    # Calling those "runs" would overstate the evidence by exactly the factor the
+    # month rule removes, so the noun follows the sector. Gas still reads 'runs'
+    # and its wording is unchanged.
+    unit = band.get('sample_unit', 'runs')
     if band.get('calibrated'):
         return (f'range calibrated on this app’s own {band.get("n_graded", 0)} '
-                f'graded runs (split conformal)')
+                f'graded {unit} (split conformal)')
     if not band.get('gradable', True):
-        # "0 of 12" would promise a threshold this sector can never reach. Only
-        # fuel is graded against an observed price; food and electricity have no
-        # outcome series to calibrate on at all, which is a different sentence.
+        # "0 of 12" would promise a threshold this sector can never reach.
+        # Electricity has no outcome series in a comparable unit to calibrate on
+        # at all, which is a different sentence.
         return ('range NOT calibrated — it is a stated prior, and this sector has '
                 'no graded outcome series at all, so it cannot become calibrated '
                 'by waiting')
     n = int(band.get('n_graded', 0) or 0)
     return (f'range NOT calibrated — it is a stated prior, not this app’s measured '
-            f'error ({n} of {_MIN_GRADED()} graded runs available)')
+            f'error ({n} of {_MIN_GRADED()} graded {unit} available)')
 
 
 def band_provenance_tooltip(band: dict) -> str:
