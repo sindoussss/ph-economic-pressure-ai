@@ -149,6 +149,26 @@ class AgentTrustStore:
                 ON trust_events (occurred_at, event_id);
             CREATE INDEX IF NOT EXISTS trust_events_run
                 ON trust_events (run_id, kind);
+            -- Monthly outcomes for sectors that reprice monthly (food). Gas is
+            -- graded per run in `runs` because it reprices weekly and each run
+            -- claims one pricing WEEK; PSA publishes one CPI print per calendar
+            -- MONTH, so for these sectors the unit of evidence is a month.
+            --
+            -- PRIMARY KEY (sector, month) is the dedup rule made structural: the
+            -- table cannot hold two samples for one month however many runs fell
+            -- inside it. Counting runs instead would let a band claim twelve
+            -- samples while resting on two months repeated.
+            -- See engine/ground_truth_monthly.py.
+            CREATE TABLE IF NOT EXISTS sector_grades (
+                sector      TEXT    NOT NULL,
+                month       TEXT    NOT NULL,   -- 'YYYY-MM'
+                estimate    REAL    NOT NULL,   -- median of that month's runs
+                actual      REAL    NOT NULL,   -- settled PSA outcome
+                abs_error   REAL    NOT NULL,   -- feeds interval.conformal_halfwidth
+                n_runs      INTEGER NOT NULL,   -- runs behind this ONE sample
+                graded_at   TEXT    NOT NULL,
+                PRIMARY KEY (sector, month)
+            );
         ''')
         self._conn.commit()
 
@@ -776,6 +796,76 @@ class AgentTrustStore:
             return int(self._conn.execute(
                 'SELECT COUNT(*) FROM runs WHERE accuracy_error IS NOT NULL'
             ).fetchone()[0])
+
+    # ── Monthly sector grades (food) ─────────────────────────────────────────
+
+    def upsert_sector_grade(self, sector: str, month: str, estimate: float,
+                            actual: float, abs_error: float, n_runs: int) -> bool:
+        """Record ONE graded sample for (sector, month). True if newly created.
+
+        Insert-or-ignore rather than replace, deliberately: the first settled
+        grade for a month wins, so re-running the checker cannot inflate the
+        sample count and a later PSA revision cannot quietly restate history.
+        Same stance as `apply_ground_truth_grade`'s idempotency guard.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                'INSERT OR IGNORE INTO sector_grades '
+                '(sector, month, estimate, actual, abs_error, n_runs, graded_at) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (sector, month, estimate, actual, abs_error, n_runs,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def get_sector_graded_errors(self, sector: str, limit: int = 200) -> list[float]:
+        """Absolute errors of a monthly sector's graded MONTHS, newest first.
+
+        The monthly counterpart to `get_graded_errors`, and the list that feeds
+        `interval.band` for such a sector. Two things it is not:
+
+        * not a run count -- one entry is one calendar month, however many runs
+          happened inside it (`count_sector_graded_months` is the honest total);
+        * not interchangeable with `get_graded_errors`, which is PHP/L fuel
+          error. Food's are percentage points. Feeding one into the other's band
+          is the unit hazard `interval.FALLBACK_HALFWIDTH` warns about, so each
+          sector reads its own.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT abs_error FROM sector_grades WHERE sector=? '
+                'ORDER BY month DESC LIMIT ?', (sector, int(limit)),
+            ).fetchall()
+        return [float(r['abs_error']) for r in rows]
+
+    def get_sector_grades(self, sector: str) -> list[dict]:
+        """Every graded month for a sector, oldest first. One row, one month."""
+        with self._lock:
+            cur = self._conn.execute(
+                'SELECT * FROM sector_grades WHERE sector=? ORDER BY month', (sector,))
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_graded_months(self, sector: str) -> set[str]:
+        """Months already graded for a sector."""
+        with self._lock:
+            cur = self._conn.execute(
+                'SELECT month FROM sector_grades WHERE sector=?', (sector,))
+            return {row['month'] for row in cur.fetchall()}
+
+    def count_sector_graded_months(self, sector: str) -> int:
+        """Independent months graded — the only figure comparable against
+        `interval.MIN_GRADED_FOR_CALIBRATION`. Never a count of runs."""
+        with self._lock:
+            return self._conn.execute(
+                'SELECT COUNT(*) FROM sector_grades WHERE sector=?', (sector,)
+            ).fetchone()[0]
+
+    def get_all_runs(self) -> list[dict]:
+        """Every run, oldest first — the backlog the monthly grader walks."""
+        with self._lock:
+            cur = self._conn.execute('SELECT * FROM runs ORDER BY timestamp')
+            return [dict(row) for row in cur.fetchall()]
 
     def get_graded_errors(self, limit: int = 200) -> list[float]:
         """Absolute errors of graded runs, newest first.

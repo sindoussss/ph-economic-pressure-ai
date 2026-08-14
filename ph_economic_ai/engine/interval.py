@@ -45,10 +45,28 @@ FALLBACK_HALFWIDTH = {
 }
 _DEFAULT_SECTOR = 'gas'
 
-# Only this sector is graded against an observed outcome, so only this one can
-# ever produce a calibrated band. The others stay on the stated prior until a
-# real outcome series exists for them.
-GRADED_SECTORS = frozenset({'gas'})
+# Sectors graded against an observed outcome, and so the only ones that can ever
+# produce a calibrated band. Anything else stays on the stated prior.
+#
+#   gas   -- weekly, per run, against the DOE pump price (`grade_verdict`)
+#   food  -- monthly, per CALENDAR MONTH, against the PSA food CPI print
+#            (`ground_truth_monthly`)
+#
+# Electricity is deliberately absent despite having a monthly PSA series. Its
+# stored estimate is ₱/kWh of the Meralco generation charge while the series is
+# % of the national Electricity CPI (whole bill, all utilities). Grading one
+# against the other needs a ₱/kWh base that is not recorded per run, plus the
+# false assumption that a generation-charge move equals a whole-bill move; the
+# residual would measure those assumptions rather than forecast skill. Add a
+# ground-truth series in ₱/kWh and it drops in -- the monthly grading path is
+# already sector-agnostic.
+GRADED_SECTORS = frozenset({'gas', 'food'})
+
+# What ONE graded sample is, per sector. Not cosmetic: food's samples are months,
+# and many runs inside a month are one sample, so calling them "runs" on screen
+# would inflate the apparent evidence by exactly the factor the month rule exists
+# to remove. Gas keeps 'runs', so its wording is unchanged.
+SAMPLE_UNIT = {'gas': 'runs', 'food': 'months', 'electricity': 'months'}
 
 DEFAULT_LEVEL = 0.5
 EXPANDED_LEVEL = 0.9
@@ -95,30 +113,37 @@ def fallback_halfwidth(sector: str, level: float) -> float:
 
 
 def band(point_estimate: float, abs_errors=None, level: float = DEFAULT_LEVEL,
-         sector: str = _DEFAULT_SECTOR) -> dict:
+         sector: str = _DEFAULT_SECTOR, errors_from: str = _DEFAULT_SECTOR) -> dict:
     """Low / central / high around `point_estimate`.
 
     `calibrated` says plainly whether the band came from measured errors or from
     the stated prior. The UI must not present the two identically.
 
-    Errors are accepted only for a sector the app actually grades. Passing fuel
-    errors for a percentage sector would silently produce a band in the wrong
-    unit, so that is refused rather than trusted to call sites.
+    Errors are accepted only for a sector the app actually grades, AND only when
+    they came from that same sector. `errors_from` names their provenance and
+    defaults to fuel, because a bare list has always meant `get_graded_errors()`,
+    which is PHP/L. That default is the guard: it used to be enough that food was
+    outside `GRADED_SECTORS`, so any list handed to a food band was dropped, but
+    food is graded now and that net no longer covers it. Feeding fuel error to a
+    percentage band would wrap PHP/L half-widths around a percent estimate --
+    the exact defect `FALLBACK_HALFWIDTH` warns about -- so a caller that wants a
+    food band calibrated must say the errors are food's.
     """
     errors = [e for e in (abs_errors or []) if e is not None]
-    if sector not in GRADED_SECTORS:
+    if sector not in GRADED_SECTORS or errors_from != sector:
         errors = []
+    unit = SAMPLE_UNIT.get(sector, 'runs')
     calibrated = len(errors) >= MIN_GRADED_FOR_CALIBRATION
     if calibrated:
         half = conformal_halfwidth(errors, level)
-        source = f'calibrated on {len(errors)} graded runs'
+        source = f'calibrated on {len(errors)} graded {unit}'
     elif sector not in GRADED_SECTORS:
         half = fallback_halfwidth(sector, level)
         source = 'stated prior; this sector has no graded outcome series yet'
     else:
         half = fallback_halfwidth(sector, level)
         source = (f'uncalibrated prior; {len(errors)} of '
-                  f'{MIN_GRADED_FOR_CALIBRATION} graded runs needed')
+                  f'{MIN_GRADED_FOR_CALIBRATION} graded {unit} needed')
     return {
         'central': round(float(point_estimate), 2),
         'low': round(float(point_estimate) - half, 2),
@@ -133,20 +158,24 @@ def band(point_estimate: float, abs_errors=None, level: float = DEFAULT_LEVEL,
         # honest sentence is that no outcome series exists at all.
         'gradable': sector in GRADED_SECTORS,
         'n_graded': len(errors),
+        # What n_graded counts. 'runs' for gas, 'months' for food -- the screen
+        # must not call a month a run.
+        'sample_unit': unit,
         'source': source,
     }
 
 
 def bands(point_estimate: float, abs_errors=None,
           levels=(DEFAULT_LEVEL, EXPANDED_LEVEL),
-          sector: str = _DEFAULT_SECTOR) -> dict:
+          sector: str = _DEFAULT_SECTOR,
+          errors_from: str = _DEFAULT_SECTOR) -> dict:
     """The lead band plus the wider one held behind an expand control.
 
     The 50 percent band leads because "half the time it lands in here" is both
     intuitive and narrow enough to act on. The 90 percent band is the honest full
     picture and stays one interaction away rather than being hidden.
     """
-    return {str(level): band(point_estimate, abs_errors, level, sector)
+    return {str(level): band(point_estimate, abs_errors, level, sector, errors_from)
             for level in levels}
 
 
