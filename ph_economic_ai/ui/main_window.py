@@ -778,6 +778,37 @@ class SimMainWindow(QMainWindow):
         except Exception:
             pass
 
+    def _persist_sector_estimates(self) -> bool:
+        """Write the current food/electricity estimates onto the run row.
+
+        Called from BOTH ends of a race. Food and electricity debate in parallel
+        with the 39-call gas swarm and are far lighter, so they usually finish
+        first -- but the run row does not exist until the gas swarm completes and
+        `_on_simulation_complete` assigns `_current_run_id`. The sector callbacks
+        used to write only `if _current_run_id is not None`, so an estimate that
+        arrived early was silently dropped and nothing back-filled it. That lost
+        the sector estimate on 6 of 20 stored runs, and cost 2026-05 outright.
+
+        The cost is not proportional to the runs lost. Food is graded once per
+        calendar MONTH (`engine/ground_truth_monthly`), so a month in which no
+        run recorded an estimate yields no graded sample ever -- it cannot be
+        recovered by running the app more.
+
+        So the gas-swarm side calls this too, once the row exists. Returns
+        whether anything was written; a run may not be taken down by a failure
+        to record a side effect of it.
+        """
+        if self._store is None or self._current_run_id is None:
+            return False
+        try:
+            self._store.update_run_sectors(
+                self._current_run_id, self._food_estimate, self._elec_estimate)
+            return True
+        except Exception:
+            logging.warning('could not persist sector estimates for run %s',
+                            self._current_run_id, exc_info=True)
+            return False
+
     def _on_food_complete(self, responses):
         scenario = self._last_scenario or {}
         anchor = self._food_anchor(scenario)
@@ -828,12 +859,7 @@ class SimMainWindow(QMainWindow):
             })
         self._stage5.update_food_verdict(self._food_verdict)
         self._push_sector_forecasts()
-        if self._store is not None and self._current_run_id is not None:
-            try:
-                self._store.update_run_sectors(
-                    self._current_run_id, self._food_estimate, self._elec_estimate)
-            except Exception:
-                pass
+        self._persist_sector_estimates()
         self._attach_run_snapshot()
         self._run_synthesizer_if_ready()
 
@@ -889,12 +915,7 @@ class SimMainWindow(QMainWindow):
             })
         self._stage5.update_elec_verdict(self._elec_verdict)
         self._push_sector_forecasts()
-        if self._store is not None and self._current_run_id is not None:
-            try:
-                self._store.update_run_sectors(
-                    self._current_run_id, self._food_estimate, self._elec_estimate)
-            except Exception:
-                pass
+        self._persist_sector_estimates()
         self._attach_run_snapshot()
         self._run_synthesizer_if_ready()
 
@@ -919,6 +940,12 @@ class SimMainWindow(QMainWindow):
                 horizon_days=self._fuel_horizon_days(),
             )
             self._store.update_run_quality(self._current_run_id, run_quality)
+            # Back-fill the sector estimates. The food/electricity debates run in
+            # parallel with this swarm and are lighter, so they usually finish
+            # FIRST -- when there was no row to write to yet. Without this their
+            # estimates are lost, and a month in which none was recorded can
+            # never be graded (`engine/ground_truth_monthly`).
+            self._persist_sector_estimates()
             response_dicts = []
             for r in responses:
                 sc = scores.get(r.agent_name, {})
@@ -1048,6 +1075,12 @@ class SimMainWindow(QMainWindow):
                 temperature=llm.DEFAULT_TEMPERATURE,
             )
             self._store.update_run_quality(self._current_run_id, run_quality)
+            # Back-fill the sector estimates. The food/electricity debates run in
+            # parallel with this swarm and are lighter, so they usually finish
+            # FIRST -- when there was no row to write to yet. Without this their
+            # estimates are lost, and a month in which none was recorded can
+            # never be graded (`engine/ground_truth_monthly`).
+            self._persist_sector_estimates()
             self._master_verdict = master_verdict
             # A gas-only snapshot, so a recall works even if the app is closed
             # before the sector debates finish. `_attach_run_snapshot` overwrites
