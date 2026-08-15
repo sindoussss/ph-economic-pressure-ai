@@ -105,17 +105,35 @@ def fuel_passthrough_anchor(
 # but its magnitude is right (scale ratio ~1.0). That is the anchor's job here:
 # keep a weak model's estimate physically sized, not forecast the series.
 
-# Meralco's generation charge, the fuel-driven slice of a ~₱11–14/kWh total bill.
-_GEN_CHARGE_PHP_KWH = 5.50
+# Meralco's generation charge, the fuel-driven slice of the total bill (~₱14.83/kWh
+# all-in as of 2026-07). READ FROM DATA, not hardcoded: this was frozen at 5.50
+# while the published charge had reached 9.2504 by 2026-07 — 41% low — and since
+# it multiplies straight through, every electricity estimate was biased low with
+# nothing to reveal it. A level that must be remembered is a level that goes
+# stale, so `benchmark/meralco.py` reads the committed series and the constant
+# below survives only for when that series cannot be loaded at all.
 # Share of the generation charge that tracks fuel prices (natural gas via
 # Malampaya/LNG, imported coal, oil peaking plants).
 _GEN_FUEL_SHARE = 0.55
 
 
+def _default_generation_charge() -> float:
+    """Latest published generation charge, or the fallback if unreadable.
+
+    Imported lazily and never allowed to raise: this is a magnitude guard on a
+    live screen, and a missing data file may not take a run down.
+    """
+    try:
+        from ph_economic_ai.benchmark.meralco import latest_generation_charge
+        return latest_generation_charge()
+    except Exception:
+        return 9.2504          # last verified published level (2026-07)
+
+
 def electricity_passthrough_anchor(
     oil_pct: float,
     usd_pct: float,
-    generation_charge_php_kwh: float = _GEN_CHARGE_PHP_KWH,
+    generation_charge_php_kwh: float | None = None,
     fuel_share: float = _GEN_FUEL_SHARE,
 ) -> float:
     """Mechanical ₱/kWh change in the generation charge from a fuel/FX shock.
@@ -124,7 +142,13 @@ def electricity_passthrough_anchor(
     ``generation_charge · fuel_share``; a fuel-cost move passes through it about
     one-for-one, and a weaker peso raises the cost of imported coal and LNG, so
     the oil and FX shocks enter together as they do for pump prices.
+
+    `generation_charge_php_kwh` defaults to the newest level in the committed
+    Meralco series rather than to a constant, so the anchor tracks the published
+    charge instead of drifting away from it. Pass it explicitly to pin a level.
     """
+    if generation_charge_php_kwh is None:
+        generation_charge_php_kwh = _default_generation_charge()
     fuel_indexed = generation_charge_php_kwh * fuel_share
     return fuel_indexed * (oil_pct + usd_pct) / 100.0
 

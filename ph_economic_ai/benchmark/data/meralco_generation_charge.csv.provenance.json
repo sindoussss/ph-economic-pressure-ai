@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "file": "meralco_generation_charge.csv",
+  "source": "Meralco monthly Generation rate tables (company.meralco.com.ph)",
+  "request_params": {
+    "retrieval": "manual download; the site returns HTTP 403 to automated requests",
+    "category": "Generation"
+  },
+  "transformations": [
+    "read the adjusted headline after Other Generation Adjustments, not the pre-adjustment TOTAL",
+    "label months YYYY-MM from the table heading, sort"
+  ],
+  "units": "PHP/kWh",
+  "notes": "Generation charge level. Its month-over-month DIFFERENCE is the outcome series for grading the electricity sector, and its latest level is the anchor scale in engine/anchoring.py.",
+  "retrieved_at": "2026-08-15T23:04:09+00:00",
+  "sha256": "8763aa38cf445d893685cb5205f26b5625d7de06c0f8db02cf7014b50551904c",
+  "rows": 4,
+  "first_month": "2026-05",
+  "last_month": "2026-08",
+  "missing_months": []
+}

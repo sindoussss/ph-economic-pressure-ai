@@ -70,9 +70,33 @@ def test_scale_is_robust_to_input_noise():
 # ── Electricity: physical fuel pass-through (a validated signal) ──────────────
 
 def test_electricity_anchor_scales_with_the_fuel_shock():
+    """Asserted against the PUBLISHED level, not a copy of it.
+
+    This used to read `5.50 * 0.55 * 0.068`, restating the constant it was
+    checking -- so when the real generation charge reached 9.2504 and the
+    constant stayed at 5.50, the test passed and the anchor was 41% low. A test
+    that hardcodes the value it verifies cannot detect that value going stale.
+    """
+    from ph_economic_ai.benchmark.meralco import latest_generation_charge
+    gc = latest_generation_charge()
     a = electricity_passthrough_anchor(oil_pct=6.8, usd_pct=0.0)
-    assert a == pytest.approx(5.50 * 0.55 * 0.068, abs=0.01)
+    assert a == pytest.approx(gc * 0.55 * 0.068, abs=0.01)
     assert 0.0 < a < 0.5              # sane ₱/kWh magnitude for a moderate shock
+
+
+def test_electricity_anchor_tracks_the_published_charge():
+    """The regression the frozen constant caused: the anchor must move when the
+    published generation charge moves."""
+    low = electricity_passthrough_anchor(6.8, 0.0, generation_charge_php_kwh=5.50)
+    now = electricity_passthrough_anchor(6.8, 0.0)
+    assert now > low, 'the anchor is still pinned to the stale 5.50 era'
+
+
+def test_electricity_anchor_survives_an_unreadable_series(monkeypatch):
+    """A missing data file may not take a run down -- the anchor falls back."""
+    import ph_economic_ai.engine.anchoring as _a
+    monkeypatch.setattr(_a, '_default_generation_charge', lambda: 9.2504)
+    assert _a.electricity_passthrough_anchor(6.8, 0.0) > 0
 
 
 def test_electricity_oil_and_fx_add():
