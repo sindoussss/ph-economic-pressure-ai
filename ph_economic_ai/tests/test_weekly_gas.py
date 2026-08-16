@@ -174,3 +174,65 @@ def test_the_monthly_contrast_is_recorded():
     report = weekly_gas.run_weekly_gas()
     assert report['monthly_skill_for_contrast'] < 0
     assert report['skill'] > 0
+
+
+# ── The band the app actually shows ──────────────────────────────────────────
+
+def test_the_stated_gas_band_is_consistent_with_real_weekly_outcomes():
+    """`FALLBACK_HALFWIDTH['gas']` is displayed to users and had never been
+    checked against an outcome.
+
+    Its own comment sources it from "the ranges the prompts already describe as
+    typical" -- a guess, and until this panel existed there was nothing to test
+    it against. Measured here it turns out to be close to right:
+
+        level  stated  covers
+        0.50    0.60    46%
+        0.80    1.40    82%
+        0.90    2.00    90%
+        0.95    2.60    93%
+
+    So this test does not change the numbers -- it stops them drifting unnoticed
+    the way the generation charge and `anchor_validation.json` both did. A prior
+    nobody can check is a prior nobody can trust, however good it happens to be.
+
+    **What this does NOT establish.** The errors here come from the walk-forward
+    commodity model, not from the app's own swarm-plus-anchor path, which has
+    zero graded gas forecasts (`RSK-023` withdrew all three). This is a sanity
+    floor on the WIDTH, not a validation of the app's live band. Only grading
+    real runs can do that, which is what `MIN_GRADED_FOR_CALIBRATION` is for.
+    """
+    import numpy as np
+
+    from ph_economic_ai.engine.interval import FALLBACK_HALFWIDTH
+
+    frame = weekly_gas.load_features()
+    truth, pred = weekly_gas.walk_forward(frame, list(weekly_gas.COMMODITY_COLS))
+    errors = np.abs(truth - pred)
+
+    stated = FALLBACK_HALFWIDTH['gas']
+    drifted = {}
+    for level, half in stated.items():
+        covered = float((errors <= half).mean())
+        if abs(covered - level) > 0.10:
+            drifted[level] = (half, round(covered, 3))
+
+    assert not drifted, (
+        'the stated weekly gas band no longer matches real outcomes '
+        f'(level -> (stated_halfwidth, measured_coverage)): {drifted}')
+
+
+def test_the_band_prior_is_not_silently_wider_than_the_outcome_series():
+    """A band can also fail by being too generous: a 50% range that holds 90% of
+    the time is not honest either, it just fails in the flattering direction.
+    """
+    import numpy as np
+
+    from ph_economic_ai.engine.interval import FALLBACK_HALFWIDTH
+
+    frame = weekly_gas.load_features()
+    truth, pred = weekly_gas.walk_forward(frame, list(weekly_gas.COMMODITY_COLS))
+    errors = np.abs(truth - pred)
+    half_50 = FALLBACK_HALFWIDTH['gas'][0.5]
+    assert float((errors <= half_50).mean()) < 0.75, (
+        'the 50% band is behaving like a 75%+ band — too wide to mean what it says')
