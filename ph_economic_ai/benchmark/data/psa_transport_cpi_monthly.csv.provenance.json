@@ -14,11 +14,11 @@
     "label months YYYY-MM, sort"
   ],
   "units": "CPI index (2018=100)",
-  "notes": "PSA gold target for the transport nowcast.",
-  "retrieved_at": "2026-07-27T19:40:11+00:00",
-  "sha256": "bc37475de29ab1cff942a5cd81a3542f82e92864ad7bb14bdaa8c3af1b3eebab",
-  "rows": 390,
+  "notes": "PSA gold target for the transport_cpi nowcast.",
+  "retrieved_at": "2026-08-16T07:15:51+00:00",
+  "sha256": "eed01fe1634dc377451697c5b9f8ca6a2da3c128f40328ef673994bdea2d95a5",
+  "rows": 391,
   "first_month": "1994-01",
-  "last_month": "2026-06",
+  "last_month": "2026-07",
   "missing_months": []
 }

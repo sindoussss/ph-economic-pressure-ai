@@ -14,11 +14,11 @@
     "label months YYYY-MM, sort"
   ],
   "units": "CPI index (2018=100)",
-  "notes": "PSA gold target for the food nowcast.",
-  "retrieved_at": "2026-07-27T19:40:12+00:00",
-  "sha256": "d4a6a8135f62a2c18536bcd2668d82c2b051f2f98abbeafb17b3143ee1b4ea00",
-  "rows": 390,
+  "notes": "PSA gold target for the food_cpi nowcast.",
+  "retrieved_at": "2026-08-16T07:15:47+00:00",
+  "sha256": "3251d58d6e0b24421697dcfebafdb56599e698797d7585ecac4a21e69d76f30e",
+  "rows": 391,
   "first_month": "1994-01",
-  "last_month": "2026-06",
+  "last_month": "2026-07",
   "missing_months": []
 }
