@@ -1,0 +1,63 @@
+{
+ "n": 306,
+ "span": [
+  "2020-08-25",
+  "2026-07-28"
+ ],
+ "skill": 0.1469,
+ "hac_dm_t": -2.093,
+ "significant_5pct": true,
+ "survives_bonferroni_4_specs": false,
+ "by_year": {
+  "2020": {
+   "n": 19,
+   "skill": 0.2604,
+   "hac_t": -1.431
+  },
+  "2021": {
+   "n": 51,
+   "skill": 0.2075,
+   "hac_t": -3.49
+  },
+  "2022": {
+   "n": 52,
+   "skill": 0.0769,
+   "hac_t": -1.802
+  },
+  "2023": {
+   "n": 52,
+   "skill": 0.1803,
+   "hac_t": -3.33
+  },
+  "2024": {
+   "n": 53,
+   "skill": 0.0797,
+   "hac_t": -1.466
+  },
+  "2025": {
+   "n": 49,
+   "skill": 0.1479,
+   "hac_t": -1.592
+  },
+  "2026": {
+   "n": 30,
+   "skill": 0.1803,
+   "hac_t": -1.488
+  }
+ },
+ "years_positive": "7/7",
+ "sign_test_p": 0.00781,
+ "shuffle_null": {
+  "n_permutations": 30,
+  "mean_skill": 0.0075,
+  "max_skill": 0.0188
+ },
+ "holdout": {
+  "n": 108,
+  "skill": 0.1728,
+  "hac_t": -1.507,
+  "confirmed": false
+ },
+ "monthly_skill_for_contrast": -0.0735,
+ "verdict": "Weekly pump changes beat \"assume no change\" by 14.7% (HAC-DM t=-2.09), positive in every year tested, and the effect clears a shuffled-feature null. The strict two-stage holdout is NOT confirmed (t=-1.51), and the result does not survive Bonferroni across the four specs tried. Real enough to build on; not proven enough to advertise."
+}
