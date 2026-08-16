@@ -123,3 +123,52 @@ def test_food_finding_is_consistent_with_its_numbers():
     # never claim a winner when the two are within sampling noise
     if r['indistinguishable']:
         assert 'outpredicts' not in r['finding']
+
+
+# ── Staleness: the defect that let this artifact drift ────────────────────────
+
+def test_the_electricity_result_records_the_levels_it_was_computed_from():
+    """`scale_ratio` is a RATIO OF LEVELS, so it is only readable next to them.
+
+    The committed artifact said 1.02 and "its magnitude is right" while it had
+    been computed from a generation charge frozen at 5.50. When that constant was
+    corrected to the published 9.28 the same measurement became 1.84 — the number
+    moved 80% and nothing in the artifact recorded why, because the artifact
+    stored the ratio without the inputs that produced it.
+
+    That is `RSK-025` on the validation side: a number stored without recording
+    what it is OF.
+    """
+    r = ab.backtest_electricity()
+    assert 'generation_charge_php_kwh' in r, (
+        'scale_ratio without the charge it used cannot be checked for staleness')
+    assert 'base_rate_php_kwh' in r
+    assert r['generation_charge_php_kwh'] > 0 and r['base_rate_php_kwh'] > 0
+
+
+def test_the_recorded_charge_matches_the_one_the_anchor_actually_uses():
+    """The regression guard. If `anchoring` starts reading a different level and
+    this backtest keeps its own copy, the artifact silently describes a formula
+    the app no longer runs — which is exactly what happened.
+    """
+    from ph_economic_ai.engine import anchoring
+    r = ab.backtest_electricity()
+    assert r['generation_charge_php_kwh'] == pytest.approx(
+        anchoring._default_generation_charge()), (
+        'the backtest and the live anchor disagree about the generation charge')
+
+
+def test_the_scale_claim_admits_it_compares_across_eras():
+    """A current price level applied to a 227-month panel does not measure
+    whether the anchor was correctly sized in 2012.
+
+    The ratio read ~1.0 only while the charge was stale-LOW; correcting it moved
+    it to 1.84. Neither number supports "the magnitude is right" — the comparison
+    is anachronistic, and the finding has to say so rather than let a reader take
+    the ratio at face value.
+    """
+    r = ab.backtest_electricity()
+    finding = r['finding'].lower()
+    assert 'current' in finding or 'anachron' in finding or 'today' in finding, (
+        f'the finding presents scale_ratio {r["scale_ratio"]} without noting it '
+        f'applies a present-day charge level to a historical panel')

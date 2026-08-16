@@ -42,7 +42,17 @@ from ph_economic_ai.benchmark import ground_truth as gt
 from ph_economic_ai.benchmark import psa_cpi
 from ph_economic_ai.benchmark.significance import diebold_mariano
 
-_ELEC_BASE_RATE_PHP_KWH = 11.2   # to express the ₱/kWh anchor as a CPI %
+# All-in Meralco rate, used to express the ₱/kWh anchor as a CPI %.
+#
+# THIS IS THE NEXT INSTANCE of the defect that froze the generation charge at
+# 5.50: a level that must be remembered, copied into four files (`data.py`,
+# `fetcher.py`, `main_window.py` and here), whose true current value (~14.83 as
+# of 2026-07) survives only as prose in an `anchoring.py` comment. It is left at
+# 11.2 deliberately — promoting a number from a comment to a constant would
+# repeat the original mistake with a fresher figure, and no published all-in
+# series exists in this repository to read it from. `backtest_electricity`
+# records the value it used so the staleness is at least visible.
+_ELEC_BASE_RATE_PHP_KWH = 11.2
 
 ARTIFACT = Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts' / 'anchor_validation.json'
 _CACHE = Path(__file__).resolve().parent / '_market_monthly_cache.json'
@@ -239,8 +249,13 @@ def backtest_electricity() -> dict:
     """
     panel = _sector_panel(psa_cpi.load_electricity_mom(),
                           Path(psa_cpi.HERE) / 'data' / 'electricity_features_monthly.csv')
+    # Read the level the LIVE anchor uses rather than keeping a second copy.
+    # Two copies of a level drift apart silently, which is how this artifact came
+    # to report a ratio computed from a charge the app had stopped using.
+    gen_charge = anchoring._default_generation_charge()
     anchor_pct = np.array([
-        anchoring.electricity_passthrough_anchor(r['oil_pct'], r['usd_pct'])
+        anchoring.electricity_passthrough_anchor(
+            r['oil_pct'], r['usd_pct'], generation_charge_php_kwh=gen_charge)
         / _ELEC_BASE_RATE_PHP_KWH * 100.0
         for r in panel
     ])
@@ -259,10 +274,24 @@ def backtest_electricity() -> dict:
         'best_correlation_significance': best_sig,
         'is_predictive': bool(best_sig['significant']) and abs(lag_corrs[best_lag]) >= 0.2,
         'scale_ratio': round(_scale_ratio(anchor_pct, actual), 2),
+        # The levels the ratio was computed FROM. Without these it cannot be
+        # checked for staleness, and it went stale unnoticed once already.
+        'generation_charge_php_kwh': round(gen_charge, 4),
+        'base_rate_php_kwh': _ELEC_BASE_RATE_PHP_KWH,
         'finding': ('the fuel-price anchor does NOT predict monthly electricity '
                     'CPI at this resolution (the benchmark result used the '
                     'formulaic generation-charge nowcast, not raw commodity '
-                    'changes); it functions as a magnitude guard, not a predictor'),
+                    'changes); it functions as a magnitude guard, not a predictor. '
+                    'READ scale_ratio WITH CARE: it applies the CURRENT published '
+                    'generation charge to the whole historical panel, so it asks '
+                    'whether today\'s anchor is sized like a typical past move, '
+                    'NOT whether the anchor was correctly sized in any past year. '
+                    'It read ~1.0 only while the charge was frozen at a stale-low '
+                    '5.50; correcting that constant moved it to 1.84 without any '
+                    'change in the anchor\'s design. The base rate below is the '
+                    'same kind of frozen level (a 2024 average, copied in four '
+                    'places) and has not been corrected, because no published '
+                    'all-in series exists in this repository to correct it from.'),
     }
 
 
