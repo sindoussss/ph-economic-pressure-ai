@@ -402,3 +402,49 @@ def test_a_stale_feed_never_shows_a_figure_anyway():
     line = honesty.announced_adjustment_line(None, stale=True)
     assert '4.70' not in line
     assert '-' not in line.replace('out-of-date', '').replace('up-to-date', '')
+
+
+# ── Durable discovery: the URL is derivable from the week ────────────────────
+
+def test_a_week_inside_one_month_makes_the_short_slug():
+    slugs = da.week_slugs(dt.date(2026, 8, 11), dt.date(2026, 8, 17))
+    assert 'website-posting-itmsfuel-aug-11-17-pdf' in slugs
+
+
+def test_a_week_across_two_months_names_both():
+    slugs = da.week_slugs(dt.date(2026, 7, 28), dt.date(2026, 8, 3))
+    assert 'website-posting-itmsfuel-jul-28-aug-3-pdf' in slugs
+
+
+def test_both_month_spellings_are_offered():
+    """DOE writes `jul-7-13` in July and `june-9-15` in June. Trying only the
+    abbreviation reported eleven weeks missing that were in fact published --
+    a gap that looked like DOE not posting and was our slug being wrong.
+    """
+    slugs = da.week_slugs(dt.date(2026, 6, 23), dt.date(2026, 6, 29))
+    assert 'website-posting-itmsfuel-jun-23-29-pdf' in slugs
+    assert 'website-posting-itmsfuel-june-23-29-pdf' in slugs
+
+
+def test_days_are_not_zero_padded():
+    """`jul-7-13`, never `jul-07-13`. The padded form 404s."""
+    slugs = da.week_slugs(dt.date(2026, 7, 7), dt.date(2026, 7, 13))
+    assert any('jul-7-13' in s for s in slugs)
+    assert not any('jul-07-13' in s for s in slugs)
+
+
+def test_weeks_back_from_walks_tuesdays_in_reverse():
+    weeks = list(da.weeks_back_from(dt.date(2026, 8, 19), count=3))
+    assert weeks[0][0] == dt.date(2026, 8, 18)      # the Tuesday on or before
+    assert weeks[1][0] == dt.date(2026, 8, 11)
+    assert weeks[2][0] == dt.date(2026, 8, 4)
+    for start, end in weeks:
+        assert (end - start).days == 6
+        assert start.weekday() == 1                  # Tuesday
+
+
+def test_a_week_is_seven_days_ending_monday():
+    (start, end), = da.weeks_back_from(dt.date(2026, 8, 13), count=1)
+    assert start == dt.date(2026, 8, 11)
+    assert end == dt.date(2026, 8, 17)
+    assert end.weekday() == 0                        # Monday
