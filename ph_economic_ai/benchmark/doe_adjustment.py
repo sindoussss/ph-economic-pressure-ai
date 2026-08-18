@@ -175,42 +175,90 @@ def industry_adjustment(rows: Iterable[Mapping],
     return result
 
 
-# ── Extraction (awaiting a real sample) ──────────────────────────────────────
+# ── Extraction, validated against the 2026-08-11 notice ──────────────────────
+#
+# The notice is a PDF linked from a client-rendered article. `pypdf` flattens it
+# to text whose shape is NOT what a reader of the rendered table would guess, and
+# each surprise below cost a wrong assumption before the real sample was read:
+#
+#   * a row spans FOUR lines. The company and the time it filed are on one line,
+#     the dates on the next two, and the money lands on the line carrying the
+#     effectivity date: `August 11 -4.70 -4.30 -4.88`.
+#   * the table HEADING extracts LAST, after every row, so anything that scans
+#     forward from "For the week" finds nothing.
+#   * a staggered company's rows extract BEFORE its name. Filpride/Mobility's
+#     -1.70, -2.00 and -1.00 appear while the last named company is still Flying
+#     V, so per-company attribution would silently credit them to the wrong firm
+#     and, worse, sum Flying V to -9.40 and poison the mode.
+#
+# The summary row is what makes this tractable: it extracts as a money-only line
+# with no date prefix, which nothing else in the document looks like. Preferring
+# it sidesteps company attribution entirely for the number that matters.
 
-_MONEY_RE = re.compile(r'-?\d+\.\d{2}')
+_MONEY_RE = re.compile(r'-?\d+\.\d{2}\b')
+_TIME_RE = re.compile(r'\d{1,2}:\d{2}\s*(?:AM|PM)', re.IGNORECASE)
+_COMPANY_RE = re.compile(r'^(.+?)\s+\d{1,2}:\d{2}\s*(?:AM|PM)', re.IGNORECASE)
+_DATED_MONEY_RE = re.compile(r'^[A-Za-z]+\s+\d{1,2}\b')
 
 
-def parse_rows(text: str) -> list[dict]:
-    """Best-effort rows from an extracted-text rendering of the notice.
+def parse_notice_text(text: str) -> dict:
+    """`{'week': (start, end), 'rows': [...], 'summary': {...} | None}`.
 
-    **Unvalidated.** The notice is client-rendered and no extracted-text sample
-    exists yet, so this is written to the table's visible shape rather than to a
-    known tokenisation. It is deliberately the only unproven part of the module:
-    `industry_adjustment` is tested against the real 2026-08-11 figures and does
-    not depend on this function.
+    Validated against the notice for the week of 2026-08-11.
 
-    Takes the last two or three money figures on a line as gasoline, diesel and
-    kerosene, and everything before the first digit as the company. Lines whose
-    company reads exactly `Total` and which carry no timestamp are treated as the
-    SUMMARY row, not as the oil company of the same name.
+    **Company attribution is best effort and the headline does not rest on it.**
+    PDF extraction reorders the staggered block, so a company that spread its
+    move across days may have those rows credited to the firm above it. The
+    summary row is preferred precisely because it is immune to that; the rows are
+    returned for inspection and as a fallback, not as the primary reading.
     """
     rows: list[dict] = []
     summary: Optional[dict] = None
-    for line in (text or '').splitlines():
-        money = _MONEY_RE.findall(line)
-        if not money:
+    company: Optional[str] = None
+
+    for raw in (text or '').splitlines():
+        line = raw.strip()
+        if not line:
             continue
-        head = line[:line.find(money[0])].strip(' |\t')
-        values = [float(v) for v in money[-3:]] if len(money) >= 3 else \
-                 [float(v) for v in money[-2:]]
+        money = _MONEY_RE.findall(line)
+
+        if not money:
+            named = _COMPANY_RE.match(line)
+            if named:
+                company = named.group(1).strip(' /|\t')
+            continue
+
+        values = [float(v) for v in money[:3]]
         record = dict(zip(('gasoline', 'diesel', 'kerosene'), values))
-        has_time = bool(re.search(r'\d{1,2}:\d{2}\s*(AM|PM)', line, re.IGNORECASE))
-        if head.lower().rstrip(': ') == 'total' and not has_time:
+        record.setdefault('kerosene', None)
+
+        head = line[:line.find(money[0])].strip()
+        if not head:
+            # Money with nothing before it is the table's own bottom line.
             summary = record
             continue
-        if not head:
+        if _DATED_MONEY_RE.match(head):
+            rows.append({'company': company or 'unknown', **record})
             continue
-        rows.append({'company': head, 'kerosene': None, **record})
-    if summary is not None:
-        rows.append({'company': '__summary__', **summary})
-    return rows
+        named = _COMPANY_RE.match(line)
+        if named:
+            company = named.group(1).strip(' /|\t')
+        rows.append({'company': company or head, **record})
+
+    try:
+        week = parse_week_header(text)
+    except ValueError:
+        week = None
+    return {'week': week, 'rows': rows, 'summary': summary}
+
+
+def parse_notice_pdf(content: bytes) -> dict:
+    """Parse a downloaded notice PDF. `pypdf` is imported lazily, as in
+    `benchmark/meralco.py`, so importing this module never requires it."""
+    import io
+
+    import pypdf
+
+    text = '\n'.join((page.extract_text() or '')
+                     for page in pypdf.PdfReader(io.BytesIO(content)).pages)
+    return parse_notice_text(text)

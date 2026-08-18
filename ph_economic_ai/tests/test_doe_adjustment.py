@@ -27,6 +27,7 @@ reasoning pure means the part that can be verified today is verified today, and
 only the tokenizer waits on the fetch being solved.
 """
 import datetime as dt
+import pathlib
 
 import pytest
 
@@ -162,3 +163,62 @@ def test_an_empty_notice_yields_nothing_rather_than_zero():
     result = da.industry_adjustment([])
     assert result['gasoline'] is None
     assert result['basis'] == 'empty'
+
+
+# ── The real document, not a transcription of it ─────────────────────────────
+
+FIXTURE = (pathlib.Path(__file__).parent / 'fixtures'
+           / 'doe_notice_2026-08-11.txt')
+
+
+def _notice_text():
+    return FIXTURE.read_text(encoding='utf-8')
+
+
+def test_the_real_notice_text_yields_the_published_figures():
+    """End to end on `pypdf` output from the actual DOE notice, not on rows
+    typed from the screenshot. Everything above tests the reasoning; this tests
+    that the reasoning ever meets the document."""
+    parsed = da.parse_notice_text(_notice_text())
+    result = da.industry_adjustment(parsed['rows'], summary=parsed['summary'])
+    assert result['gasoline'] == pytest.approx(-4.70)
+    assert result['diesel'] == pytest.approx(-4.30)
+    assert result['basis'] == 'summary'
+
+
+def test_the_week_is_read_although_the_heading_extracts_last():
+    """`For the week August 11-17, 2026` appears AFTER every data row in
+    extraction order. Anything scanning forward from the heading finds nothing.
+    """
+    parsed = da.parse_notice_text(_notice_text())
+    assert parsed['week'] == (dt.date(2026, 8, 11), dt.date(2026, 8, 17))
+
+
+def test_the_summary_row_is_recognised_by_having_no_date():
+    """Every data row carries its effectivity date on the money line; the
+    table's bottom line carries only money. That is the one unambiguous signal
+    in the flattened text, and it is what lets the headline avoid depending on
+    company attribution at all.
+    """
+    parsed = da.parse_notice_text(_notice_text())
+    assert parsed['summary'] is not None
+    assert parsed['summary']['gasoline'] == pytest.approx(-4.70)
+    assert parsed['summary']['diesel'] == pytest.approx(-4.30)
+
+
+def test_every_data_row_is_captured():
+    """Fourteen companies moved once and one spread its move over three days,
+    so the table holds seventeen data rows. Losing the staggered ones is the
+    failure that understates a week."""
+    parsed = da.parse_notice_text(_notice_text())
+    assert len(parsed['rows']) == 17
+
+
+def test_the_staggered_rows_survive_extraction_reordering():
+    """Filpride/Mobility's -1.70, -2.00 and -1.00 extract BEFORE its name, so
+    they cannot be attributed by position. They must still be present."""
+    parsed = da.parse_notice_text(_notice_text())
+    gasoline = sorted(r['gasoline'] for r in parsed['rows'])
+    for expected in (-2.00, -1.70, -1.00):
+        assert any(g == pytest.approx(expected) for g in gasoline), (
+            f'staggered row {expected} lost in extraction')
