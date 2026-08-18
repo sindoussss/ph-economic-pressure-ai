@@ -222,3 +222,97 @@ def test_the_staggered_rows_survive_extraction_reordering():
     for expected in (-2.00, -1.70, -1.00):
         assert any(g == pytest.approx(expected) for g in gasoline), (
             f'staggered row {expected} lost in extraction')
+
+
+# ── Reaching the screen ──────────────────────────────────────────────────────
+
+def test_an_announcement_is_found_for_any_day_in_its_week():
+    rows = [{'week_start': '2026-08-11', 'week_end': '2026-08-17',
+             'gasoline': '-4.70', 'diesel': '-4.30', 'kerosene': '',
+             'basis': 'summary', 'n_companies': '14', 'consensus': '0.8571',
+             'source_pdf': 'https://example/x-pdf'}]
+    for day in (dt.date(2026, 8, 11), dt.date(2026, 8, 14), dt.date(2026, 8, 17)):
+        got = da.announcement_for(day, announcements=rows)
+        assert got is not None and got['gasoline'] == pytest.approx(-4.70)
+
+
+def test_no_announcement_outside_the_week_it_covers():
+    """Silence is the correct answer. Showing last week's announced move for
+    this week would be the `RSK-023` defect -- a number attached to the wrong
+    period -- with the added harm that it reads as a fact rather than a guess.
+    """
+    rows = [{'week_start': '2026-08-11', 'week_end': '2026-08-17',
+             'gasoline': '-4.70', 'diesel': '-4.30', 'kerosene': '',
+             'basis': 'summary', 'n_companies': '14', 'consensus': '0.8571',
+             'source_pdf': ''}]
+    assert da.announcement_for(dt.date(2026, 8, 10), announcements=rows) is None
+    assert da.announcement_for(dt.date(2026, 8, 18), announcements=rows) is None
+
+
+def test_a_week_with_no_consensus_announces_nothing():
+    """`industry_adjustment` returns None when companies disagree. That must
+    stay None on screen rather than becoming a confident zero."""
+    rows = [{'week_start': '2026-08-11', 'week_end': '2026-08-17',
+             'gasoline': '', 'diesel': '', 'kerosene': '',
+             'basis': 'no_consensus', 'n_companies': '3', 'consensus': '0.33',
+             'source_pdf': ''}]
+    got = da.announcement_for(dt.date(2026, 8, 12), announcements=rows)
+    assert got is not None
+    assert got['gasoline'] is None
+
+
+def test_the_committed_series_loads():
+    rows = da.load_announcements()
+    assert rows, 'no announcements committed'
+    assert all('week_start' in r for r in rows)
+
+
+def test_the_announced_move_is_never_an_app_forecast():
+    """The load-bearing safety property.
+
+    The announced figure is what the oil companies published, not what this app
+    predicted. If it ever reached the graded track record the app would show a
+    near-perfect accuracy it did not earn -- the precise overclaim this project
+    keeps retracting. `announcement_for` is therefore a READ, and nothing in it
+    produces an estimate, an error, or a graded row.
+    """
+    import inspect
+
+    from ph_economic_ai.engine import store as _store
+
+    source = inspect.getsource(da)
+    for forbidden in ('upsert_sector_grade', 'update_run_quality',
+                      'find_and_grade', 'add_graded', 'record_prediction'):
+        assert forbidden not in source, (
+            f'{forbidden} appears in doe_adjustment: an announced number must '
+            f'never enter the grading path')
+    assert not hasattr(da, 'grade')
+
+
+# ── How it is said on screen ─────────────────────────────────────────────────
+
+def test_the_announced_line_says_it_is_not_a_forecast():
+    """Borrowed authority is the risk. A published figure shown in the same
+    voice as the app's own estimate lets a reader credit the app with DOE's
+    certainty."""
+    from ph_economic_ai.ui import honesty
+
+    line = honesty.announced_adjustment_line(
+        {'gasoline': -4.70, 'week_start': '2026-08-11',
+         'week_end': '2026-08-17', 'n_companies': '14'})
+    assert '-4.70' in line
+    assert 'not this app' in line.lower()
+    assert '2026-08-11' in line
+
+
+def test_nothing_announced_says_nothing():
+    from ph_economic_ai.ui import honesty
+    assert honesty.announced_adjustment_line(None) == ''
+    assert honesty.announced_adjustment_line({'gasoline': None}) == ''
+
+
+def test_a_disagreeing_week_is_reported_as_such():
+    from ph_economic_ai.ui import honesty
+    line = honesty.announced_adjustment_line(
+        {'gasoline': None, 'basis': 'no_consensus'})
+    assert 'did not file a single common change' in line

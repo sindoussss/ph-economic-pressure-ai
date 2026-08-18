@@ -27,12 +27,18 @@ Two properties of the real document shape everything here:
     -2.00 and -1.00 on three consecutive dates, summing to the -4.70 everyone
     else took at once. Reading the first row alone understates the week by 3.00.
 
-**Scope.** This module reasons about rows. It does not fetch them: the notice is
-client-rendered behind a JavaScript front end, its body is absent from the HTML,
-the Nuxt payload and the document attachments, and the browser surface available
-here refuses the host. Extraction is deliberately a separate, swappable layer so
-the reasoning that CAN be verified today is verified today. `parse_rows` is a
-best-effort tokenizer and is marked as awaiting a real extracted-text sample.
+**Scope.** This module reasons about rows and reads committed announcements. It
+does not fetch: the notice is a PDF whose link is written into a client-rendered
+article by JavaScript, so recovering it needs a browser. That lives in
+`tools/refresh_doe_adjustment.py`, where Playwright is imported lazily and only
+on a maintainer machine, and the tests here read a committed fixture of the real
+extracted text instead.
+
+**What the app may do with this.** Show it as a published fact. Nothing more.
+The announced move is what the oil companies filed, not what this app predicted,
+so it must never reach the graded track record -- doing so would credit the app
+with an accuracy it did not earn, which is the overclaim `RSK-023` already cost
+three withdrawn grades.
 """
 from __future__ import annotations
 
@@ -40,6 +46,8 @@ import collections
 import datetime as dt
 import re
 from typing import Iterable, Mapping, Optional, Sequence
+
+from ph_economic_ai.benchmark.paths import data
 
 #: Products the notice carries. Kerosene is frequently blank; a blank is absence
 #: of an announcement, which is not the same claim as a zero adjustment.
@@ -262,3 +270,69 @@ def parse_notice_pdf(content: bytes) -> dict:
     text = '\n'.join((page.extract_text() or '')
                      for page in pypdf.PdfReader(io.BytesIO(content)).pages)
     return parse_notice_text(text)
+
+
+# ── Reaching the screen ──────────────────────────────────────────────────────
+#
+# What the app shows from this is a PUBLISHED FACT, not a forecast. That
+# distinction is the whole value and also the whole risk: an announced move that
+# leaked into the graded track record would credit this app with an accuracy it
+# never earned, which is the overclaim `RSK-023` already cost three withdrawn
+# grades. Everything below is a read. Nothing here writes a grade, an estimate or
+# an error, and `test_the_announced_move_is_never_an_app_forecast` fails if that
+# ever stops being true.
+
+ANNOUNCEMENTS_CSV = data('doe_price_adjustments.csv')
+
+
+def _opt_float(text) -> Optional[float]:
+    try:
+        return float(text) if text not in (None, '') else None
+    except (TypeError, ValueError):
+        return None
+
+
+def load_announcements(csv_path=ANNOUNCEMENTS_CSV) -> list[dict]:
+    """Committed weekly announcements, oldest first. `[]` when none exist."""
+    import csv as _csv
+
+    try:
+        with open(csv_path, encoding='utf-8') as fh:
+            rows = list(_csv.DictReader(fh))
+    except FileNotFoundError:
+        return []
+    out = []
+    for row in rows:
+        record = dict(row)
+        for product in PRODUCTS:
+            record[product] = _opt_float(row.get(product))
+        record['consensus'] = _opt_float(row.get('consensus'))
+        out.append(record)
+    return sorted(out, key=lambda r: r.get('week_start') or '')
+
+
+def announcement_for(day: dt.date, csv_path=ANNOUNCEMENTS_CSV,
+                     announcements: Optional[Iterable[Mapping]] = None
+                     ) -> Optional[dict]:
+    """The announcement whose week contains `day`, or None.
+
+    None is the right answer outside a covered week. Carrying the previous
+    week's figure forward would attach a number to a period it does not describe
+    -- the `RSK-023` defect -- and here it would do so in the voice of a
+    published fact rather than a guess, which is worse.
+    """
+    rows = list(announcements) if announcements is not None else load_announcements(csv_path)
+    for row in rows:
+        start, end = row.get('week_start'), row.get('week_end')
+        if not start or not end:
+            continue
+        try:
+            if dt.date.fromisoformat(start) <= day <= dt.date.fromisoformat(end):
+                record = dict(row)
+                for product in PRODUCTS:
+                    if not isinstance(record.get(product), (int, float)):
+                        record[product] = _opt_float(record.get(product))
+                return record
+        except ValueError:
+            continue
+    return None

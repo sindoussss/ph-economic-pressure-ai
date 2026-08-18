@@ -7,6 +7,8 @@ between rounds. The single "Run" button drives it all off the UI thread.
 """
 from __future__ import annotations
 
+import logging
+
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -616,6 +618,29 @@ class PressureMonitorPanel(QWidget):
             return _calendar.describe_next_fuel_adjustment()
         return _calendar.describe_next_cpi_release()
 
+    def _announced_line(self, sector: str) -> str:
+        """DOE's published change for the current week, or '' if none applies.
+
+        Fuel only: DOE publishes a Prior Notice for liquid fuels, and there is
+        no equivalent advance filing for a CPI print.
+
+        Never raises. This is a live screen and a missing or malformed
+        announcements file must not take a card down -- the same rule
+        `anchoring._default_generation_charge` follows for the charge it reads.
+        """
+        if self._SECTOR_EVENT.get(sector, 'cpi') != 'fuel':
+            return ''
+        try:
+            import datetime as _dt
+
+            from ph_economic_ai.benchmark.doe_adjustment import announcement_for
+            return _honesty.announced_adjustment_line(
+                announcement_for(_dt.date.today()))
+        except Exception:
+            logging.debug('no announced adjustment available for %s', sector,
+                          exc_info=True)
+            return ''
+
     def _graded_errors(self, sector: str = 'gas') -> list:
         """Past absolute errors for THIS sector, for calibrating its band. Empty
         is fine: the band then reports itself as uncalibrated rather than
@@ -769,6 +794,24 @@ class PressureMonitorPanel(QWidget):
         when = QLabel(f"next change  ·  {event['when']}  ·  {event['label']}")
         when.setStyleSheet(f'color:{_INK};font-size:12px;font-weight:600;margin-top:6px;')
         lay.addWidget(when)
+
+        # ANNOUNCED. For gas the week's change is usually already published: the
+        # oil companies file it with DOE on Monday and it takes effect 6:00 AM
+        # Tuesday. Showing a forecast for a number that is a matter of public
+        # record was the gap at the top of the accuracy roadmap.
+        #
+        # It sits ABOVE the range and in the same weight as the schedule line
+        # because it is the same kind of thing -- a published fact, not this
+        # app's output. It never replaces the estimate and never enters the
+        # graded track record; crediting the app with DOE's certainty is the
+        # borrowed-authority error `RSK-023` already cost three grades for.
+        announced = self._announced_line(r.sector)
+        if announced:
+            ann = QLabel(announced)
+            ann.setStyleSheet(f'color:{_INK};font-size:12px;font-weight:600;'
+                              f'margin-top:4px;')
+            ann.setWordWrap(True)
+            lay.addWidget(ann)
 
         # RANGE. One number reads as more precise than this system can justify. The
         # 50% band leads because it is narrow enough to act on; the 90% band is the
