@@ -350,3 +350,55 @@ def test_the_announced_block_is_absent_when_nothing_is_announced(monkeypatch):
     monkeypatch.setattr(live_data, '_announced_today', lambda: None)
     block = live_data.LiveDataBrief().as_prompt_block({})
     assert 'ANNOUNCED' not in block.upper()
+
+
+# ── A feed that stopped updating must not look like a quiet week ─────────────
+
+_FEED = [{'week_start': '2026-08-11', 'week_end': '2026-08-17',
+          'gasoline': -4.70, 'diesel': -4.30, 'kerosene': None,
+          'basis': 'summary', 'n_companies': '14', 'consensus': 0.8571,
+          'source_pdf': ''}]
+
+
+def test_a_current_feed_is_not_stale():
+    """Two days past the covered week is normal: the next notice publishes on
+    Monday, so a grace period keeps a Tuesday check from crying wolf."""
+    assert da.feed_is_stale(dt.date(2026, 8, 19), announcements=_FEED) is False
+
+
+def test_a_feed_that_missed_a_week_is_stale():
+    """DOE publishes weekly. More than seven days past the newest covered week
+    means at least one notice was never fetched."""
+    assert da.feed_is_stale(dt.date(2026, 8, 31), announcements=_FEED) is True
+
+
+def test_an_empty_feed_is_stale_not_quiet():
+    """The load-bearing case. Nothing on file and nothing on screen is
+    indistinguishable from "no change announced this week", and the two call for
+    opposite responses: one is normal, the other means the refresh stopped
+    running. `series_is_stale` treats an empty series the same way, and for the
+    same reason.
+    """
+    assert da.feed_is_stale(dt.date(2026, 8, 19), announcements=[]) is True
+
+
+def test_the_screen_distinguishes_stale_from_quiet():
+    """A reader who sees silence must be able to tell which silence it is."""
+    from ph_economic_ai.ui import honesty
+
+    quiet = honesty.announced_adjustment_line(None, stale=False)
+    stale = honesty.announced_adjustment_line(None, stale=True)
+    assert quiet == ''
+    assert stale != ''
+    assert 'out of date' in stale.lower() or 'not been updated' in stale.lower()
+
+
+def test_a_stale_feed_never_shows_a_figure_anyway():
+    """Staleness must not be papered over by displaying the last known number.
+    That is the `RSK-023` defect: a figure attached to a period it does not
+    describe, here wearing the authority of a published fact."""
+    from ph_economic_ai.ui import honesty
+
+    line = honesty.announced_adjustment_line(None, stale=True)
+    assert '4.70' not in line
+    assert '-' not in line.replace('out-of-date', '').replace('up-to-date', '')

@@ -18,7 +18,22 @@ it, CI never installs it, and the tests read a committed fixture -- the same
 fetch-once-commit contract every other panel in `benchmark/data` keeps.
 
     pip install playwright && playwright install chromium
-    python -m ph_economic_ai.tools.refresh_doe_adjustment
+    python -m ph_economic_ai.tools.refresh_doe_adjustment            # fetch
+    python -m ph_economic_ai.tools.refresh_doe_adjustment --check    # is it stale?
+
+**Running it weekly.** The feed is only as good as the last run, and a feed that
+stopped updating looks exactly like a quiet week on screen. `--check` exits 1 when
+the committed announcements have fallen behind, so a scheduler can act on it
+without parsing output. On Windows, register the fetch for Tuesday mornings, after
+Monday evening's filings and before the 6:00 AM effectivity:
+
+    schtasks /Create /TN "DOE price notice" /SC WEEKLY /D TUE /ST 08:00 ^
+      /TR "cmd /c cd /d <repo> && python -m ph_economic_ai.tools.refresh_doe_adjustment"
+
+The app does not depend on the scheduler having worked: `feed_is_stale` drives a
+notice on the gas card, so a refresh that silently stopped is visible rather than
+absorbed. That is the belt to the scheduler's braces, and the more important half
+-- a scheduled task can fail quietly, a staleness banner cannot.
 """
 from __future__ import annotations
 
@@ -176,5 +191,26 @@ def build() -> None:
     print(f'\nWrote {OUT.name} ({len(existing)} week(s)) + provenance')
 
 
+def check() -> int:
+    """Report whether the committed feed has fallen behind. Exit 1 if so.
+
+    Separate from `build` so a scheduler can ask the cheap question without
+    launching a browser, and so a monitoring job never mutates the repository.
+    """
+    from ph_economic_ai.benchmark.doe_adjustment import (
+        feed_is_stale, load_announcements)
+
+    rows = load_announcements()
+    stale = feed_is_stale()
+    newest = max((r.get('week_end') or '' for r in rows), default='(none)')
+    print(f'{len(rows)} week(s) on file, newest covers to {newest}')
+    print('STALE: the weekly refresh has not run recently' if stale else 'up to date')
+    return 1 if stale else 0
+
+
 if __name__ == '__main__':
+    import sys
+
+    if '--check' in sys.argv[1:]:
+        raise SystemExit(check())
     build()

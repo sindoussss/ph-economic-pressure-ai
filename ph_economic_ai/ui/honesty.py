@@ -814,7 +814,7 @@ def interact_caption() -> str:
 
 
 def announced_adjustment_line(announcement, product: str = 'gasoline',
-                              unit: str = '₱/L') -> str:
+                              unit: str = '₱/L', stale: bool = False) -> str:
     """The published weekly price change, said as a fact and not as a forecast.
 
     Every other number on this screen is something the app produced. This one is
@@ -828,6 +828,13 @@ def announced_adjustment_line(announcement, product: str = 'gasoline',
     silence rather than a stale figure from a week that has ended.
     """
     if not announcement:
+        # Silence has two causes and they are not interchangeable: no change was
+        # announced this week, or the feed stopped being refreshed. Showing the
+        # same blank for both is how a broken pipeline passes for a quiet market.
+        if stale:
+            return ('The DOE announcement feed has not been updated recently, so '
+                    'no published change is shown. This is out of date rather '
+                    'than quiet; run the weekly refresh.')
         return ''
     value = announcement.get(product)
     if value is None:

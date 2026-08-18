@@ -633,9 +633,14 @@ class PressureMonitorPanel(QWidget):
         try:
             import datetime as _dt
 
-            from ph_economic_ai.benchmark.doe_adjustment import announcement_for
+            from ph_economic_ai.benchmark.doe_adjustment import (
+                announcement_for, feed_is_stale)
+            today = _dt.date.today()
+            # Staleness is passed in rather than inferred from the empty result,
+            # because "no announcement this week" and "nobody ran the refresh"
+            # both arrive here as None and mean opposite things.
             return _honesty.announced_adjustment_line(
-                announcement_for(_dt.date.today()))
+                announcement_for(today), stale=feed_is_stale(today))
         except Exception:
             logging.debug('no announced adjustment available for %s', sector,
                           exc_info=True)
