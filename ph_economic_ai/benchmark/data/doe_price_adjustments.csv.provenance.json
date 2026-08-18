@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "file": "doe_price_adjustments.csv",
+  "source": "DOE Oil Industry Management Bureau, Prior Notice on Price Adjustments (weekly PDF linked from a client-rendered article)",
+  "request_params": {
+    "listing": "https://doe.gov.ph/site/oimb/articles/group/liquid-fuels?display_type=Card",
+    "render": "playwright chromium, maintainer machine only",
+    "consent": "Allow only Essential and Session Cookies"
+  },
+  "transformations": [
+    "discover notice articles from the server-rendered listing",
+    "render each article to recover the PDF link written by JavaScript",
+    "extract text with pypdf; read the week from the heading",
+    "industry figure from the summary row where present, else the modal company figure; mode not mean so one company cannot drag it"
+  ],
+  "units": "PHP per litre, change for the week",
+  "notes": "The announced move, not a forecast. Announced Monday, effective 6:00 AM Tuesday, and holds for the week.",
+  "retrieved_at": "2026-08-18T09:18:32+00:00",
+  "sha256": "ab72de717e53aeb0bcd202cf719cd3b1e34900b28c3581db941c9ed30f418352",
+  "rows": 1,
+  "first_month": "2026-08",
+  "last_month": "2026-08",
+  "missing_months": []
+}
