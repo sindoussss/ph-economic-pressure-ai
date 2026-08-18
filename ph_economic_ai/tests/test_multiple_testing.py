@@ -155,20 +155,30 @@ def test_the_record_is_not_empty():
     refusing to overclaim shipped an empty multiplicity record behind its one
     positive result."""
     result = mt.run()
-    assert result['n_tests'] == len(_holdout())
+    # Holdout rows PLUS the weekly-gas hypothesis. Pinned as a sum rather than
+    # to a literal so adding a family member is a deliberate edit here, not a
+    # number that drifts unnoticed.
+    assert result['n_tests'] == len(_holdout()) + 1
     assert result['tests'], 'the multiplicity record must not be empty'
     assert result['bonferroni_threshold'] == pytest.approx(0.05 / result['n_tests'], abs=1e-5)
 
 
 def test_fuel_audit_survives_neither_correction():
     """The one `confirmed_on_holdout` positive, measured against the family it
-    was actually selected from. At 23 tests the Bonferroni threshold is 0.0022
-    and p = 0.0296 is two orders of magnitude away from it."""
+    was actually selected from. At 24 tests the Bonferroni threshold is 0.0021
+    and p = 0.0296 is an order of magnitude away from it.
+
+    `bonferroni_p` moved from 0.6808 to 0.7104 when weekly gas joined the family,
+    because Bonferroni multiplies by m and m went 23 to 24. That is the retroactive
+    tightening `docs/preregistration/2026-08-12-food-subcategory-selection-holdout.md`
+    warned about when the family grows. It flipped nothing -- both figures are far
+    above alpha -- and `test_growing_the_family_flipped_no_verdict` checks that
+    directly rather than leaving it to inspection."""
     result = mt.run()
     fuel = next(t for t in result['tests'] if t['key'] == 'fuel_audit')
     assert fuel['dm_p'] == pytest.approx(0.0296)
-    assert fuel['bonferroni_p'] == pytest.approx(0.6808, abs=1e-4)
-    assert fuel['bh_q'] == pytest.approx(0.2269, abs=1e-4)
+    assert fuel['bonferroni_p'] == pytest.approx(0.7104, abs=1e-4)
+    assert fuel['bh_q'] == pytest.approx(0.2368, abs=1e-4)   # 0.2269 at m = 23
     assert fuel['survives_bonferroni'] is False
     assert fuel['survives_bh'] is False
     assert fuel['test'] in result['survive_neither']
@@ -177,10 +187,83 @@ def test_fuel_audit_survives_neither_correction():
 
 
 def test_the_record_states_how_many_hits_chance_alone_buys():
-    """Three of 23 land under 0.05 and ~1.15 are expected by chance. Reporting
+    """Three of 24 land under 0.05 and ~1.2 are expected by chance. Reporting
     the count without that expectation is how a coin-flip becomes a finding."""
     result = mt.run()
-    assert result['expected_false_positives'] == pytest.approx(1.15, abs=0.01)
+    assert result['expected_false_positives'] == pytest.approx(1.2, abs=0.01)
     nominal = [t for t in result['tests'] if t['nominally_significant']]
     assert len(nominal) == 3
     assert sum(t['direction'] == 'favours_naive' for t in nominal) == 2
+
+
+# ── The weekly-gas hypothesis joins the family ───────────────────────────────
+
+def test_weekly_gas_enters_as_one_test_not_one_per_spec():
+    """The module's own rule: "a panel is one hypothesis tested with K
+    candidates, not K hypotheses". Seven specifications were tried on the weekly
+    target across PR #31 and PR #36; counting each would inflate m with exactly
+    the multiplicity the two-stage holdout already handles.
+    """
+    validation = {'skill': 0.1469, 'hac_dm_t': -2.093, 'sign_test_p': 0.0078,
+                  'holdout': {'skill': 0.1715, 'hac_t': -1.54, 'confirmed': False}}
+    family = mt.build_weekly_gas_family(validation)
+    assert len(family) == 1
+    assert family[0]['key'] == 'weekly_gas'
+
+
+def test_it_is_scored_on_the_holdout_like_every_other_member():
+    """`build_selection_family` uses each row's HOLDOUT DM p, not its
+    in-selection p. Scoring the weekly result on its full-sample statistic while
+    everyone else is scored on a holdout would give it an easier test than the
+    family it is joining.
+    """
+    validation = {'skill': 0.1469, 'hac_dm_t': -2.093, 'sign_test_p': 0.0078,
+                  'holdout': {'skill': 0.1715, 'hac_t': -1.54, 'confirmed': False}}
+    entry = mt.build_weekly_gas_family(validation)[0]
+    # t = -1.54 two-sided is ~0.12, nowhere near the full-sample t = -2.09 (~0.037)
+    assert 0.10 < entry['dm_p'] < 0.15
+    assert entry['holdout_verdict'] == 'not_confirmed_on_holdout'
+
+
+def test_the_stronger_evidence_travels_as_context_not_as_extra_members():
+    """The full-sample DM and the 7/7 sign test are real and should be visible,
+    but they test the SAME claim. Adding them as rows would charge one
+    hypothesis three times -- the error the module already refuses for the
+    audit's fuel row."""
+    validation = {'skill': 0.1469, 'hac_dm_t': -2.093, 'sign_test_p': 0.0078,
+                  'holdout': {'skill': 0.1715, 'hac_t': -1.54, 'confirmed': False}}
+    family = mt.build_weekly_gas_family(validation)
+    assert len(family) == 1
+    entry = family[0]
+    assert entry['full_sample_dm_t'] == pytest.approx(-2.093)
+    assert entry['sign_test_p'] == pytest.approx(0.0078)
+
+
+def test_a_missing_validation_artifact_adds_nothing():
+    """A fresh checkout that has not run the weekly backtest must not silently
+    widen m for everyone else."""
+    assert mt.build_weekly_gas_family({}) == []
+    assert mt.build_weekly_gas_family(None) == []
+
+
+def test_the_family_grows_by_exactly_one():
+    result = mt.run()
+    assert result['n_tests'] == 24
+    keys = [t['key'] for t in result['tests']]
+    assert keys.count('weekly_gas') == 1
+
+
+def test_growing_the_family_flipped_no_verdict():
+    """The preregistration's actual concern, checked rather than assumed.
+
+    Adding a member raises m, which raises every existing member's Bonferroni p.
+    That can only make survival harder, so the risk is not that someone gains a
+    finding -- it is that a previously surviving result is retracted by a change
+    made for an unrelated reason. Nothing survived at 23 and nothing survives at
+    24, so no verdict moved, and this test fails if a future member ever does
+    push a survivor out.
+    """
+    result = mt.run()
+    assert result['survive_bonferroni'] == []
+    assert result['survive_bh_only'] == []
+    assert len(result['survive_neither']) == result['n_tests']

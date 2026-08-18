@@ -53,12 +53,15 @@ count elsewhere.
 from __future__ import annotations
 
 import json
+import math
+from typing import Optional
 
 from ph_economic_ai.benchmark.paths import ACCURACY_REPORT, ARTIFACTS_DIR, artifact
 
 _ARTIFACTS = ARTIFACTS_DIR
 _REPORT = ACCURACY_REPORT
 _HOLDOUT = artifact('selection_holdout.json')
+_WEEKLY = artifact('weekly_gas_validation.json')
 _OUT = artifact('multiple_testing.json')
 
 
@@ -192,9 +195,63 @@ def build_selection_family(holdout: dict) -> list[dict]:
     return family
 
 
-def assemble_family(report: dict, holdout: dict) -> list[dict]:
-    """Every DM test the benchmark ran, from both artifacts that hold one."""
-    return build_family(report) + build_selection_family(holdout)
+def _two_sided_p(t_stat: float) -> float:
+    """Two-sided normal p for a DM statistic.
+
+    DM is asymptotically standard normal, which is the approximation the rest of
+    this audit already relies on. `math.erfc` keeps it stdlib, as the module
+    docstring promises.
+    """
+    return math.erfc(abs(float(t_stat)) / math.sqrt(2.0))
+
+
+def build_weekly_gas_family(validation: Optional[dict]) -> list[dict]:
+    """The weekly pump-price hypothesis, as ONE member.
+
+    Seven specifications were tried on this target across PR #31 and PR #36.
+    Counting each would inflate m with the very multiplicity the two-stage
+    holdout already handles by construction -- the rule this module already
+    applies to per-method panel rows.
+
+    **Scored on the holdout**, like every `selection_holdout` member. The
+    full-sample statistic is stronger (t = -2.09 against the holdout's -1.54),
+    and using it here would hand this claim an easier test than the family it is
+    joining. It travels as context instead, alongside the seven-year sign test,
+    because both test the SAME hypothesis: entering them as rows would charge one
+    claim three times, which is why the audit's own fuel row is already excluded.
+
+    A checkout that has not run the weekly backtest contributes nothing rather
+    than silently widening m for everyone else.
+    """
+    if not validation:
+        return []
+    holdout = validation.get('holdout') or {}
+    t_stat = holdout.get('hac_t')
+    if t_stat is None:
+        return []
+    skill = holdout.get('skill')
+    return [{
+        'test': 'weekly gas: commodity model vs no-change (holdout)',
+        'key': 'weekly_gas',
+        'source': 'weekly_gas_validation.json',
+        'skill_vs_naive': skill,
+        'dm_p': round(_two_sided_p(t_stat), 6),
+        'direction': _direction(skill),
+        'holdout_verdict': ('confirmed_on_holdout' if holdout.get('confirmed')
+                            else 'not_confirmed_on_holdout'),
+        # Same claim, stronger instruments. Recorded so a reader sees them, NOT
+        # counted, so one hypothesis is charged once.
+        'full_sample_dm_t': validation.get('hac_dm_t'),
+        'full_sample_skill': validation.get('skill'),
+        'sign_test_p': validation.get('sign_test_p'),
+    }]
+
+
+def assemble_family(report: dict, holdout: dict,
+                    weekly: Optional[dict] = None) -> list[dict]:
+    """Every DM test the benchmark ran, from the artifacts that hold one."""
+    return (build_family(report) + build_selection_family(holdout)
+            + build_weekly_gas_family(weekly))
 
 
 def correct(family: list[dict], alpha: float = 0.05) -> dict:
@@ -245,7 +302,8 @@ def run() -> dict:
     # alone is still the right answer for that state; `benchmark.run` orders the
     # two so a full rebuild never lands here.
     holdout = json.loads(_HOLDOUT.read_text()) if _HOLDOUT.exists() else {}
-    result = correct(assemble_family(report, holdout))
+    weekly = json.loads(_WEEKLY.read_text()) if _WEEKLY.exists() else None
+    result = correct(assemble_family(report, holdout, weekly))
     # newline='\n' explicitly: text mode translates to CRLF on Windows, which made
     # this builder emit a different artifact than the same builder on Linux CI —
     # the platform-dependent-checkout problem `.gitattributes` documents for the
