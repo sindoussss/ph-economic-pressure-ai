@@ -49,9 +49,28 @@ FEATURES_CSV = data('weekly_gas_features.csv')
 OUT = artifact('weekly_gas_validation.json')
 
 #: Commodity columns, all three already fetched by `refresh_data.build_features_csv`
-#: (BZ=F, RB=F, PHP=X). WTI was tested and dropped: it correlates 0.9919 with
-#: Brent daily and adding it moved skill by 0.04 percentage points, so it buys a
-#: fourth network dependency and nothing else.
+#: (BZ=F, RB=F, PHP=X).
+#:
+#: Three alternatives have been tested against this set and rejected. Recorded so
+#: the next reader does not spend the search again, and because each rejection is
+#: also a small piece of evidence about what drives the pump price:
+#:
+#:   WTI (CL=F)          correlates 0.9919 with Brent daily; moved skill 0.04pp.
+#:   + ULSD (HO=F)       the distillate benchmark, absent here. -0.32pp.
+#:   refined only        dropping crude for RBOB + ULSD + FX. -1.25pp.
+#:
+#: The last two matter more than their size. The stated reason for trying them was
+#: that PH pricing indexes to a Singapore REFINED product while this panel leans on
+#: crude, so a refined benchmark should do better. It does not. Brent correlates
+#: +0.486 with the next pump move against RBOB's +0.463 and ULSD's +0.415: crude
+#: outperforms both refined proxies available here, which is the opposite of what
+#: that reasoning predicts.
+#:
+#: What this does NOT settle: true MOPS (Mean of Platts Singapore) is the index PH
+#: pricing actually references and it is a paid Platts product with no free
+#: substitute -- Yahoo carries no Asian refined benchmark at all. So the real
+#: hypothesis remains untested rather than refuted. Only the argument for it is
+#: weakened, and US refined proxies are not a way in.
 COMMODITY_COLS = ('brent_pct', 'rbob_pct', 'usdphp_pct')
 
 #: A DOE cycle is weekly. Differencing across a gap would label a three-week move
