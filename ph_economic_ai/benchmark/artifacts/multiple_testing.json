@@ -1,8 +1,8 @@
 {
   "alpha": 0.05,
-  "n_tests": 23,
-  "bonferroni_threshold": 0.00217,
-  "expected_false_positives": 1.15,
+  "n_tests": 24,
+  "bonferroni_threshold": 0.00208,
+  "expected_false_positives": 1.2,
   "n_nominally_significant": 3,
   "n_nominally_significant_favouring_model": 1,
   "n_nominally_significant_favouring_naive": 2,
@@ -14,6 +14,7 @@
     "selection holdout: fuel_audit",
     "selection holdout: meat_mom_full",
     "selection holdout: vegetables_mom_driver_only",
+    "weekly gas: commodity model vs no-change (holdout)",
     "selection holdout: vegetables_mom_full",
     "selection holdout: meat_mom_driver_only",
     "selection holdout: rice_mom_full",
@@ -43,9 +44,9 @@
       "direction": "favours_naive",
       "holdout_verdict": "not_confirmed_on_holdout",
       "nominally_significant": true,
-      "bonferroni_p": 0.4623,
+      "bonferroni_p": 0.4824,
       "survives_bonferroni": false,
-      "bh_q": 0.2269,
+      "bh_q": 0.2368,
       "survives_bh": false
     },
     {
@@ -57,9 +58,9 @@
       "direction": "favours_naive",
       "holdout_verdict": "not_confirmed_on_holdout",
       "nominally_significant": true,
-      "bonferroni_p": 0.5014,
+      "bonferroni_p": 0.5232,
       "survives_bonferroni": false,
-      "bh_q": 0.2269,
+      "bh_q": 0.2368,
       "survives_bh": false
     },
     {
@@ -71,9 +72,9 @@
       "direction": "favours_model",
       "holdout_verdict": "confirmed_on_holdout",
       "nominally_significant": true,
-      "bonferroni_p": 0.6808,
+      "bonferroni_p": 0.7104,
       "survives_bonferroni": false,
-      "bh_q": 0.2269,
+      "bh_q": 0.2368,
       "survives_bh": false
     },
     {
@@ -87,7 +88,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.5488,
+      "bh_q": 0.5272,
       "survives_bh": false
     },
     {
@@ -101,7 +102,24 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.5488,
+      "bh_q": 0.5272,
+      "survives_bh": false
+    },
+    {
+      "test": "weekly gas: commodity model vs no-change (holdout)",
+      "key": "weekly_gas",
+      "source": "weekly_gas_validation.json",
+      "skill_vs_naive": 0.1728,
+      "dm_p": 0.131811,
+      "direction": "favours_model",
+      "holdout_verdict": "not_confirmed_on_holdout",
+      "full_sample_dm_t": -2.093,
+      "full_sample_skill": 0.1469,
+      "sign_test_p": 0.00781,
+      "nominally_significant": false,
+      "bonferroni_p": 1.0,
+      "survives_bonferroni": false,
+      "bh_q": 0.5272,
       "survives_bh": false
     },
     {
@@ -115,7 +133,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.984,
+      "bh_q": 0.8801,
       "survives_bh": false
     },
     {
