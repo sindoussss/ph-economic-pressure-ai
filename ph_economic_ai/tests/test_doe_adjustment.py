@@ -316,3 +316,37 @@ def test_a_disagreeing_week_is_reported_as_such():
     line = honesty.announced_adjustment_line(
         {'gasoline': None, 'basis': 'no_consensus'})
     assert 'did not file a single common change' in line
+
+
+# ── The swarm prompt reads the number, not headlines about it ────────────────
+
+def test_the_prompt_block_carries_the_announced_figure():
+    """The swarm used to receive two Google News titles about the DOE bulletin.
+    It now receives the bulletin's number. A headline is a lossy account of a
+    figure that is published exactly, and small models are the least able to
+    recover the figure from the prose.
+    """
+    from ph_economic_ai.engine.live_data import LiveDataBrief
+
+    brief = LiveDataBrief()
+    block = brief.as_prompt_block({'oil_pct': 1.0, 'usd_pct': 0.0})
+    assert 'DOE FUEL PRICE SIGNALS (latest headlines)' not in block
+
+
+def test_the_headline_feed_is_gone():
+    """Removed rather than left dormant: a dead fetch still costs a network
+    call, a failure mode inside the thread pool, and a reader's attention."""
+    from ph_economic_ai.engine import live_data
+
+    assert not hasattr(live_data, 'fetch_doe_headlines')
+    assert 'doe_news' not in vars(live_data.LiveDataBrief())
+
+
+def test_the_announced_block_is_absent_when_nothing_is_announced(monkeypatch):
+    """Outside a covered week the prompt says nothing about an announcement,
+    rather than carrying a stale one or an empty heading."""
+    from ph_economic_ai.engine import live_data
+
+    monkeypatch.setattr(live_data, '_announced_today', lambda: None)
+    block = live_data.LiveDataBrief().as_prompt_block({})
+    assert 'ANNOUNCED' not in block.upper()

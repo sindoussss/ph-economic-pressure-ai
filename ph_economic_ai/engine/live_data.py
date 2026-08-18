@@ -203,10 +203,26 @@ def fetch_bsp_headlines() -> list[str]:
            '+inflation+2026&hl=en&gl=PH&ceid=PH:en')
     return _rss_headlines(url, 3)
 
-def fetch_doe_headlines() -> list[str]:
-    url = ('https://news.google.com/rss/search?q=DOE+oil+price+bulletin'
-           '+Philippines+per+liter+2026&hl=en&gl=PH&ceid=PH:en')
-    return _rss_headlines(url, 3)
+def _announced_today():
+    """DOE's published change for the current week, or None.
+
+    Replaces `fetch_doe_headlines`, which searched Google News for
+    "DOE oil price bulletin Philippines per liter" -- that is, it hunted for
+    prose ABOUT a number the app can now read exactly. Two RSS titles are a
+    lossy account of a figure published to the centavo, and small local models
+    are the least equipped to recover the figure from the prose.
+
+    Never raises: a live brief must not fail because a data file is missing,
+    the rule `anchoring._default_generation_charge` already follows.
+    """
+    try:
+        import datetime as _dt
+
+        from ph_economic_ai.benchmark.doe_adjustment import announcement_for
+        return announcement_for(_dt.date.today())
+    except Exception:
+        return None
+
 
 def fetch_psa_headlines() -> list[str]:
     url = ('https://news.google.com/rss/search?q=PSA+CPI+inflation'
@@ -316,7 +332,6 @@ class LiveDataBrief:
         self.fx_hist:    list[tuple[str, float]] = []
 
         self.bsp_news:  list[str] = []
-        self.doe_news:  list[str] = []
         self.psa_news:  list[str] = []
         self.nfa_news:  list[str] = []
 
@@ -336,7 +351,6 @@ class LiveDataBrief:
                 'brent_hist':     pool.submit(_yahoo_history, 'BZ=F', 5),
                 'fx_hist':        pool.submit(_yahoo_history, 'PHP=X', 5),
                 'bsp_news':       pool.submit(fetch_bsp_headlines),
-                'doe_news':       pool.submit(fetch_doe_headlines),
                 'psa_news':       pool.submit(fetch_psa_headlines),
                 'nfa_news':       pool.submit(fetch_nfa_headlines),
                 'weather_manila': pool.submit(fetch_open_meteo_manila),
@@ -348,7 +362,6 @@ class LiveDataBrief:
             self.brent_hist     = f['brent_hist'].result()
             self.fx_hist        = f['fx_hist'].result()
             self.bsp_news       = f['bsp_news'].result()
-            self.doe_news       = f['doe_news'].result()
             self.psa_news       = f['psa_news'].result()
             self.nfa_news       = f['nfa_news'].result()
             self.weather_manila = f['weather_manila'].result()
@@ -430,11 +443,18 @@ class LiveDataBrief:
             for h in self.bsp_news[:2]:
                 lines.append(f'  • {h}')
 
-        if self.doe_news:
+        announced = _announced_today()
+        if announced and announced.get('gasoline') is not None:
             lines.append('')
-            lines.append('■ DOE FUEL PRICE SIGNALS (latest headlines)')
-            for h in self.doe_news[:2]:
-                lines.append(f'  • {h}')
+            lines.append('■ DOE PRIOR NOTICE (published, not a forecast)')
+            lines.append(f"  Week:                 {announced.get('week_start')} "
+                         f"to {announced.get('week_end')}")
+            for product in ('gasoline', 'diesel', 'kerosene'):
+                value = announced.get(product)
+                if value is not None:
+                    lines.append(f'  {product.capitalize():<21} {float(value):+.2f} PHP/L')
+            lines.append('  This is the change the oil companies filed with DOE. '
+                         'It is already decided; do not forecast it.')
 
         if self.psa_news:
             lines.append('')
