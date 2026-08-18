@@ -183,3 +183,53 @@ and sugar (both full-nowcast and driver-only framings) stay "exploratory,
 not validated." No row returned `confirmed_on_holdout`, so the Bonferroni-
 family-wiring branch of the decision rule does not apply to this run — no
 review of that kind is needed as a result of these twelve rows.
+
+## Follow-up: the family-wiring review, carried out 2026-08-16
+
+Added after the fact, per this document's own rule that the sections above
+are never edited post-run. The Decision rule table required a review before
+`multiple_testing.build_family()` could be extended to include
+selection-holdout rows, on the stated ground that "growing the family from
+its current size retroactively tightens `bonferroni_threshold = alpha/m` for
+every existing member, which could flip an already-published result."
+
+That review was triggered not by these twelve rows — none confirmed, so the
+branch quoted above did not fire — but by the state of the artifact itself.
+`multiple_testing.json` read `{"n_tests": 0, ..., "tests": []}` while
+`selection_holdout.json` held 23 scored DM tests, one of them the project's
+only `confirmed_on_holdout` result. An empty multiplicity record standing
+behind a claimed positive is not a conservative default; it is the absence
+of the check.
+
+**Finding: the stated risk does not apply, and the reasoning that produced
+it was sound but conditional on a premise that is false.** The premise was
+that the family had existing members whose thresholds would tighten. It has
+none. `build_family()` reads `accuracy_report.json` for verdicts of
+`beats_best_naive`, and under the corrected baseline pool (§4.7) there are
+zero such nodes. m goes from 0 to 23; no published member's threshold moves,
+because there were no members. Nothing can be flipped.
+
+**Decision: wire them in.** The family is now every DM test the benchmark
+actually ran — the `accuracy_report.json` confirmatory nodes (currently
+zero) plus every scored `selection_holdout.json` row. Membership is derived
+from the artifacts on each run, never listed in code, so extending
+`selection.run()` widens the family automatically rather than letting a new
+target escape correction. `multiple_testing.py`'s docstring records what is
+excluded and why, since that list is what m depends on.
+
+**Outcome, at m = 23 and alpha/m = 0.0022: nothing survives either
+correction.** Three rows fall under an uncorrected 0.05 where chance alone
+buys 1.15, and two of the three are the negative-skill rows this document
+already flagged above — the model significantly worse, not better. The one
+nominal positive in the model's favour, `fuel_audit` (+11.9%, p = 0.0296),
+carries a Bonferroni-adjusted p of 0.6808 and a BH q of 0.2269.
+
+**What this does and does not change.** `fuel_audit`'s
+`confirmed_on_holdout` verdict stands: it answers whether the edge survives
+*selection*, which is a different question, and `selection.py` is untouched.
+What it removes is any reading in which surviving selection is sufficient.
+One test in twenty-three clearing 0.05 is what twenty-three coin flips
+produce. Per the Decision rule's final clause, this is flagged to the owner
+as a manuscript-affecting change: manuscript §4.9 and §5.8 and
+`docs/defense/reviewer-critique.md` M1 were updated in the same commit. No
+app-facing label changed, because no label claimed fuel as validated.

@@ -46,7 +46,7 @@ State them early and unprompted; they neutralize whole classes of attack.
 ## MAJOR — rejection risk if unaddressed
 
 ### M1. Multiple hypothesis testing / no correction reported  ✅ ADDRESSED
-*(Done: `benchmark/multiple_testing.py` + `multiple_testing.json`; manuscript §4.9 and §5.8. Result below confirmed the plan — the four headline positives survive Bonferroni; short-sample MoM and transport survive only BH-FDR and are already down-weighted for independent reasons.)*
+*(Done: `benchmark/multiple_testing.py` + `multiple_testing.json`; manuscript §4.9 and §5.8. **The result below is superseded twice over and is retained only as the record of what was planned.** The four "headline positives" it counts on were artifacts of a baseline pool missing the historical mean (§4.7) and no longer exist. The live family is the 23 selection-holdout DM tests, m = 23, α/m = 0.0022: **nothing survives Bonferroni and nothing survives BH.** Three rows come in under an uncorrected 0.05 against 1.15 expected by chance, and two of those three are the model losing, not winning. The one nominal positive, `fuel_audit` at p = 0.0296, has a Bonferroni-adjusted p of 0.68 and a BH q of 0.23. Correcting the record required first noticing that it was never assembled: until 2026-08-16 the family was read from `accuracy_report.json` alone, so the artifact reported `n_tests = 0` while 23 uncorrected tests sat next to it.)*
 
 **Attack.** "You run DM tests across ~8–10 targets and samples at α = 0.05.
 Some 'significant' results are expected by chance. Where is your

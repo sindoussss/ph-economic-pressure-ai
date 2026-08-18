@@ -292,13 +292,6 @@ def main():
           f"skill vs random walk: {rep['headline_skill_vs_random_walk']:+.3f} "
           f"over {rep['n_months']} months")
 
-    # Multiple-comparison correction over the confirmatory DM tests — reads the
-    # accuracy_report just written, so it always reflects the current run.
-    from ph_economic_ai.benchmark import multiple_testing
-    _mt = multiple_testing.run()
-    print(f"Multiple testing: {len(_mt['survive_bonferroni'])}/{_mt['n_tests']} "
-          f"confirmatory tests survive Bonferroni (FWER): {_mt['survive_bonferroni']}")
-
     # Power / minimum-detectable-effect for the flagship efficiency null.
     from ph_economic_ai.benchmark import power
     _pw = power.run()['fuel_one_month_forecast']
@@ -335,6 +328,21 @@ def main():
               f"{_r['holdout_skill']:+.3f} (shrinkage {_r['shrinkage']:+.3f}, "
               f"DM p={_r['holdout_dm_p']:.4f}, n={_r['n_holdout_predictions']}) | "
               f"{_r['verdict']}")
+
+    # Multiple-comparison correction over every DM test above. Moved here from
+    # just after the accuracy_report on 2026-08-16, and the order is now
+    # load-bearing: the correction reads `selection_holdout.json`, which the block
+    # above writes, and those rows are the whole live family. Run it earlier and it
+    # silently corrects the PREVIOUS run's p-values, or none at all on a fresh
+    # checkout — a quieter version of the defect that left this artifact reporting
+    # n_tests = 0 while 23 uncorrected DM tests sat in the file beside it.
+    from ph_economic_ai.benchmark import multiple_testing
+    _mt = multiple_testing.run()
+    print(f"Multiple testing: {len(_mt['survive_bonferroni'])}/{_mt['n_tests']} "
+          f"DM tests survive Bonferroni (FWER, threshold "
+          f"{_mt['bonferroni_threshold']}): {_mt['survive_bonferroni'] or 'none'}; "
+          f"{_mt['n_nominally_significant']} nominally significant vs "
+          f"{_mt['expected_false_positives']} expected by chance")
 
     # Size-and-power study: what false-positive rate does a mean-free pool
     # actually produce on data with nothing in it, and does the fix keep power?

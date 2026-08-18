@@ -1,7 +1,11 @@
 """Multiple-comparison correction — the M1 reviewer defense.
 
-Verifies the Bonferroni/BH machinery against known cases, and that the audit's
-headline positives survive the strict correction.
+Verifies the Bonferroni/BH machinery against known cases, and that the family it
+corrects is the one the benchmark actually tested. The second half exists because
+the record was empty for real: `build_family` read only `accuracy_report.json`,
+every verdict there is a null under the corrected pool, and so the artifact behind
+the project's one positive result (`fuel_audit`, `confirmed_on_holdout`) said
+`n_tests = 0` while `selection_holdout.json` held 23 untouched DM tests.
 """
 import json
 from pathlib import Path
@@ -79,23 +83,104 @@ def test_family_is_the_confirmatory_tests_only():
     assert len(family) == expected      # exactly the real positives, no more
 
 
-def test_corrected_pool_leaves_no_confirmatory_positives():
-    """With the historical mean in the baseline pool (§4.7), every MoM verdict is a
-    null — so the confirmatory family is empty and there is nothing left to
-    correct. The empty family must be handled, not crash."""
-    result = mt.run()
-    assert result['n_tests'] == 0
-    assert result['survive_bonferroni'] == []
-    assert result['survive_bh_only'] == []
-    assert result['bonferroni_threshold'] is None      # no division by zero
+def test_corrected_pool_leaves_no_confirmatory_positives_in_the_report():
+    """With the historical mean in the baseline pool (§4.7), every MoM verdict in
+    `accuracy_report.json` is a null, so the report contributes nothing. The
+    empty case must be handled, not crash."""
+    report = json.loads((Path(mt._ARTIFACTS) / 'accuracy_report.json').read_text())
+    assert mt.build_family(report) == []
+
+
+def test_empty_family_correction_does_not_divide_by_zero():
+    r = mt.correct([])
+    assert r['n_tests'] == 0
+    assert r['survive_bonferroni'] == []
+    assert r['survive_bh_only'] == []
+    assert r['bonferroni_threshold'] is None
+    assert r['expected_false_positives'] == 0.0
 
 
 def test_survivor_logic_still_discriminates_on_a_synthetic_family():
-    """Machinery guard: now that the real family is empty, keep proving the
-    correction can still separate a strong positive from a weak one, so a future
-    genuine finding would be classified correctly."""
+    """Machinery guard: keep proving the correction can separate a strong
+    positive from a weak one, so a future genuine finding is classified
+    correctly."""
     fam = [{'test': 'strong', 'skill_vs_naive': 0.30, 'dm_p': 0.0005},
            {'test': 'weak', 'skill_vs_naive': 0.10, 'dm_p': 0.032}]
     r = mt.correct(fam)
     assert r['survive_bonferroni'] == ['strong']       # p < 0.05/2
     assert r['survive_bh_only'] == ['weak']            # FDR only
+
+
+# ── The selection-holdout family ──────────────────────────────────────────────
+
+def _holdout() -> dict:
+    return json.loads((Path(mt._ARTIFACTS) / 'selection_holdout.json').read_text())
+
+
+def test_selection_family_covers_every_holdout_dm_test():
+    """Every row `selection.run()` actually tested is a family member. The count
+    is derived from the artifact, never hardcoded, so adding a target to
+    `selection.run()` widens the family instead of silently escaping it."""
+    holdout = _holdout()
+    family = mt.build_selection_family(holdout)
+    expected = [k for k, v in holdout.items() if v.get('holdout_dm_p') is not None]
+    assert [f['key'] for f in family] == expected
+    assert all(f['source'] == 'selection_holdout.json' for f in family)
+
+
+def test_selection_family_skips_rows_with_no_p_value():
+    """An `insufficient_data` row was never tested, so it must not inflate the
+    denominator every other test is divided by."""
+    holdout = {'tested': {'verdict': 'not_confirmed_on_holdout', 'holdout_dm_p': 0.4,
+                          'holdout_skill': -0.01},
+               'untested': {'verdict': 'insufficient_data', 'n': 30, 'cut': 21}}
+    family = mt.build_selection_family(holdout)
+    assert [f['key'] for f in family] == ['tested']
+
+
+def test_selection_family_records_which_side_a_p_value_falls_on():
+    """A two-sided DM test can reject because the model is significantly WORSE.
+    `dairy_eggs_mom_driver_only` (-35.0%, p = 0.0201) is such a row: recording it
+    without direction would let a reader count it as a win."""
+    family = {f['key']: f for f in mt.build_selection_family(_holdout())}
+    assert family['fuel_audit']['direction'] == 'favours_model'
+    assert family['dairy_eggs_mom_driver_only']['direction'] == 'favours_naive'
+    assert family['sugar_mom_driver_only']['direction'] == 'favours_naive'
+
+
+# ── The populated record ──────────────────────────────────────────────────────
+
+def test_the_record_is_not_empty():
+    """The regression this file exists for: a repo whose stated purpose is
+    refusing to overclaim shipped an empty multiplicity record behind its one
+    positive result."""
+    result = mt.run()
+    assert result['n_tests'] == len(_holdout())
+    assert result['tests'], 'the multiplicity record must not be empty'
+    assert result['bonferroni_threshold'] == pytest.approx(0.05 / result['n_tests'], abs=1e-5)
+
+
+def test_fuel_audit_survives_neither_correction():
+    """The one `confirmed_on_holdout` positive, measured against the family it
+    was actually selected from. At 23 tests the Bonferroni threshold is 0.0022
+    and p = 0.0296 is two orders of magnitude away from it."""
+    result = mt.run()
+    fuel = next(t for t in result['tests'] if t['key'] == 'fuel_audit')
+    assert fuel['dm_p'] == pytest.approx(0.0296)
+    assert fuel['bonferroni_p'] == pytest.approx(0.6808, abs=1e-4)
+    assert fuel['bh_q'] == pytest.approx(0.2269, abs=1e-4)
+    assert fuel['survives_bonferroni'] is False
+    assert fuel['survives_bh'] is False
+    assert fuel['test'] in result['survive_neither']
+    assert result['survive_bonferroni'] == []
+    assert result['survive_bh_only'] == []
+
+
+def test_the_record_states_how_many_hits_chance_alone_buys():
+    """Three of 23 land under 0.05 and ~1.15 are expected by chance. Reporting
+    the count without that expectation is how a coin-flip becomes a finding."""
+    result = mt.run()
+    assert result['expected_false_positives'] == pytest.approx(1.15, abs=0.01)
+    nominal = [t for t in result['tests'] if t['nominally_significant']]
+    assert len(nominal) == 3
+    assert sum(t['direction'] == 'favours_naive' for t in nominal) == 2
