@@ -336,3 +336,39 @@ def announcement_for(day: dt.date, csv_path=ANNOUNCEMENTS_CSV,
         except ValueError:
             continue
     return None
+
+
+#: Days past the newest covered week before the feed counts as stale. DOE
+#: publishes weekly, so one full cycle of grace keeps a Tuesday check from
+#: reporting a gap that Monday's notice is about to fill.
+STALE_AFTER_DAYS = 7
+
+
+def feed_is_stale(today: Optional[dt.date] = None,
+                  csv_path=ANNOUNCEMENTS_CSV,
+                  announcements: Optional[Iterable[Mapping]] = None) -> bool:
+    """True when the committed announcements have stopped keeping up.
+
+    **A feed that stopped updating looks exactly like a quiet week.** Both put
+    nothing on screen, and they call for opposite responses: one is normal, the
+    other means the refresh has not run. `ground_truth_monthly.series_is_stale`
+    exists for the same reason on the PSA side, and its note applies here word
+    for word -- this project has been bitten by an absence that carried no
+    information.
+
+    An empty feed is stale, not quiet. Nothing on file has never once meant
+    "DOE published nothing"; it means nobody has fetched.
+    """
+    rows = list(announcements) if announcements is not None else load_announcements(csv_path)
+    if not rows:
+        return True
+    today = today or dt.date.today()
+    ends = []
+    for row in rows:
+        try:
+            ends.append(dt.date.fromisoformat(str(row.get('week_end'))))
+        except (TypeError, ValueError):
+            continue
+    if not ends:
+        return True
+    return (today - max(ends)).days > STALE_AFTER_DAYS
