@@ -82,3 +82,6 @@ ph_economic_ai/assets/corpus/social/trends_*.jsonl
 # DOE source PDFs: ~250MB, rebuildable from artifacts/doe_price_cache.json
 ph_economic_ai/benchmark/data/doe_cache/
 .superpowers/
+
+# Machine-local run records from the refresh tools (see tools/run_log.py).
+logs/
