@@ -61,6 +61,20 @@ PRODUCTS = ('gasoline', 'diesel', 'kerosene')
 #: averaging would manufacture one. The 2026-08-11 notice sits at 14 of 15.
 MIN_CONSENSUS = 0.5
 
+#: Filings this far apart, in PHP/L, are the same announcement rather than two.
+#: Exact equality was too strict against real notices: on 2026-08-18 all fifteen
+#: companies raised gasoline and the entire industry sat inside ten centavos,
+#: 2.40 x2, 2.49 x7, 2.50 x6. Counted exactly, the largest bloc was 7 of 15, so
+#: the floor above rejected it and the week reported no announced figure at all.
+#:
+#: The width is bounded on the other side by the case the mode exists for. Clean
+#: Fuel posted -5.00 against everyone else's -4.70 on 2026-08-11, thirty centavos
+#: out; a tolerance that swallowed that would let one company drag the published
+#: number, which is the whole thing this rule prevents. Ten centavos separates
+#: the two cleanly and `test_the_tolerance_does_not_absorb_a_genuine_outlier`
+#: fails if it is widened past the point where it stops doing so.
+CONSENSUS_TOLERANCE_PHP = 0.10
+
 #: Peso figures are centavo-precise; rounding sums here keeps float noise out of
 #: the equality test the mode depends on.
 _DP = 4
@@ -117,6 +131,39 @@ def _modal(values: Sequence[float]) -> tuple[Optional[float], float]:
     return value, n / len(values)
 
 
+def _consensus_bloc(values: Sequence[float]):
+    """`(figure, (low, high), share)` for the largest bloc of like filings.
+
+    Values are grouped so that every member of a bloc is within
+    `CONSENSUS_TOLERANCE_PHP` of the bloc's LOWEST member, not merely of its
+    neighbour. Chaining neighbour to neighbour would let a bloc widen without
+    limit across evenly spaced filings, which is exactly the disagreement this
+    is supposed to detect.
+
+    The figure returned is the mode WITHIN the winning bloc, so it is always a
+    number some company actually posted. Averaging the bloc would report 2.4753
+    for 2026-08-18, and no station charged that.
+    """
+    if not values:
+        return None, (None, None), 0.0
+    ordered = sorted(values)
+    blocs, current = [], [ordered[0]]
+    for value in ordered[1:]:
+        # Rounded because the inputs are centavo figures already rounded to
+        # _DP; a raw subtraction leaves 0.10000000000000009 and would reject a
+        # filing exactly on the tolerance.
+        if round(value - current[0], _DP) <= CONSENSUS_TOLERANCE_PHP:
+            current.append(value)
+        else:
+            blocs.append(current)
+            current = [value]
+    blocs.append(current)
+
+    best = max(blocs, key=len)
+    figure, _ = _modal(best)
+    return figure, (best[0], best[-1]), len(best) / len(values)
+
+
 def industry_adjustment(rows: Iterable[Mapping],
                         summary: Optional[Mapping] = None) -> dict:
     """The announced per-litre move for the week, with how it was determined.
@@ -133,6 +180,13 @@ def industry_adjustment(rows: Iterable[Mapping],
     published figure: Clean Fuel posted -5.00 against everyone else's -4.70 on
     2026-08-11, and an average would have reported -4.72, a number no station
     charged.
+
+    The mode is taken over BLOCS of filings within `CONSENSUS_TOLERANCE_PHP`
+    rather than over exactly equal values. Companies routinely file the same
+    move to different centavos, and counting 2.49 against 2.50 as a disagreement
+    reported the week of 2026-08-18, where all fifteen raised gasoline inside ten
+    centavos, as having no announced figure. The value reported is still the mode
+    within the winning bloc, so it remains a figure some company posted.
     """
     rows = list(rows or [])
     by_company: dict[str, dict] = {}
@@ -161,11 +215,11 @@ def industry_adjustment(rows: Iterable[Mapping],
     # so it is the only one where a disagreement is unambiguous rather than an
     # artefact of who bothered to file.
     posted = [t['gasoline'] for t in totals.values() if t['gasoline'] is not None]
-    modal_value, share = _modal(posted)
+    _, (low, high), share = _consensus_bloc(posted)
     result['consensus'] = round(share, 4)
     result['outliers'] = sorted(
         company for company, t in totals.items()
-        if t['gasoline'] is not None and t['gasoline'] != modal_value)
+        if t['gasoline'] is not None and not (low <= t['gasoline'] <= high))
 
     if summary:
         result['basis'] = 'summary'
@@ -181,7 +235,7 @@ def industry_adjustment(rows: Iterable[Mapping],
     result['basis'] = 'modal'
     for product in PRODUCTS:
         values = [t[product] for t in totals.values() if t[product] is not None]
-        value, _ = _modal(values)
+        value, _, _ = _consensus_bloc(values)
         result[product] = value
     return result
 

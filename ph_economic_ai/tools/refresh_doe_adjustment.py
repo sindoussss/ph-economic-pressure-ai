@@ -42,8 +42,8 @@ from typing import Optional
 import requests
 
 from ph_economic_ai.benchmark.doe_adjustment import (
-    NOTICE_URL_BASE, industry_adjustment, parse_notice_pdf, week_slugs,
-    weeks_back_from,
+    CONSENSUS_TOLERANCE_PHP, NOTICE_URL_BASE, industry_adjustment,
+    parse_notice_pdf, week_slugs, weeks_back_from,
 )
 from ph_economic_ai.benchmark.paths import data
 from ph_economic_ai.benchmark.provenance import write_record
@@ -156,10 +156,19 @@ def build(weeks: int = RECENT_WEEKS) -> None:
             'and prefer it over the requested week',
             'industry figure from the summary row where present, else the modal '
             'company figure; mode not mean so one company cannot drag it',
+            f'the mode is taken over blocs of filings within '
+            f'{CONSENSUS_TOLERANCE_PHP:.2f} PHP/L of each other rather than over '
+            f'exactly equal values, and the reported figure is the mode WITHIN '
+            f'the winning bloc, so it is always a value some company posted',
         ],
         units='PHP per litre, change for the week',
         notes=('The announced move, not a forecast. Announced Monday, effective '
-               '6:00 AM Tuesday, and holds for the week.'),
+               '6:00 AM Tuesday, and holds for the week. '
+               'The `consensus` column is the share of companies inside the '
+               'winning bloc, NOT the share posting an identical figure; the '
+               'two differ wherever companies filed the same move to different '
+               'centavos, and figures written before 2026-08-19 carry the '
+               'stricter meaning.'),
     )
     print(f'\nWrote {OUT.name} ({len(existing)} week(s)) + provenance')
 

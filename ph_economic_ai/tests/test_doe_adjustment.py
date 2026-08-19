@@ -450,3 +450,88 @@ def test_a_week_is_seven_days_ending_monday():
     assert start == dt.date(2026, 8, 11)
     assert end == dt.date(2026, 8, 17)
     assert end.weekday() == 0                        # Monday
+
+
+# ── Centavo-level disagreement is not disagreement ───────────────────────────
+#
+# Found 2026-08-19 while backfilling. The notice for the week of 2026-08-18 was
+# filed by all fifteen companies, every one of them RAISING gasoline, and the
+# whole industry sat inside ten centavos:
+#
+#     2.40 x2    2.49 x7    2.50 x6
+#
+# Exact-equality mode counts those as three different answers, so the largest
+# bloc is 7 of 15, the 0.5 consensus floor rejects it, and the app reports the
+# week as having no announced figure. It had one. That is the top of the
+# certainty gradient reporting a published fact as unknown.
+
+WEEK_2026_08_18 = (pathlib.Path(__file__).parent / 'fixtures'
+                   / 'doe_notice_2026-08-18.txt')
+
+
+def _aug_18():
+    return da.parse_notice_text(WEEK_2026_08_18.read_text(encoding='utf-8'))
+
+
+def test_the_2026_08_18_notice_has_no_summary_row():
+    """The precondition. With a summary row the mode is never consulted, so this
+    week only exercises the consensus rule because the document lacks one."""
+    parsed = _aug_18()
+    assert parsed['summary'] is None
+    assert len(parsed['rows']) == 15
+
+
+def test_centavo_differences_do_not_fragment_the_industry_figure():
+    parsed = _aug_18()
+    result = da.industry_adjustment(parsed['rows'], summary=parsed['summary'])
+    assert result['basis'] == 'modal', (
+        'fifteen companies within ten centavos is a consensus, not a dispute')
+    assert result['gasoline'] == pytest.approx(2.49)
+    assert result['diesel'] == pytest.approx(3.84)
+    assert result['consensus'] == pytest.approx(1.0)
+    assert result['outliers'] == []
+
+
+def test_the_figure_reported_is_one_a_company_actually_posted():
+    """Why this is a clustered MODE and not a cluster mean.
+
+    The mean of the 2026-08-18 gasoline filings is 2.4753, a number no station
+    charged. Grouping near-identical filings must not become a licence to
+    average them.
+    """
+    parsed = _aug_18()
+    result = da.industry_adjustment(parsed['rows'], summary=parsed['summary'])
+    posted = {r['gasoline'] for r in parsed['rows'] if r['gasoline'] is not None}
+    assert result['gasoline'] in posted
+
+
+def test_the_tolerance_does_not_absorb_a_genuine_outlier():
+    """The property the tolerance must not cost.
+
+    Clean Fuel posted -5.00 against everyone else's -4.70 on 2026-08-11, a gap
+    of 30 centavos. A tolerance wide enough to swallow that would defeat the
+    reason the mode is used at all.
+    """
+    result = da.industry_adjustment(AUG_11)
+    assert result['gasoline'] == pytest.approx(-4.70)
+    assert 'Clean Fuel' in result['outliers']
+
+
+def test_filings_further_apart_than_the_tolerance_stay_separate():
+    """The boundary, stated as a test so it cannot drift silently."""
+    tol = da.CONSENSUS_TOLERANCE_PHP
+    near = [_row('A', 1.00, 1.00), _row('B', 1.00 + tol, 1.00 + tol),
+            _row('C', 1.00 + tol, 1.00 + tol)]
+    assert da.industry_adjustment(near)['basis'] == 'modal'
+
+    far = [_row('A', 1.00, 1.00), _row('B', 1.00 + tol * 3, 1.00 + tol * 3),
+           _row('C', 1.00 + tol * 6, 1.00 + tol * 6)]
+    assert da.industry_adjustment(far)['basis'] == 'no_consensus'
+
+
+def test_genuine_disagreement_is_still_refused():
+    """Regression guard on the case the tolerance must not weaken."""
+    rows = [_row('A', -1.0, -1.0), _row('B', -3.0, -3.0), _row('C', -5.0, -5.0)]
+    result = da.industry_adjustment(rows)
+    assert result['basis'] == 'no_consensus'
+    assert result['gasoline'] is None
