@@ -14,8 +14,23 @@ import pandas as pd
 
 
 def to_periods(index) -> pd.PeriodIndex:
-    """A monthly PeriodIndex from a 'YYYY-MM' string index."""
-    return pd.PeriodIndex(pd.to_datetime(index, format='%Y-%m'), freq='M')
+    """A monthly PeriodIndex from a 'YYYY-MM' string index.
+
+    A longer string collapses to its month, which is documented leniency rather
+    than an accident: `to_periods(['2020-01-15'])` is `['2020-01']`.
+
+    Truncating explicitly rather than letting `to_datetime(format='%Y-%m')` do it.
+    pandas 1.5.3 parsed the surplus leniently; 3.x raises "unconverted data
+    remains", so the leniency this function documents disappeared silently on the
+    newer version. Worse, the parse error fired BEFORE `calendar_lag`'s
+    duplicate-month check, so the misalignment guard this module exists for never
+    ran -- it still failed, but on the wrong error, which is the shape of a guard
+    that looks present and is not.
+
+    Slicing to ten characters keeps duplicates as duplicates, which is what lets
+    that guard fire. Verified identical on 1.5.3 and 3.0.5.
+    """
+    return pd.PeriodIndex([str(x)[:7] for x in index], freq='M')
 
 
 def missing_months(index) -> list[str]:

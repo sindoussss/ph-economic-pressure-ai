@@ -366,7 +366,7 @@ def test_main_window_has_monitor_tab(app):
     from ph_economic_ai.ui.main_window import SimMainWindow
     from ph_economic_ai.ui.pressure_monitor import PressureMonitorPanel
     df = pd.DataFrame({
-        'date': pd.date_range('2024-01', periods=3, freq='M'),
+        'date': pd.period_range('2024-01', periods=3, freq='M').to_timestamp(how='end').normalize(),
         'gas_price': [58.0, 59.0, 60.0], 'oil_price': [80.0, 81.0, 82.0],
         'usd_php': [56.0, 56.5, 57.0], 'cpi': [120.0, 121.0, 122.0],
         'remittances': [2.5, 2.6, 2.7], 'demand_index': [70.0, 71.0, 72.0],

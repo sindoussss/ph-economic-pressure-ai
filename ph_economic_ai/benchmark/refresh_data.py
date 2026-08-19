@@ -245,7 +245,10 @@ def assert_complete_months(index, label: str) -> None:
     This makes that failure loud at build time instead of leaving it to be found in
     the results. Call it on anything written to `data/`.
     """
-    idx = pd.PeriodIndex(pd.to_datetime(sorted(index), format='%Y-%m'), freq='M')
+    # Truncated rather than parsed with `format='%Y-%m'`: pandas 3.x raises
+    # "unconverted data remains" on anything longer than a month, where 1.5.3
+    # accepted it. Same change as `calendar_index.to_periods`, same reason.
+    idx = pd.PeriodIndex([str(x)[:7] for x in sorted(index)], freq='M')
     if len(idx) == 0:
         raise SystemExit(f'{label}: empty index')
     expected = pd.period_range(idx.min(), idx.max(), freq='M')

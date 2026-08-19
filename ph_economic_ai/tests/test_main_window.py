@@ -14,7 +14,7 @@ def app():
 def window(app):
     from ph_economic_ai.ui.main_window import SimMainWindow
     df = pd.DataFrame({
-        'date': pd.date_range('2024-01', periods=3, freq='M'),
+        'date': pd.period_range('2024-01', periods=3, freq='M').to_timestamp(how='end').normalize(),
         'gas_price': [58.0, 59.0, 60.0],
         'oil_price': [80.0, 81.0, 82.0],
         'usd_php': [56.0, 56.5, 57.0],
