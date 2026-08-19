@@ -11,12 +11,13 @@
   "transformations": [
     "derive the document slug from each Tuesday-to-Monday pricing week",
     "extract text with pypdf; read the covering week from the heading and prefer it over the requested week",
-    "industry figure from the summary row where present, else the modal company figure; mode not mean so one company cannot drag it"
+    "industry figure from the summary row where present, else the modal company figure; mode not mean so one company cannot drag it",
+    "the mode is taken over blocs of filings within 0.10 PHP/L of each other rather than over exactly equal values, and the reported figure is the mode WITHIN the winning bloc, so it is always a value some company posted"
   ],
   "units": "PHP per litre, change for the week",
-  "notes": "The announced move, not a forecast. Announced Monday, effective 6:00 AM Tuesday, and holds for the week.",
-  "retrieved_at": "2026-08-19T10:44:52+00:00",
-  "sha256": "95f78d99fca9d087ee189ac58910ec4aa6917462e7afdb9ec7db6dc17a73835e",
+  "notes": "The announced move, not a forecast. Announced Monday, effective 6:00 AM Tuesday, and holds for the week. The `consensus` column is the share of companies inside the winning bloc, NOT the share posting an identical figure; the two differ wherever companies filed the same move to different centavos, and figures written before 2026-08-19 carry the stricter meaning.",
+  "retrieved_at": "2026-08-19T20:15:45+00:00",
+  "sha256": "4cf5685d7c9849127c91f5e04010d0a56cfd0aa7cfbc049db4e0f4d5044682c4",
   "rows": 24,
   "first_month": "2026-03",
   "last_month": "2026-08",
