@@ -314,11 +314,20 @@ def test_derive_food_clips_at_floor():
 
 
 def test_derive_electricity_base_rate():
-    """With no gas change, electricity stays at base rate."""
+    """With no gas change, electricity stays at base rate.
+
+    Asserted against the base itself rather than against `11.20`, which is what
+    the base happened to be when this was written. Pinning the literal is how the
+    test would have passed while the level went stale -- the same shape as
+    `test_electricity_anchor_scales_with_the_fuel_shock`, which restated the
+    constant it was checking and so could not detect it drifting 41 percent low.
+    """
+    from ph_economic_ai import fetcher
+
     monthly_index = ['2024-01', '2024-02']
     gas = pd.Series({'2024-01': 65.0, '2024-02': 65.0})
     rate = _derive_electricity(gas, monthly_index)
-    assert rate['2024-02'] == pytest.approx(11.20, abs=0.05)
+    assert rate['2024-02'] == pytest.approx(fetcher._ELECTRICITY_BASE_RATE, abs=0.05)
 
 
 def test_derive_electricity_rises_with_gas():
@@ -337,3 +346,38 @@ def test_derive_electricity_never_below_floor():
     assert all(r >= 8.0 for r in rate.values)
 
 
+
+
+# ── The electricity base level comes from data ───────────────────────────────
+
+def test_the_electricity_base_is_the_published_rate_not_a_frozen_constant():
+    """`_ELECTRICITY_BASE_RATE` was 11.20, described as the Meralco 2024 average.
+    The published all-in rate reached 14.78 by 2026-08, so the displayed series
+    sat about 3.60 PHP/kWh below reality -- the same defect PR #29 removed from
+    the generation charge and PR #45 from the anchor's base rate, in the third
+    place it was copied to.
+    """
+    from ph_economic_ai import fetcher
+    from ph_economic_ai.benchmark.meralco import latest_all_in_rate
+
+    assert fetcher._ELECTRICITY_BASE_RATE == pytest.approx(latest_all_in_rate())
+    assert fetcher._ELECTRICITY_BASE_RATE > 12.0, 'still on the stale 2024 level'
+
+
+def test_the_base_survives_an_unreadable_series():
+    """A missing data file may not take the fetcher down; the rule
+    `anchoring._default_generation_charge` already follows."""
+    from ph_economic_ai import fetcher
+    assert fetcher._default_electricity_base(csv_path='/nonexistent.csv') > 12.0
+
+
+def test_the_derived_series_is_still_flagged_as_synthetic():
+    """Anchoring it to a real level does not make it a measurement. The series is
+    base plus a gas-delta pass-through, and a reader who takes it for a published
+    tariff is being misled by a number that looks more solid than it is.
+    """
+    import inspect
+
+    from ph_economic_ai import fetcher
+    source = inspect.getsource(fetcher._derive_electricity)
+    assert 'synthetic' in source.lower() or 'derived' in source.lower()
