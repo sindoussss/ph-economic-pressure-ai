@@ -11,6 +11,8 @@ Meralco publishes one "Generation" PDF per month and blocks automated fetches
 parser that turns the published PDF into a row, so adding a month is a command
 rather than an edit.
 """
+from pathlib import Path
+
 import pytest
 
 from ph_economic_ai.benchmark import meralco
@@ -102,3 +104,65 @@ def test_parser_refuses_text_it_does_not_understand():
 
 def test_parser_reads_the_month_from_the_heading():
     assert meralco.parse_generation_charge_month(_PDF_TEXT) == '2026-07'
+
+
+# ── The all-in residential rate ──────────────────────────────────────────────
+
+def test_the_all_in_rate_is_a_bill_divided_by_its_consumption():
+    """Meralco's Summary Schedule lists components and never their sum, and its
+    columns mix per-kWh, per-kW and per-customer units, so adding them is a unit
+    error. The residential-bills table does the arithmetic Meralco intends: a
+    peso total at a stated consumption. 200 kWh is the level its headline
+    household figure is quoted at, and that assumption is recorded rather than
+    absorbed.
+    """
+    from ph_economic_ai.benchmark import meralco
+    line = ('200 1,850.08 255.72 175.02 196.06 99.58 16.38 67.00 5.00 '
+            '(85.56) (0.46) 0.02 1.30 12.90 265.64 - 64.32 40.22 - - 2.00 '
+            '2,965.22')
+    rate, gen = meralco.parse_residential_bill_row(line, kwh=200)
+    assert rate == pytest.approx(14.8261, abs=1e-4)
+    assert gen == pytest.approx(9.2504, abs=1e-4)
+
+
+def test_a_bracketed_figure_is_a_deduction_not_a_charge():
+    """Refunds and subsidies print in parentheses. Reading `(85.56)` as +85.56
+    would inflate the bill by twice the refund."""
+    from ph_economic_ai.benchmark import meralco
+    assert meralco._bill_value('(85.56)') == pytest.approx(-85.56)
+    assert meralco._bill_value('2,965.22') == pytest.approx(2965.22)
+
+
+def test_a_row_for_another_consumption_level_is_refused():
+    from ph_economic_ai.benchmark import meralco
+    assert meralco.parse_residential_bill_row('100 925.04 1,494.64', kwh=200) == (None, None)
+
+
+def test_the_committed_all_in_series_loads_and_is_plausible():
+    from ph_economic_ai.benchmark import meralco
+    series = meralco.load_all_in_rate()
+    assert len(series) >= 5
+    # A residential all-in rate outside this band is a parse artifact, not a
+    # tariff. The frozen constant this replaces was 11.2.
+    assert all(10.0 < v < 20.0 for v in series.values)
+
+
+def test_the_latest_all_in_rate_never_raises():
+    """A magnitude guard on a live screen may not take a run down when a data
+    file is missing, the rule `_default_generation_charge` already follows."""
+    from ph_economic_ai.benchmark import meralco
+    assert meralco.latest_all_in_rate() > 0
+    assert meralco.latest_all_in_rate(csv_path=Path('/nonexistent.csv')) > 0
+
+
+def test_the_all_in_rate_exceeds_the_generation_charge_every_month():
+    """Generation is one component of the bill, so the all-in rate must be
+    larger in every month. Equality or inversion means the two columns were
+    swapped."""
+    from ph_economic_ai.benchmark import meralco
+    all_in = meralco.load_all_in_rate()
+    gen = meralco.load_generation_charge()
+    shared = [m for m in all_in.index if m in gen.index]
+    assert shared, 'no overlapping months to compare'
+    for month in shared:
+        assert all_in[month] > gen[month], f'{month}: all-in below generation'

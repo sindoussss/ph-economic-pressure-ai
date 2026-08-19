@@ -111,3 +111,82 @@ def parse_generation_charge_pdf(pdf_path) -> tuple[str, float]:
     text = '\n'.join((p.extract_text() or '')
                      for p in pypdf.PdfReader(str(pdf_path)).pages)
     return parse_generation_charge_month(text), parse_generation_charge_text(text)
+
+
+# ── The all-in residential rate ──────────────────────────────────────────────
+#
+# `anchor_backtest` divided by a frozen 11.2 PHP/kWh to express the anchor as a
+# share of the bill, described in a comment as the Meralco 2024 average. Measured
+# against Meralco's own residential-bill tables it runs 13.17 to 14.83 across
+# 2026, so the constant was 15 to 25 percent low -- the same defect as the
+# generation charge frozen at 5.50, one level up, and it survived PR #29 because
+# nothing here could read the real figure.
+#
+# **Why the bill table and not the Summary Schedule of Rates.** The Summary
+# Schedule lists every component and never their sum, and its columns mix per
+# kWh, per kW and per customer-month units, so adding them is a unit error
+# waiting to happen. The residential-bill table states a peso total at a given
+# consumption, which is the arithmetic Meralco itself intends.
+
+ALL_IN_RATE_CSV = HERE / 'data' / 'meralco_all_in_rate.csv'
+
+#: The consumption level Meralco quotes its headline household rate at. Recorded
+#: as a constant because the divisor is an assumption, not a fact about the bill.
+TYPICAL_KWH = 200
+
+#: Last verified all-in level (2026-08), used only when the series is unreadable.
+FALLBACK_ALL_IN_PHP_KWH = 14.7833
+
+_BILL_NUM = re.compile(r'\(?-?[\d,]+\.\d{2}\)?')
+
+
+def _bill_value(token: str) -> float:
+    """A peso figure from the bill table. Parentheses mean a deduction.
+
+    Refunds and subsidies print bracketed; reading `(85.56)` as positive would
+    inflate the bill by twice the refund.
+    """
+    negative = token.startswith('(')
+    return (-1 if negative else 1) * float(token.strip('()').replace(',', ''))
+
+
+def parse_residential_bill_row(line: str, kwh: int = TYPICAL_KWH):
+    """`(all_in_php_kwh, generation_php_kwh)` from one bill-table row.
+
+    The row opens with its consumption level and closes with the total bill, so
+    the rate is the last figure divided by the first token. Generation is the
+    first money column, which is also what makes this file cross-checkable
+    against `meralco_generation_charge.csv`.
+
+    Returns `(None, None)` for a row at another consumption level rather than
+    rescaling one, since the bill is not linear in kWh: the distribution charge
+    steps by bracket and the customer charges are flat.
+    """
+    line = (line or '').strip()
+    if not line.startswith(f'{kwh} '):
+        return None, None
+    nums = _BILL_NUM.findall(line)
+    if len(nums) < 3:
+        return None, None
+    return _bill_value(nums[-1]) / kwh, _bill_value(nums[0]) / kwh
+
+
+def load_all_in_rate(csv_path: Path = ALL_IN_RATE_CSV) -> pd.Series:
+    """Monthly all-in residential rate, PHP/kWh, indexed 'YYYY-MM'."""
+    frame = pd.read_csv(csv_path)
+    return pd.Series(frame['all_in_php_kwh'].values,
+                     index=frame['date'].astype(str), dtype=float)
+
+
+def latest_all_in_rate(csv_path: Path = ALL_IN_RATE_CSV,
+                       fallback: float = FALLBACK_ALL_IN_PHP_KWH) -> float:
+    """Newest published all-in rate, or the fallback. Never raises.
+
+    A magnitude guard on a live screen may not take a run down because a data
+    file is missing, the rule `anchoring._default_generation_charge` follows.
+    """
+    try:
+        series = load_all_in_rate(csv_path)
+        return float(series.iloc[-1]) if len(series) else fallback
+    except Exception:
+        return fallback

@@ -64,9 +64,9 @@
       "significant": false
     },
     "is_predictive": false,
-    "scale_ratio": 1.85,
+    "scale_ratio": 1.4,
     "generation_charge_php_kwh": 9.28,
-    "base_rate_php_kwh": 11.2,
+    "base_rate_php_kwh": 14.7833,
     "finding": "the fuel-price anchor does NOT predict monthly electricity CPI at this resolution (the benchmark result used the formulaic generation-charge nowcast, not raw commodity changes); it functions as a magnitude guard, not a predictor. READ scale_ratio WITH CARE: it applies the CURRENT published generation charge to the whole historical panel, so it asks whether today's anchor is sized like a typical past move, NOT whether the anchor was correctly sized in any past year. It read ~1.0 only while the charge was frozen at a stale-low 5.50; correcting that constant moved it to 1.84 without any change in the anchor's design. The base rate below is the same kind of frozen level (a 2024 average, copied in four places) and has not been corrected, because no published all-in series exists in this repository to correct it from."
   },
   "food": {

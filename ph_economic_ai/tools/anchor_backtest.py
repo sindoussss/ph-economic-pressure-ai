@@ -44,15 +44,31 @@ from ph_economic_ai.benchmark.significance import diebold_mariano
 
 # All-in Meralco rate, used to express the ₱/kWh anchor as a CPI %.
 #
-# THIS IS THE NEXT INSTANCE of the defect that froze the generation charge at
-# 5.50: a level that must be remembered, copied into four files (`data.py`,
-# `fetcher.py`, `main_window.py` and here), whose true current value (~14.83 as
-# of 2026-07) survives only as prose in an `anchoring.py` comment. It is left at
-# 11.2 deliberately — promoting a number from a comment to a constant would
-# repeat the original mistake with a fresher figure, and no published all-in
-# series exists in this repository to read it from. `backtest_electricity`
-# records the value it used so the staleness is at least visible.
-_ELEC_BASE_RATE_PHP_KWH = 11.2
+# READ FROM DATA. This was 11.2, described as the Meralco 2024 average, and the
+# comment here used to say it was left frozen deliberately because no published
+# all-in series existed in the repository to read it from. One exists now
+# (`benchmark/data/meralco_all_in_rate.csv`, parsed from Meralco's own
+# residential-bill tables), and the constant was 15 to 25 percent low against it:
+# the real figure runs 13.17 to 14.83 across 2026.
+#
+# That is the same defect PR #29 removed one level down, and it survived that PR
+# only because the number could not be looked up. A level that must be remembered
+# is a level that goes stale, and this one multiplied straight through
+# `backtest_electricity`'s scale ratio.
+def _default_elec_base_rate() -> float:
+    """Newest published all-in residential rate, or the last verified level.
+
+    Never raises: a missing data file may not take the backtest down, the rule
+    `anchoring._default_generation_charge` already follows.
+    """
+    try:
+        from ph_economic_ai.benchmark.meralco import latest_all_in_rate
+        return latest_all_in_rate()
+    except Exception:
+        return 14.7833          # last verified published level (2026-08)
+
+
+_ELEC_BASE_RATE_PHP_KWH = _default_elec_base_rate()
 
 ARTIFACT = Path(__file__).resolve().parents[1] / 'benchmark' / 'artifacts' / 'anchor_validation.json'
 _CACHE = Path(__file__).resolve().parent / '_market_monthly_cache.json'

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "file": "meralco_all_in_rate.csv",
+  "source": "Meralco Typical Consumption Level tables (residential bills), rates archive at company.meralco.com.ph",
+  "request_params": {
+    "consumption_kwh": 200,
+    "customer_class": "non-lifeline residential"
+  },
+  "transformations": [
+    "all_in_php_kwh = total bill at 200 kWh divided by 200",
+    "generation_php_kwh = the row's first money column, divided the same way",
+    "bracketed figures read as deductions, not charges",
+    "generation cross-checked against meralco_generation_charge.csv, which is parsed from a different Meralco document"
+  ],
+  "units": "PHP per kWh",
+  "notes": "The rate is quoted at a consumption level and the bill is not linear in kWh -- distribution steps by bracket and customer charges are flat -- so 200 kWh is recorded rather than assumed. Fetching is manual: Meralco serves the same page for every path, so a URL cannot be derived or probed.",
+  "retrieved_at": "2026-08-19T02:14:11+00:00",
+  "sha256": "c1213cc04226e01d588ecdba5a65d59d69bc28a4795f96cba782b5c7cb04098c",
+  "rows": 5,
+  "first_month": "2026-02",
+  "last_month": "2026-08",
+  "missing_months": [
+    "2026-04",
+    "2026-06"
+  ]
+}
