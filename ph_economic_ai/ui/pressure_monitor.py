@@ -660,15 +660,26 @@ class PressureMonitorPanel(QWidget):
         the result calibrated. Each sector reads its own series or none.
         """
         store = self._store
-        if store is None:
-            return []
         try:
             if sector == 'gas':
-                return store.get_graded_errors()
-            if sector in _interval.GRADED_SECTORS:
-                return store.get_sector_graded_errors(sector)
-            return []
+                # Gas grades per RUN against a weekly DOE price, not per calendar
+                # month, so it has no month key to merge shared evidence on and
+                # stays local-only.
+                return store.get_graded_errors() if store is not None else []
+            if sector not in _interval.GRADED_SECTORS:
+                return []
+
+            # Monthly sectors merge the committed grade file with this machine's
+            # own. `trust.db` is gitignored, so without this a fresh checkout
+            # restarts the twelve-month clock at zero and the evidence dies with
+            # the laptop. Merged on MONTH: a month graded in both places is one
+            # sample, never two.
+            from ph_economic_ai.benchmark import shared_grades as _shared
+
+            local = store.get_sector_grades(sector) if store is not None else []
+            return _shared.merged_errors(_shared.load_shared(), local, sector)
         except Exception:
+            logging.debug('graded errors unavailable for %s', sector, exc_info=True)
             return []
 
     def _graded_count(self) -> int:

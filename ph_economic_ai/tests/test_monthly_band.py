@@ -92,7 +92,23 @@ def test_food_band_never_uses_fuel_errors(store):
     panel._store = store
 
     assert panel._graded_errors('gas'), 'gas still reads its own history'
-    assert panel._graded_errors('food') == [], 'food must NOT inherit fuel errors'
+
+    # This asserted `== []` until food began inheriting the committed shared
+    # months (`benchmark/shared_grades.py`). Emptiness was only ever a PROXY for
+    # the property under test, and it stopped being a valid one the moment food
+    # could legitimately have grades without this store holding them.
+    #
+    # So the hazard is now named directly instead. Every run above was graded at
+    # a 5.0 PHP/L fuel error; if the sector filter regresses, that magnitude
+    # appears in food's list and the band puts PHP/L half-widths beside a % sign.
+    from ph_economic_ai.benchmark import shared_grades as _shared
+
+    food_errors = panel._graded_errors('food')
+    assert 5.0 not in food_errors, 'a PHP/L fuel error reached food'
+    # Exact rather than a magnitude bound: this store grades no food month, so
+    # food's list must be precisely what the committed shared file carries and
+    # nothing else. A magnitude test would false-fail on a real food shock.
+    assert food_errors == _shared.merged_errors(_shared.load_shared(), [], 'food')
 
     b = _interval.band(0.5, panel._graded_errors('food'), sector='food',
                    errors_from='food')

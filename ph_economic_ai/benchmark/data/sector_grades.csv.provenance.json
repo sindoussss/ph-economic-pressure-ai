@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "file": "sector_grades.csv",
+  "source": "This app's own graded months, exported from the local trust.db sector_grades table",
+  "request_params": {
+    "sectors": [
+      "food"
+    ],
+    "fields": [
+      "sector",
+      "month",
+      "estimate",
+      "actual",
+      "abs_error",
+      "n_runs",
+      "graded_at"
+    ]
+  },
+  "transformations": [
+    "one row per sector and calendar month, never per run",
+    "merged with any already-committed rows, keyed on month so a month graded in two places stays one sample",
+    "a local row wins a conflict: it is this installation's own observation of that month"
+  ],
+  "units": "abs_error in the sector's own unit (food: percentage points)",
+  "notes": "Shareable because the errors are a property of the app rather than of the installation (owner ruling, 2026-08-19). Gas is excluded: it grades per run against a weekly price and has no month key to merge on.",
+  "retrieved_at": "2026-08-19T00:19:29+00:00",
+  "sha256": "f405b43d650da65b3de566da3c778e85c49f146adc9c2f38ba3d70133dacbd5f",
+  "rows": 2
+}
