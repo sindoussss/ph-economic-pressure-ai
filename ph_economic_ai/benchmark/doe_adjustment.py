@@ -8,9 +8,10 @@ This is the same move taken to its conclusion. DOE publishes, each Monday, what
 every oil company will charge from 6:00 AM Tuesday, per litre, per product. For
 six days of every seven, "what will fuel cost next week" is a published fact.
 
-The app currently answers that question by fetching three Google News HEADLINES
-about the bulletin (`engine/live_data.py:206`) and giving them to a swarm of small
-local models as prompt text. The number itself is never read.
+The app answered that question by fetching three Google News HEADLINES about the
+bulletin and giving them to a swarm of small local models as prompt text, never
+reading the number. PR #38 put the figure on the gas card and PR #39 retired the
+headline feed, so the prompt now carries the number instead of prose about it.
 
 **What the notice looks like.** Verified against the week of 2026-08-11: fifteen
 companies, each with the time their text message arrived, the time the change
@@ -27,12 +28,14 @@ Two properties of the real document shape everything here:
     -2.00 and -1.00 on three consecutive dates, summing to the -4.70 everyone
     else took at once. Reading the first row alone understates the week by 3.00.
 
-**Scope.** This module reasons about rows and reads committed announcements. It
-does not fetch: the notice is a PDF whose link is written into a client-rendered
-article by JavaScript, so recovering it needs a browser. That lives in
-`tools/refresh_doe_adjustment.py`, where Playwright is imported lazily and only
-on a maintainer machine, and the tests here read a committed fixture of the real
-extracted text instead.
+**Scope.** This module reasons about rows and reads committed announcements; it
+does not fetch. Fetching lives in `tools/refresh_doe_adjustment.py`, and the
+tests here read a committed fixture of the real extracted text instead.
+
+That tool needed a headless browser at first, because the PDF's link is written
+into a client-rendered article by JavaScript. PR #42 removed the dependency: the
+PDF URL is derivable from the week it covers, so discovery is plain `requests`
+and never touches the article listing, which proved unusable in its own right.
 
 **What the app may do with this.** Show it as a published fact. Nothing more.
 The announced move is what the oil companies filed, not what this app predicted,

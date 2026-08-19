@@ -3,8 +3,9 @@
 This is the top of the certainty gradient. DOE publishes, every Monday, what each
 oil company will charge from 6:00 AM Tuesday, per litre, per product. For six days
 of every seven the "next week's price" question is a published fact, not a
-forecast, and the app currently answers it by feeding three news HEADLINES about
-the bulletin to a swarm of small language models.
+forecast. The app read three news HEADLINES about the bulletin instead until
+PR #38 put the number on the gas card and PR #39 replaced the headline feed in
+the swarm prompt with the figure itself.
 
 Verified against the notice for the week of 2026-08-11: gasoline -4.70, diesel
 -4.30, announced 2026-08-10 between 9:24 AM and 9:00 PM, effective 6:00 AM
@@ -21,10 +22,11 @@ Two properties of the real notice drive every design choice here:
     everyone else took in one step. Reading only the first row understates the
     week by 3.00 PHP/L.
 
-The logic below is tested on structured rows, not on scraped text, because the
-notice is client-rendered and no extracted-text sample exists yet. Keeping the
-reasoning pure means the part that can be verified today is verified today, and
-only the tokenizer waits on the fetch being solved.
+The reasoning below is tested on structured rows AND, since PR #37, on the real
+`pypdf` output of the 2026-08-11 notice committed at
+`fixtures/doe_notice_2026-08-11.txt`. Splitting the two is deliberate: the row
+logic is verifiable without a document, and the fixture proves the reasoning ever
+meets one.
 """
 import datetime as dt
 import pathlib

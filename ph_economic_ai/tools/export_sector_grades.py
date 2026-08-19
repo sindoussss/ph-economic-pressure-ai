@@ -41,7 +41,6 @@ def export(store=None) -> int:
         store = AgentTrustStore()
 
     existing = load_shared()
-    total = 0
     merged_all: list[dict] = []
     for sector in MONTHLY_SECTORS:
         local = store.get_sector_grades(sector)
@@ -50,7 +49,6 @@ def export(store=None) -> int:
         print(f'  {sector:12s} local {len(local):3d}  shared {len(merged) - len(origin):3d}'
               f'  merged {len(merged):3d}')
         merged_all.extend(merged)
-        total += len(merged)
 
     # Anything already committed for a sector this machine does not grade is
     # carried through untouched. An export from a partial installation must not
