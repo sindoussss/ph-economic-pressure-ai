@@ -27,6 +27,8 @@ matplotlib==3.8.4
 statsmodels==0.14.6
 requests==2.34.2
 openpyxl==3.1.5        # reading the World Bank fuel-price workbook in refresh_data
+pypdf==6.16.1          # extracting the DOE weekly notice and Meralco rate PDFs
+                       # in refresh_doe_adjustment / refresh_meralco_all_in
 
 # Dev / test only:
 # pytest==9.1.1
