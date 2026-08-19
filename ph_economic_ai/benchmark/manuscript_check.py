@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 from ph_economic_ai.benchmark.paths import ACCURACY_REPORT, BENCHMARK_DIR
@@ -200,6 +201,31 @@ def run(manuscripts=MANUSCRIPTS, report_path: Path = None) -> dict:
     }
 
 
+def console_safe(text, stream=None) -> str:
+    """`text` rendered so it can be printed whatever codepage `stream` uses.
+
+    Windows gives an interactive console cp1252, and the manuscripts are a
+    statistics thesis: 155 U+2212 MINUS SIGN, 149 Greek rho, 31 PESO SIGN, plus
+    arrows and inequalities, none of which cp1252 can encode. Printing a finding's
+    context therefore killed the run partway through the report on 2026-08-20.
+
+    Note it is NOT the em dash, which cp1252 encodes at 0x97. That was the first
+    guess and it was wrong.
+
+    Only the DISPLAY is sanitised. The findings keep their original text, because
+    a consumer reading them as data must not receive evidence with holes punched
+    in it.
+    """
+    stream = sys.stdout if stream is None else stream
+    encoding = getattr(stream, 'encoding', None) or 'utf-8'
+    text = str(text)
+    try:
+        text.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return text.encode(encoding, errors='replace').decode(encoding, errors='replace')
+    return text
+
+
 def main() -> int:
     result = run()
     print(f'artifact sample sizes: {result["artifact_sample_sizes"]}\n')
@@ -208,8 +234,9 @@ def main() -> int:
         print(f'{entry["manuscript"]}  [{flag}]')
         print(f'  {entry["n_mismatches"]} mismatches, {entry["n_review"]} to review')
         for f in entry['findings'][:40]:
-            print(f'    line {f["line"]:>4}  {f["severity"]:<8} {f["claimed"]}  {f["detail"]}')
-            print(f'              {f["context"]}')
+            print(console_safe(
+                f'    line {f["line"]:>4}  {f["severity"]:<8} {f["claimed"]}  {f["detail"]}'))
+            print(console_safe(f'              {f["context"]}'))
         print()
     if result['undeclared_divergence']:
         print('UNDECLARED DIVERGENCE: '

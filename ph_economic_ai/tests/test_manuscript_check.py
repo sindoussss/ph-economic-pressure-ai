@@ -150,3 +150,85 @@ def test_the_checker_actually_has_something_to_check():
     result = mc.run()
     assert result['manuscripts'], 'no manuscripts were located'
     assert result['artifact_sample_sizes'], 'no sample sizes were read from artifacts'
+
+
+# ── The checker must survive the console it is run on ────────────────────────
+#
+# Found 2026-08-20. Running `python -m ph_economic_ai.benchmark.manuscript_check`
+# on the maintainer machine printed nine findings and then died:
+#
+#     UnicodeEncodeError: 'charmap' codec can't encode characters in position
+#     84-85: character maps to <undefined>
+#
+# Windows gives an interactive console the cp1252 codepage. The manuscripts are
+# a statistics thesis and contain 155 U+2212 MINUS SIGN, 149 Greek rho, 31 PESO
+# SIGN and a tail of arrows and inequalities, none of which cp1252 can encode.
+# The tool crashed while printing the CONTEXT of a finding, never while
+# analysing anything.
+#
+# It is not the em dash, which cp1252 encodes fine at 0x97. That guess was made
+# first and was wrong, so the characters are named here explicitly.
+#
+# This is Gate 6 enforcement. A gate that exits on a traceback instead of a
+# verdict cannot report the gate, and a CI or scheduled invocation would see
+# only the crash.
+
+import io
+import sys
+
+from ph_economic_ai.benchmark import manuscript_check as _mc
+
+#: Real characters from the manuscripts, chosen because cp1252 has no mapping.
+UNENCODABLE = 'the anchor is ₱1.40/L, ρ ≈ 0.95, bias − 0.3'
+
+
+def _cp1252_console():
+    """A stand-in for the Windows console that caused the crash."""
+    return io.TextIOWrapper(io.BytesIO(), encoding='cp1252', errors='strict')
+
+
+def test_the_console_really_cannot_encode_these(): 
+    """The precondition, asserted so the tests below cannot pass vacuously."""
+    console = _cp1252_console()
+    with pytest.raises(UnicodeEncodeError):
+        console.write(UNENCODABLE)
+        console.flush()
+
+
+def test_console_safe_survives_characters_the_console_lacks():
+    out = _mc.console_safe(UNENCODABLE, _cp1252_console())
+    console = _cp1252_console()
+    console.write(out)
+    console.flush()                       # must not raise
+    assert 'anchor' in out and '0.95' in out, 'the readable part must survive'
+
+
+def test_console_safe_leaves_text_alone_when_the_console_can_take_it():
+    utf8 = io.TextIOWrapper(io.BytesIO(), encoding='utf-8')
+    assert _mc.console_safe(UNENCODABLE, utf8) == UNENCODABLE
+
+
+def test_main_completes_on_a_cp1252_console(monkeypatch):
+    """The regression. It printed nine findings, then raised."""
+    console = _cp1252_console()
+    monkeypatch.setattr(sys, 'stdout', console)
+    try:
+        rc = _mc.main()
+        console.flush()
+    finally:
+        monkeypatch.undo()
+
+    printed = console.buffer.getvalue().decode('cp1252')
+    assert isinstance(rc, int)
+    assert 'mismatches' in printed, 'the report must actually reach the console'
+
+
+def test_sanitising_the_display_does_not_touch_the_findings():
+    """Only printing is made safe. The findings keep the real text, or a consumer
+    reading them would get mangled evidence."""
+    result = _mc.run()
+    contexts = [f['context']
+                for entry in result['manuscripts'] for f in entry['findings']]
+    assert contexts, 'expected findings to exist to make this meaningful'
+    assert any(any(ord(c) > 255 for c in ctx) for ctx in contexts), (
+        'the findings should still carry the characters that broke printing')
