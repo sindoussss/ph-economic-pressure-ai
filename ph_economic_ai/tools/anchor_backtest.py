@@ -256,6 +256,30 @@ def _scale_ratio(pred: np.ndarray, actual: np.ndarray) -> float:
     return float(np.median(np.abs(pred)) / ma) if ma else 0.0
 
 
+#: Five-year bands for reporting the scale ratio. The whole-panel figure hides
+#: that the ratio moves with the window: the anchor's own magnitude is nearly
+#: flat across the panel while electricity CPI volatility fell by a third after
+#: 2016 and partly recovered. A single number invites tuning a constant until it
+#: reads 1.0, which would be fitting a physical quantity to flatter a diagnostic.
+_ERAS = ((2007, 2011), (2012, 2016), (2017, 2021), (2022, 2026))
+
+
+def _scale_ratio_by_era(months, pred, actual) -> dict:
+    """`{'2007-2011': ratio, ...}` for each band with enough months."""
+    out = {}
+    years = [int(str(m)[:4]) for m in months]
+    for lo, hi in _ERAS:
+        idx = [i for i, y in enumerate(years) if lo <= y <= hi]
+        if len(idx) < 6:
+            continue
+        a = np.array([abs(actual[i]) for i in idx])
+        p = np.array([abs(pred[i]) for i in idx])
+        med = float(np.median(a))
+        if med:
+            out[f'{lo}-{hi}'] = round(float(np.median(p)) / med, 2)
+    return out
+
+
 def backtest_electricity() -> dict:
     """Regress the electricity anchor against real PSA electricity CPI MoM.
 
@@ -290,6 +314,8 @@ def backtest_electricity() -> dict:
         'best_correlation_significance': best_sig,
         'is_predictive': bool(best_sig['significant']) and abs(lag_corrs[best_lag]) >= 0.2,
         'scale_ratio': round(_scale_ratio(anchor_pct, actual), 2),
+        'scale_ratio_by_era': _scale_ratio_by_era(
+            [r['month'] for r in panel], anchor_pct, actual),
         # The levels the ratio was computed FROM. Without these it cannot be
         # checked for staleness, and it went stale unnoticed once already.
         'generation_charge_php_kwh': round(gen_charge, 4),
@@ -302,6 +328,12 @@ def backtest_electricity() -> dict:
                     'generation charge to the whole historical panel, so it asks '
                     'whether today\'s anchor is sized like a typical past move, '
                     'NOT whether the anchor was correctly sized in any past year. '
+                    'The ratio also MOVES WITH THE WINDOW it is measured over: about '
+                    '1.1 across 2007-2016 and 1.6 to 2.0 since, because the '
+                    'anchor\'s own magnitude is nearly flat while electricity CPI '
+                    'volatility fell by a third after 2016. The whole-panel figure is '
+                    'therefore a property of the period, not of the anchor, and '
+                    'scale_ratio_by_era is the honest read. '
                     'It read ~1.0 only while the charge was frozen at a stale-low '
                     '5.50; correcting that constant moved it to 1.84 without any '
                     'change in the anchor\'s design. The base rate below is the '
