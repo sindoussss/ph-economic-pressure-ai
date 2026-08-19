@@ -4,154 +4,126 @@ The announced pump move, which is the top of the accuracy roadmap: for six days
 of every seven, "what will fuel cost next week" is a published fact and the app
 was guessing at it.
 
-**Why this needs a browser when nothing else in the repo does.** The notice is a
-PDF, but the link to that PDF is written into the page by JavaScript after
-hydration. It is absent from the served HTML, from the Nuxt payload and from the
-static document list, so `requests` alone cannot find it. The Liferay content API
-holds the article (`structured-contents/3617975` answers with a permission error
-naming it, so the ID is right) but serves nothing anonymously, and the custom
-`api-prod.doe.gov.ph` API exposes no article endpoint. Rendering the page is the
-only route left that does not involve credentials.
+**Discovery is derived, not scraped.** The notice PDF's URL follows from the week
+it covers, so this asks for a week directly instead of hunting the article
+listing for a link. The listing route was tried first and abandoned for cause:
+inside a single day it served 200-with-articles, 200-with-an-empty-shell and
+HTTP 500, and notices age off its recent-articles window within a day or two of
+publication. A weekly job built on it fails most weeks for reasons unrelated to
+whether a notice exists. It also needed a headless browser to recover a link that
+JavaScript writes after hydration; deriving the URL removes that dependency
+altogether, so this tool is now plain `requests` plus `pypdf`.
 
-Playwright is imported lazily and only here. Nothing else in the package touches
-it, CI never installs it, and the tests read a committed fixture -- the same
-fetch-once-commit contract every other panel in `benchmark/data` keeps.
+Measured 2026-08-19: 23 consecutive weeks resolve, 2026-03-10 to 2026-08-11, with
+no gaps once both month spellings are tried. DOE writes `jul-7-13` in July and
+`june-9-15` in June, and trying only the abbreviation reported eleven published
+weeks as missing.
 
-    pip install playwright && playwright install chromium
-    python -m ph_economic_ai.tools.refresh_doe_adjustment            # fetch
+    python -m ph_economic_ai.tools.refresh_doe_adjustment            # recent weeks
+    python -m ph_economic_ai.tools.refresh_doe_adjustment --all      # full backfill
     python -m ph_economic_ai.tools.refresh_doe_adjustment --check    # is it stale?
 
-**Running it weekly.** The feed is only as good as the last run, and a feed that
-stopped updating looks exactly like a quiet week on screen. `--check` exits 1 when
-the committed announcements have fallen behind, so a scheduler can act on it
-without parsing output. On Windows, register the fetch for Tuesday mornings, after
-Monday evening's filings and before the 6:00 AM effectivity:
+**Running it weekly.** `--check` exits 1 when the committed announcements have
+fallen behind, so a scheduler can act without parsing output. On Windows:
 
     schtasks /Create /TN "DOE price notice" /SC WEEKLY /D TUE /ST 08:00 ^
       /TR "cmd /c cd /d <repo> && python -m ph_economic_ai.tools.refresh_doe_adjustment"
 
 The app does not depend on the scheduler having worked: `feed_is_stale` drives a
 notice on the gas card, so a refresh that silently stopped is visible rather than
-absorbed. That is the belt to the scheduler's braces, and the more important half
--- a scheduled task can fail quietly, a staleness banner cannot.
+absorbed. A scheduled task can fail quietly; a staleness banner cannot.
 """
 from __future__ import annotations
 
 import csv
 import datetime as dt
-import re
 from typing import Optional
 
 import requests
 
 from ph_economic_ai.benchmark.doe_adjustment import (
-    industry_adjustment, parse_notice_pdf,
+    NOTICE_URL_BASE, industry_adjustment, parse_notice_pdf, week_slugs,
+    weeks_back_from,
 )
 from ph_economic_ai.benchmark.paths import data
 from ph_economic_ai.benchmark.provenance import write_record
 
 OUT = data('doe_price_adjustments.csv')
 
-LISTING = ('https://doe.gov.ph/site/oimb/articles/group/liquid-fuels'
-           '?display_type=Card')
-BASE = 'https://doe.gov.ph'
 HEADERS = {'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                           'AppleWebKit/537.36 (KHTML, like Gecko) '
                           'Chrome/120.0.0.0 Safari/537.36')}
 
-#: The consent gate blocks rendering until dismissed. This is the narrowest of
-#: the three offered options -- essential and session cookies only, one day --
-#: chosen over either "Accept All Cookies" variant.
-CONSENT_ESSENTIAL_ONLY = 'Allow only Essential and Session Cookies'
+#: Weeks fetched by a routine run. Comfortably more than a scheduler needs, so a
+#: few missed Tuesdays heal themselves rather than leaving a permanent hole.
+RECENT_WEEKS = 6
 
-_NOTICE_HREF = re.compile(r'href=["\'](/articles/\d+--prior-notice[^"\']*)')
-_DOC_HREF = re.compile(r'https://prod-cms\.doe\.gov\.ph/documents/[^"\'\s]+')
+#: Weeks probed by `--all`. The series starts around 2026-03-10; this reaches
+#: past it so the walk finds the true beginning rather than a configured guess.
+BACKFILL_WEEKS = 60
 
-
-def discover_notices() -> list[str]:
-    """Article URLs for the published Prior Notice pages, newest listing first.
-
-    Plain `requests`: the LISTING is server-rendered even though the article
-    bodies are not.
-    """
-    resp = requests.get(LISTING, headers=HEADERS, timeout=60)
-    resp.raise_for_status()
-    seen, out = set(), []
-    for href in _NOTICE_HREF.findall(resp.text):
-        path = href.split('?')[0]
-        if path not in seen:
-            seen.add(path)
-            out.append(BASE + path)
-    return out
+#: Consecutive misses before the walk concludes it has run off the end of the
+#: series. Notices are weekly and uninterrupted where they exist, so a run this
+#: long means the archive stops rather than that one week is absent.
+STOP_AFTER_MISSES = 8
 
 
-def pdf_url_for(article_url: str, timeout_ms: int = 90000) -> Optional[str]:
-    """The notice PDF linked from a rendered article page, or None."""
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as play:
-        browser = play.chromium.launch()
+def fetch_week(start: dt.date, end: dt.date,
+               session: Optional[requests.Session] = None) -> Optional[dict]:
+    """The announced adjustment for one week, or None if not published."""
+    get = (session or requests).get
+    for slug in week_slugs(start, end):
         try:
-            page = browser.new_page(user_agent=HEADERS['User-Agent'])
-            page.goto(article_url, wait_until='domcontentloaded', timeout=timeout_ms)
-            try:
-                page.get_by_text(CONSENT_ESSENTIAL_ONLY, exact=False).first.click(
-                    timeout=8000)
-            except Exception:
-                pass                      # gate absent once the choice is stored
-            page.wait_for_load_state('networkidle', timeout=timeout_ms)
-            hrefs = page.eval_on_selector_all('a', 'els => els.map(e => e.href)')
-        finally:
-            browser.close()
-
-    for href in hrefs or []:
-        if href and 'prod-cms.doe.gov.ph/documents/' in href and 'itmsfuel' in href.lower():
-            return href
-    for href in hrefs or []:
-        if href and _DOC_HREF.fullmatch(href) and 'pdf' in href.lower():
-            return href
+            resp = get(NOTICE_URL_BASE + slug, headers=HEADERS, timeout=60)
+        except requests.RequestException:
+            continue
+        if resp.status_code != 200 or 'pdf' not in resp.headers.get('content-type', ''):
+            continue
+        parsed = parse_notice_pdf(resp.content)
+        result = industry_adjustment(parsed['rows'], summary=parsed['summary'])
+        # The PDF's own heading wins over the requested week. They agree in every
+        # observed case, but a slug that happened to resolve to the wrong
+        # document would otherwise file its figures under a week it does not
+        # describe -- the `RSK-023` defect, reached through the URL instead.
+        week = parsed['week'] or (start, end)
+        return {'week_start': week[0].isoformat(), 'week_end': week[1].isoformat(),
+                'gasoline': result['gasoline'], 'diesel': result['diesel'],
+                'kerosene': result['kerosene'], 'basis': result['basis'],
+                'n_companies': result['n_companies'],
+                'consensus': result['consensus'],
+                'source_pdf': NOTICE_URL_BASE + slug}
     return None
 
 
-def fetch_notice(article_url: str) -> Optional[dict]:
-    """One notice, from article URL to an industry adjustment."""
-    pdf_url = pdf_url_for(article_url)
-    if not pdf_url:
-        print(f'  no PDF link found on {article_url[-60:]}')
-        return None
-    blob = requests.get(pdf_url, headers=HEADERS, timeout=90)
-    blob.raise_for_status()
-    parsed = parse_notice_pdf(blob.content)
-    if not parsed['week']:
-        print(f'  no readable week heading in {pdf_url[-50:]}')
-        return None
-    result = industry_adjustment(parsed['rows'], summary=parsed['summary'])
-    start, end = parsed['week']
-    return {'week_start': start.isoformat(), 'week_end': end.isoformat(),
-            'gasoline': result['gasoline'], 'diesel': result['diesel'],
-            'kerosene': result['kerosene'], 'basis': result['basis'],
-            'n_companies': result['n_companies'],
-            'consensus': result['consensus'], 'source_pdf': pdf_url}
+def collect(weeks: int, stop_after: int = STOP_AFTER_MISSES) -> list[dict]:
+    rows, misses = [], 0
+    with requests.Session() as session:
+        for start, end in weeks_back_from(count=weeks):
+            row = fetch_week(start, end, session)
+            if row:
+                misses = 0
+                rows.append(row)
+                print(f'  {row["week_start"]}  gasoline {row["gasoline"]}  '
+                      f'diesel {row["diesel"]}  ({row["basis"]})')
+            else:
+                misses += 1
+                print(f'  {start}  not published')
+                if misses >= stop_after:
+                    print(f'  {stop_after} consecutive misses; end of series')
+                    break
+    return rows
 
 
-def build() -> None:
-    articles = discover_notices()
-    print(f'{len(articles)} notice article(s) listed')
-    rows = []
-    for url in articles:
-        print(f'- {url[-64:]}')
-        try:
-            row = fetch_notice(url)
-        except Exception as exc:
-            print(f'  FAILED {type(exc).__name__}: {exc}')
-            continue
-        if row:
-            rows.append(row)
-            print(f"  {row['week_start']}  gasoline {row['gasoline']}  "
-                  f"diesel {row['diesel']}  ({row['basis']})")
-
+def build(weeks: int = RECENT_WEEKS) -> None:
+    print(f'probing {weeks} week(s) back from today')
+    rows = collect(weeks)
     if not rows:
-        raise SystemExit('no notices parsed; nothing written')
+        # Nothing fetched is not the same as nothing existing, and a scheduler
+        # reading only the exit code cannot tell them apart unless it is said.
+        raise SystemExit(
+            'No notice resolved for any probed week. DOE may be unreachable or '
+            'the slug format may have changed again. Nothing was written; the '
+            'existing CSV is untouched.')
 
     existing: dict[str, dict] = {}
     if OUT.exists():
@@ -173,14 +145,15 @@ def build() -> None:
     write_record(
         OUT,
         source=('DOE Oil Industry Management Bureau, Prior Notice on Price '
-                'Adjustments (weekly PDF linked from a client-rendered article)'),
-        params={'listing': LISTING,
-                'render': 'playwright chromium, maintainer machine only',
-                'consent': CONSENT_ESSENTIAL_ONLY},
+                'Adjustments (weekly PDF, URL derived from the week it covers)'),
+        params={'url_base': NOTICE_URL_BASE,
+                'slug': 'website-posting-itmsfuel-<week>-pdf',
+                'month_spellings': 'abbreviated and full, both tried',
+                'weeks_probed': weeks},
         transformations=[
-            'discover notice articles from the server-rendered listing',
-            'render each article to recover the PDF link written by JavaScript',
-            'extract text with pypdf; read the week from the heading',
+            'derive the document slug from each Tuesday-to-Monday pricing week',
+            'extract text with pypdf; read the covering week from the heading '
+            'and prefer it over the requested week',
             'industry figure from the summary row where present, else the modal '
             'company figure; mode not mean so one company cannot drag it',
         ],
@@ -194,8 +167,8 @@ def build() -> None:
 def check() -> int:
     """Report whether the committed feed has fallen behind. Exit 1 if so.
 
-    Separate from `build` so a scheduler can ask the cheap question without
-    launching a browser, and so a monitoring job never mutates the repository.
+    Separate from `build` so a scheduler can ask the cheap question without any
+    network round trip, and so a monitoring job never mutates the repository.
     """
     from ph_economic_ai.benchmark.doe_adjustment import (
         feed_is_stale, load_announcements)
@@ -211,6 +184,7 @@ def check() -> int:
 if __name__ == '__main__':
     import sys
 
-    if '--check' in sys.argv[1:]:
+    args = sys.argv[1:]
+    if '--check' in args:
         raise SystemExit(check())
-    build()
+    build(BACKFILL_WEEKS if '--all' in args else RECENT_WEEKS)

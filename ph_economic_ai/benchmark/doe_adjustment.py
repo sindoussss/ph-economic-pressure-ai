@@ -372,3 +372,61 @@ def feed_is_stale(today: Optional[dt.date] = None,
     if not ends:
         return True
     return (today - max(ends)).days > STALE_AFTER_DAYS
+
+
+# ── Durable discovery ────────────────────────────────────────────────────────
+#
+# The notice PDF's URL is DERIVABLE from the week it covers, which makes
+# discovery independent of DOE's article listing. That matters because the
+# listing proved unusable: within one day it served 200-with-articles,
+# 200-with-an-empty-shell and 500, and notices age off its recent-articles
+# window within a day or two of publication. A weekly job built on it fails most
+# weeks for reasons that have nothing to do with whether a notice exists.
+#
+# Measured 2026-08-19: 23 consecutive weeks resolve, 2026-03-10 to 2026-08-11,
+# with no gaps. This also makes the series BACKFILLABLE, which an earlier note
+# in this module denied on the strength of the listing window alone.
+
+_MONTH_ABBR = ('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+               'jul', 'aug', 'sep', 'oct', 'nov', 'dec')
+_MONTH_FULL = ('january', 'february', 'march', 'april', 'may', 'june',
+               'july', 'august', 'september', 'october', 'november', 'december')
+
+NOTICE_URL_BASE = 'https://prod-cms.doe.gov.ph/documents/d/guest/'
+_SLUG_PREFIX = 'website-posting-itmsfuel-'
+
+
+def week_slugs(start: dt.date, end: dt.date) -> list[str]:
+    """Candidate document slugs for the notice covering `start`..`end`.
+
+    Both month spellings are returned because DOE uses both: `jul-7-13` in July
+    and `june-9-15` in June. Trying only the abbreviation reported eleven weeks
+    as unpublished that were in fact online -- a gap that looked like DOE not
+    posting and was this slug being wrong.
+
+    Days are never zero-padded; the padded form 404s.
+    """
+    out = []
+    for names in (_MONTH_ABBR, _MONTH_FULL):
+        first, last = names[start.month - 1], names[end.month - 1]
+        core = (f'{first}-{start.day}-{end.day}' if start.month == end.month
+                else f'{first}-{start.day}-{last}-{end.day}')
+        slug = f'{_SLUG_PREFIX}{core}-pdf'
+        if slug not in out:
+            out.append(slug)
+    return out
+
+
+def weeks_back_from(today: Optional[dt.date] = None, count: int = 26):
+    """`(start, end)` for each pricing week, newest first.
+
+    A pricing week runs Tuesday to Monday: adjustments take effect 6:00 AM
+    Tuesday and hold for seven days. Anchoring on the Tuesday on or before
+    `today` means a midweek run asks for the week actually in force, not the one
+    about to start.
+    """
+    today = today or dt.date.today()
+    anchor = today - dt.timedelta(days=(today.weekday() - 1) % 7)
+    for i in range(count):
+        start = anchor - dt.timedelta(weeks=i)
+        yield start, start + dt.timedelta(days=6)
