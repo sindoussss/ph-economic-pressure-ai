@@ -24,7 +24,12 @@ weeks as missing.
     python -m ph_economic_ai.tools.refresh_doe_adjustment --check    # is it stale?
 
 **Running it weekly.** `--check` exits 1 when the committed announcements have
-fallen behind, so a scheduler can act without parsing output. On Windows:
+fallen behind OR when the last recorded run failed, so a scheduler can act
+without parsing output. Both halves are needed: the staleness window is seven
+days, so a refresh that starts failing on a Tuesday would otherwise look healthy
+until the following Tuesday. Every run appends its outcome to
+`logs/refresh_doe_adjustment.jsonl` via `tools/run_log.py`, which is what makes
+the second half answerable at all. On Windows:
 
     schtasks /Create /TN "DOE price notice" /SC WEEKLY /D TUE /ST 08:00 ^
       /TR "cmd /c cd /d <repo> && python -m ph_economic_ai.tools.refresh_doe_adjustment"
@@ -46,9 +51,13 @@ from ph_economic_ai.benchmark.doe_adjustment import (
     parse_notice_pdf, week_slugs, weeks_back_from,
 )
 from ph_economic_ai.benchmark.paths import data
+from ph_economic_ai.tools import run_log
 from ph_economic_ai.benchmark.provenance import write_record
 
 OUT = data('doe_price_adjustments.csv')
+
+#: Key this tool's run history is filed under. See `tools/run_log.py`.
+TOOL = 'refresh_doe_adjustment'
 
 HEADERS = {'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                           'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -171,13 +180,26 @@ def build(weeks: int = RECENT_WEEKS) -> None:
                'stricter meaning.'),
     )
     print(f'\nWrote {OUT.name} ({len(existing)} week(s)) + provenance')
+    return len(existing)
 
 
 def check() -> int:
-    """Report whether the committed feed has fallen behind. Exit 1 if so.
+    """Is this job healthy? Exit 1 if the feed is stale OR the last run failed.
 
     Separate from `build` so a scheduler can ask the cheap question without any
     network round trip, and so a monitoring job never mutates the repository.
+
+    **Why the last run counts, not only the feed's age.** The two come apart for
+    a full week. `feed_is_stale` allows seven days past the newest covered week,
+    one publication cycle, so a refresh that starts crashing on a Tuesday leaves
+    the committed feed looking current until the following Tuesday. A
+    staleness-only check reports success across that whole week over a job that
+    has already stopped working. That is the silence this exists to end, and it
+    is what happened on 2026-08-19: the run failed, returned 1 to a scheduler
+    that records exit codes nobody reads, and left nothing behind.
+
+    Only the MOST RECENT run decides health. A failure that a later run fixed is
+    history, not an outstanding alarm.
     """
     from ph_economic_ai.benchmark.doe_adjustment import (
         feed_is_stale, load_announcements)
@@ -187,7 +209,15 @@ def check() -> int:
     newest = max((r.get('week_end') or '' for r in rows), default='(none)')
     print(f'{len(rows)} week(s) on file, newest covers to {newest}')
     print('STALE: the weekly refresh has not run recently' if stale else 'up to date')
-    return 1 if stale else 0
+    print(run_log.describe(TOOL))
+
+    last = run_log.last_record(TOOL)
+    broken = last is not None and not last.get('ok')
+    if broken:
+        print(f'  traceback:\n{last.get("traceback", "(none recorded)")}')
+    if stale or broken:
+        print(f'  full history: {run_log.log_path(TOOL)}')
+    return 1 if (stale or broken) else 0
 
 
 if __name__ == '__main__':
@@ -196,4 +226,9 @@ if __name__ == '__main__':
     args = sys.argv[1:]
     if '--check' in args:
         raise SystemExit(check())
-    build(BACKFILL_WEEKS if '--all' in args else RECENT_WEEKS)
+
+    weeks = BACKFILL_WEEKS if '--all' in args else RECENT_WEEKS
+    # The scheduler discards stdout, so an unwrapped traceback reaches nobody.
+    # `logged_run` re-raises, which keeps the non-zero exit the task reports.
+    with run_log.logged_run(TOOL, weeks=weeks, args=args) as record:
+        record['weeks_on_file'] = build(weeks)
