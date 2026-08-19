@@ -45,7 +45,24 @@ _YAHOO_HEADERS = {
 
 OPEN_METEO_URL = 'https://archive-api.open-meteo.com/v1/archive'
 FAO_URL = 'https://fenixservices.fao.org/faostat/api/v1/en/data/CP'
-_ELECTRICITY_BASE_RATE = 11.20  # PHP/kWh — calibrated to Meralco 2024 average
+def _default_electricity_base(csv_path=None) -> float:
+    """Newest published all-in residential rate, PHP/kWh. Never raises.
+
+    Was a frozen 11.20, described as the Meralco 2024 average. The published rate
+    reached 14.78 by 2026-08, so the displayed series sat about 3.60 below
+    reality. This is the third place that level was copied to: the generation
+    charge was the same defect (PR #29) and the anchor's base rate the same again
+    (PR #45).
+    """
+    try:
+        from ph_economic_ai.benchmark.meralco import latest_all_in_rate
+        return (latest_all_in_rate(csv_path=csv_path) if csv_path is not None
+                else latest_all_in_rate())
+    except Exception:
+        return 14.7833          # last verified published level (2026-08)
+
+
+_ELECTRICITY_BASE_RATE = _default_electricity_base()
 
 # (lat, lon, production_weight) — weights sum to 1.0
 _WEATHER_ZONES = [
@@ -240,6 +257,20 @@ def _derive_electricity(gas_series: pd.Series, monthly_index: list[str]) -> pd.S
 
     Each +1 PHP/L in gas → +0.18 PHP/kWh in electricity rate,
     reflecting Meralco's ~18% oil-linked generation cost pass-through.
+
+    **This is a SYNTHETIC series, not a measurement.** It is a base level plus a
+    gas-delta pass-through, and anchoring the base to the published all-in rate
+    makes it correctly SCALED without making it observed. A reader who takes it
+    for a published tariff is being misled by a number that looks more solid than
+    it is, which is the same hazard `food_price_idx` carries two functions below.
+
+    Real published rates now exist in `benchmark/data/meralco_all_in_rate.csv`,
+    but they are NOT spliced in here. They cover five months against this panel's
+    decade, and a series that is measured at one end and derived at the other
+    produces one fabricated step at the join -- `economy_overview` reads exactly
+    that adjacent pair to show a month-on-month delta, so the join would surface
+    as a price move that never happened. Replacing the series wholesale is the
+    honest upgrade; mixing the two is not.
     """
     gas = gas_series.reindex(monthly_index).ffill()
     gas_delta = gas.diff().fillna(0.0)
