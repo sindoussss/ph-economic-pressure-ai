@@ -172,3 +172,50 @@ def test_the_scale_claim_admits_it_compares_across_eras():
     assert 'current' in finding or 'anachron' in finding or 'today' in finding, (
         f'the finding presents scale_ratio {r["scale_ratio"]} without noting it '
         f'applies a present-day charge level to a historical panel')
+
+
+# ── The scale ratio depends on the window it is measured over ────────────────
+
+def test_the_scale_ratio_is_reported_by_era_not_only_as_one_number():
+    """A single ratio invites tuning a constant until it reads 1.0.
+
+    Measured 2026-08-19: 1.11 over 2007-2011, 1.16 over 2012-2016, 2.02 over
+    2017-2021 and 1.55 over 2022-2026. The anchor's own magnitude barely moves
+    across those eras (median 1.78 to 2.14); what changed is electricity CPI
+    volatility, which fell from 1.65 to 1.06 and partly recovered. The whole-panel
+    1.40 is therefore a property of the comparison window, not of the anchor.
+    """
+    r = ab.backtest_electricity()
+    assert 'scale_ratio_by_era' in r
+    eras = r['scale_ratio_by_era']
+    assert len(eras) >= 3
+    assert all(v > 0 for v in eras.values())
+
+
+def test_the_finding_says_the_ratio_moves_with_the_window():
+    """Publishing 1.40 alone reads as "the anchor is 40 percent oversized", which
+    is a claim about the anchor. The honest claim is narrower."""
+    r = ab.backtest_electricity()
+    finding = r['finding'].lower()
+    assert 'window' in finding or 'era' in finding or 'period' in finding
+
+
+def test_the_anchor_was_correctly_sized_in_the_early_panel():
+    """The evidence against tuning. If a constant were wrong the ratio would be
+    uniformly off; instead the first decade sits near 1."""
+    r = ab.backtest_electricity()
+    early = [v for k, v in r['scale_ratio_by_era'].items() if k.startswith('2007') or k.startswith('2012')]
+    assert early, 'no early era reported'
+    assert all(0.8 < v < 1.4 for v in early), (
+        f'early eras {early} no longer near 1; a uniform miss would justify '
+        f'revisiting the fuel share, which this test exists to distinguish')
+
+
+def test_the_fuel_share_is_not_fitted_to_the_ratio():
+    """`_GEN_FUEL_SHARE` is the fuel-indexed portion of the generation charge, a
+    physical quantity. Forcing the whole-panel ratio to 1.0 would need 0.392, and
+    that would make the early panel read about 0.79 -- worse, not better. The
+    constant stays at its stated value and this test fails if it is quietly
+    fitted."""
+    from ph_economic_ai.engine import anchoring
+    assert anchoring._GEN_FUEL_SHARE == pytest.approx(0.55)
