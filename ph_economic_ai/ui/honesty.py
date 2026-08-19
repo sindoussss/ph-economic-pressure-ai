@@ -850,3 +850,32 @@ def announced_adjustment_line(announcement, product: str = 'gasoline',
     who = f' filed by {n} oil companies' if n else ''
     return (f'Announced: {product} {float(value):+.2f} {unit} for {when}'
             f'{who}. This is the published change, not this app\u2019s forecast.')
+
+
+def grade_origin_line(origin) -> str:
+    """How many of a calibrated band's months this machine actually observed.
+
+    `band_provenance` reads "calibrated on this app's own N graded months". That
+    is correct under the 2026-08-19 ruling that the errors belong to the APP
+    rather than to the installation, and its wording is deliberately untouched.
+    But it leaves a reader unable to tell twelve months this machine measured
+    from twelve it was handed, and those are different claims about the same
+    range.
+
+    So this supplies the missing half instead of rewording the sentence that
+    already works. Silent when there is nothing to disclose: a band built
+    entirely from months observed here needs no caveat, and adding one would put
+    noise beside a line that is already doing its job.
+    """
+    if not origin:
+        return ''
+    total = int(origin.get('total', 0) or 0)
+    shared_only = int(origin.get('shared_only', 0) or 0)
+    if total <= 0 or shared_only <= 0:
+        return ''
+    local = int(origin.get('local', 0) or 0)
+    if local == 0:
+        return (f'none of those {total} months were graded on this machine — all '
+                f'{total} come from the shared record')
+    return (f'{local} of those {total} months were graded on this machine; the '
+            f'other {shared_only} come from the shared record')

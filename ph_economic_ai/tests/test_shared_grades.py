@@ -94,3 +94,46 @@ def test_the_split_between_shared_and_local_is_reported():
     assert origin['total'] == 3
     assert origin['local'] == 2
     assert origin['shared_only'] == 1
+
+
+# ── Saying the split on screen ───────────────────────────────────────────────
+
+def test_silent_when_every_month_was_observed_here():
+    """No shared months means nothing to disclose. A line saying "all 2 observed
+    here" is noise on a screen that already carries a provenance sentence."""
+    from ph_economic_ai.ui import honesty
+    assert honesty.grade_origin_line({'total': 2, 'local': 2, 'shared_only': 0}) == ''
+
+
+def test_silent_when_there_are_no_months_at_all():
+    from ph_economic_ai.ui import honesty
+    assert honesty.grade_origin_line({'total': 0, 'local': 0, 'shared_only': 0}) == ''
+    assert honesty.grade_origin_line(None) == ''
+
+
+def test_the_split_is_stated_when_months_were_inherited():
+    """`band_provenance` says "this app's own N graded months". That phrasing is
+    correct under the owner's ruling and still leaves a reader unable to tell
+    twelve months this machine measured from twelve it was handed. This line
+    supplies the missing half without touching that wording.
+    """
+    from ph_economic_ai.ui import honesty
+    line = honesty.grade_origin_line({'total': 12, 'local': 3, 'shared_only': 9})
+    assert '3' in line and '12' in line
+    assert 'shared' in line.lower()
+
+
+def test_a_wholly_inherited_band_says_so_plainly():
+    """The case most likely to mislead: a calibrated band on a machine that has
+    graded nothing itself."""
+    from ph_economic_ai.ui import honesty
+    line = honesty.grade_origin_line({'total': 12, 'local': 0, 'shared_only': 12})
+    assert 'none' in line.lower() or '0' in line
+    assert 'shared' in line.lower()
+
+
+def test_the_line_never_overstates_local_observation():
+    from ph_economic_ai.ui import honesty
+    line = honesty.grade_origin_line({'total': 12, 'local': 3, 'shared_only': 9})
+    assert '12 of 12' not in line
+    assert '9 of 12 observed' not in line.lower()

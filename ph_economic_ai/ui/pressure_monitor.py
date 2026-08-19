@@ -682,6 +682,30 @@ class PressureMonitorPanel(QWidget):
             logging.debug('graded errors unavailable for %s', sector, exc_info=True)
             return []
 
+    def _grade_origin_line(self, sector: str) -> str:
+        """How many of this sector's graded months this machine observed itself.
+
+        Empty for gas, which is not shared: it grades per RUN against a weekly
+        DOE price and has no month key to merge on, so every month behind its
+        band is local by construction and there is nothing to disclose.
+
+        Never raises. A missing or malformed shared file must not take a card
+        down, the rule `_announced_line` and `anchoring._default_generation_charge`
+        already follow.
+        """
+        if sector == 'gas' or sector not in _interval.GRADED_SECTORS:
+            return ''
+        try:
+            from ph_economic_ai.benchmark import shared_grades as _shared
+
+            local = (self._store.get_sector_grades(sector)
+                     if self._store is not None else [])
+            return _honesty.grade_origin_line(
+                _shared.grade_origin(_shared.load_shared(), local, sector))
+        except Exception:
+            logging.debug('grade origin unavailable for %s', sector, exc_info=True)
+            return ''
+
     def _graded_count(self) -> int:
         """How many runs carry a grade. NOT `len(self._graded_errors())`, which
         is the conformal calibration window and is capped."""
@@ -866,6 +890,19 @@ class PressureMonitorPanel(QWidget):
             prov.setWordWrap(True)
             prov.setToolTip(_honesty.band_provenance_tooltip(b50))
             lay.addWidget(prov)
+
+            # WHOSE months those are. `band_provenance` says "this app's own N
+            # graded months", which is right under the ruling that the errors
+            # belong to the app rather than the installation -- and still leaves
+            # a reader unable to tell months this machine measured from months it
+            # inherited. Said here rather than by rewording a sentence that
+            # already works. Silent when every month was observed locally.
+            origin_text = self._grade_origin_line(r.sector)
+            if origin_text:
+                origin = QLabel(origin_text)
+                origin.setStyleSheet(f'color:{_T3};font-size:11px;margin-top:2px;')
+                origin.setWordWrap(True)
+                lay.addWidget(origin)
 
             more = QPushButton('show 90% range')
             more.setCursor(Qt.CursorShape.PointingHandCursor)
