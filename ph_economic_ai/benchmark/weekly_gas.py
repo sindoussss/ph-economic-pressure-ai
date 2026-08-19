@@ -29,6 +29,14 @@ advertise. `run_weekly_gas` returns that verdict alongside the headline rather
 than beneath it, because reporting the first without the second is precisely the
 overclaim this repository keeps having to retract.
 
+**And it was subsequently corrected formally, PR #40.** Entered into the
+multiple-testing family and scored on its HOLDOUT like every other member, this
+result reads dm_p 0.1318, bonferroni_p 1.0, bh_q 0.5272: not even nominally
+significant, surviving neither correction. Nothing in the repository does. The
+shuffle test and the 7-of-7 year signs remain real evidence, so the effect is
+suggestive rather than absent -- but this is not a confirmed edge and the +14.7%
+above must not be read as one.
+
 Every quantity here is computed from the committed
 `data/weekly_gas_features.csv`. The network fetch that BUILDS that file lives in
 `tools/refresh_weekly_gas.py`, so the tests run offline against a frozen input,
