@@ -151,3 +151,74 @@ def test_shipped_frames_carry_no_fabricated_lag(builder):
         assert claimed == pytest.approx(src.loc[true_prev]), (
             f'{builder}: {period} carries {claimed}, but {true_prev} is '
             f'{src.loc[true_prev]}')
+
+
+# ── The code must run on both pinned and modern pandas ───────────────────────
+
+def test_no_offset_alias_that_only_one_pandas_accepts():
+    """A month alias that only one pandas major accepts pins the repository to it.
+
+    One literal works on 1.5.3 and raises on 3.x; the other does the reverse.
+    PR #25 was closed for switching 24 sites to the 3.x form from a machine
+    running 3.x, which the pinned 1.5.3 cannot parse -- the comparison could not
+    catch it because both sides ran the same wrong pandas.
+
+    Walks the AST rather than grepping text, because a regex over source also
+    matches prose describing the problem, including this docstring.
+    `period_range`/`PeriodIndex` keep their alias on both majors and are untouched.
+    """
+    import ast
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    banned = {'M', 'ME'}
+    bad = []
+    for path in root.rglob('*.py'):
+        if '.venv' in path.parts or '__pycache__' in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding='utf-8'))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, 'id', '')
+            if name != 'date_range':
+                continue
+            for kw in node.keywords:
+                if (kw.arg == 'freq' and isinstance(kw.value, ast.Constant)
+                        and kw.value.value in banned):
+                    bad.append(f'{path.relative_to(root)}:{node.lineno}')
+    assert not bad, (
+        'date_range with a major-specific month alias: ' + ', '.join(bad))
+
+
+def test_to_periods_does_not_depend_on_lenient_datetime_parsing():
+    """The leniency is this function's own, not pandas'.
+
+    1.5.3 let a formatted parse swallow a trailing day; 3.x raises. Relying on
+    that made the documented behaviour version-specific AND masked
+    `calendar_lag`'s duplicate-month guard behind a parse error.
+
+    The docstring is stripped before inspecting, so explaining the hazard does
+    not trip the check for it.
+    """
+    import ast
+    import inspect
+
+    from ph_economic_ai.benchmark import calendar_index
+
+    fn = ast.parse(inspect.getsource(calendar_index.to_periods)).body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)):
+        fn.body = fn.body[1:]                      # drop the docstring
+    code = ast.unparse(fn)
+    assert 'format=' not in code, (
+        'to_periods is parsing with a format again; that is version-specific')
+
+    # the documented leniency, and the duplicates the misalignment guard needs
+    assert list(calendar_index.to_periods(['2020-01-15']).astype(str)) == ['2020-01']
+    assert list(calendar_index.to_periods(
+        ['2020-01-05', '2020-01-20']).astype(str)) == ['2020-01', '2020-01']

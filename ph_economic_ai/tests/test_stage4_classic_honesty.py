@@ -34,7 +34,7 @@ def _panel(app):
     mock_reg.predict.return_value = np.array([60.0])
     mock_reg.feature_importances_ = np.array([0.5, 0.3, 0.2])
     df = pd.DataFrame({
-        'date': pd.date_range('2024-01', periods=3, freq='M'),
+        'date': pd.period_range('2024-01', periods=3, freq='M').to_timestamp(how='end').normalize(),
         'gas_price': [58.0, 59.0, 60.0],
         'oil_price': [80.0, 81.0, 82.0],
         'usd_php': [56.0, 56.5, 57.0],
