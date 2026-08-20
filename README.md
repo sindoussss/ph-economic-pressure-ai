@@ -46,6 +46,13 @@ pip install -r requirements.txt
 python -m ph_economic_ai.benchmark.run
 ```
 
+> **On Windows, clone to a short path.** `python -m venv` fails at `ensurepip` when the
+> repository sits deep in the filesystem — the nested `Lib/site-packages/...` paths it creates
+> cross the 260-character `MAX_PATH` limit and installation dies before any code in this
+> repository runs, so the error looks like a broken project rather than a path problem. A cold
+> reproduction hit this on 2026-08-20 from a 163-character working directory. `C:\strata` or
+> anything similarly short works. Not applicable on Linux or macOS.
+
 This runs the full walk-forward audit — including the baseline size study, the FRED-MD census, the minimum-detectable-effect for every null, and the sentiment keystone — and writes artifacts to `ph_economic_ai/benchmark/artifacts/` (`accuracy_report.json`, `baseline_theory.json`, `baseline_size.json`, `vulnerability_survey.json`, `power.json`, tables, figures). No API key, no GPU, no Qt — anyone can verify the numbers above. The boundary is enforced by `tests/test_benchmark_isolation.py`, which fails if `benchmark/` ever grows a dependency on the app.
 
 ## Run the app (interactive simulator)
