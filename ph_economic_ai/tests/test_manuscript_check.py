@@ -232,3 +232,60 @@ def test_sanitising_the_display_does_not_touch_the_findings():
     assert contexts, 'expected findings to exist to make this meaningful'
     assert any(any(ord(c) > 255 for c in ctx) for ctx in contexts), (
         'the findings should still carry the characters that broke printing')
+
+
+# ── A correct number reported as wrong is worse than no checker ──────────────
+#
+# Found 2026-08-20. `talking-points.md` says, naming its source:
+#
+#     **"Why 20 agents?" -- the ablation** (`swarm_ablation.json`, n=8)
+#
+# and the checker reported "no artifact reports n = 8". The artifact does report
+# it, as `repeats: 8`. The pool already spans every committed artifact; it
+# collected only keys literally named n, n_long, n_calib and n_eval, and this one
+# is a run count under a different name.
+#
+# The cost of leaving it is not the one wrong line. This module's whole value is
+# that its output can be trusted without re-deriving it, and a reader who checks
+# the first finding, discovers the number is fine, and concludes the tool cries
+# wolf will not check the twenty-fifth. That is how a gate stops being read.
+#
+# The fix must not overshoot in the other direction. Widening the pool until any
+# integer resolves would silence real findings, so `reps` (300 simulation
+# replications) is deliberately left out: no manuscript cites `n = 300`, and an
+# unnecessary value in the pool is a false negative waiting to happen.
+
+def test_run_counts_are_recognised_as_sample_sizes():
+    sizes = _mc.artifact_sample_sizes(
+        {'repeats': 8, 'inner': {'n_runs': 12}, 'unrelated': {'reps': 300}})
+    assert 8 in sizes and 12 in sizes
+    assert 300 not in sizes, 'reps is simulation replications, not a sample count'
+
+
+def test_the_ablation_run_count_is_no_longer_a_false_positive():
+    """The regression, against the real committed artifacts."""
+    result = _mc.run()
+    flagged = [f for entry in result['manuscripts'] for f in entry['findings']
+               if 'n = 8' in f.get('detail', '')]
+    assert not flagged, (
+        'swarm_ablation.json reports repeats: 8, so n = 8 is a correct claim')
+
+
+def test_widening_the_pool_did_not_blind_the_checker():
+    """The other direction. A number no artifact reports must still be caught."""
+    report = {'audit': [{'target': 'fuel', 'verdict': 'efficient', 'n': 72}]}
+    text = 'The nowcast was run over n = 61111 backtest months.'
+    (finding,) = _mc.check_sample_sizes(text, report)
+    assert finding['severity'] == 'mismatch'
+
+
+def test_the_pool_grew_by_exactly_the_run_counts():
+    """Pins the size of the concession.
+
+    Recomputing the pool without the two new keys must differ by exactly the run
+    counts, so a later edit cannot quietly widen it into uselessness.
+    """
+    pool = _mc.all_committed_artifacts(exclude=None)
+    wide = _mc.artifact_sample_sizes(pool)
+    narrow = _mc.artifact_sample_sizes(pool, keys=('n', 'n_long', 'n_calib', 'n_eval'))
+    assert wide - narrow == {8}, f'unexpected widening: {sorted(wide - narrow)}'
