@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from typing import Optional
 from pathlib import Path
 
 from ph_economic_ai.benchmark.paths import ACCURACY_REPORT, BENCHMARK_DIR
@@ -138,17 +139,72 @@ def check_sample_sizes(text: str, report: dict) -> list[dict]:
     return findings
 
 
+#: Series named in prose. Used to attribute a verdict word to the nearest one,
+#: so a paragraph mentioning four series does not register four claims.
+SERIES_NAMES = ('electricity', 'transport', 'inflation', 'food', 'fuel', 'fx')
+
+_QUOTE_PATTERNS = (r'"[^"]*"', '“[^”]*”', "'[^']*'")
+
+
+def _quoted_spans(line: str) -> list:
+    """Character ranges of every quoted run, straight or curly."""
+    spans = []
+    for pattern in _QUOTE_PATTERNS:
+        spans.extend((m.start(), m.end()) for m in re.finditer(pattern, line))
+    return spans
+
+
+def _nearest_series(low: str, pos: int, names) -> Optional[str]:
+    """The series named closest to `pos`, or None if none is named.
+
+    "food ... predictable" is a claim about food no matter how many other series
+    share the paragraph, so proximity decides attribution.
+    """
+    best, best_distance = None, None
+    for name in names:
+        for m in re.finditer(rf'\b{re.escape(name)}\b', low):
+            distance = min(abs(m.start() - pos), abs(m.end() - pos))
+            if best_distance is None or distance < best_distance:
+                best, best_distance = name, distance
+    return best
+
+
 def check_verdicts(text: str, report: dict) -> list[dict]:
-    """Audit verdicts asserted in prose that disagree with the artifacts."""
+    """Audit verdicts asserted in prose that disagree with the artifacts.
+
+    The rule was once "the target name and the opposite verdict both appear on
+    this line". These manuscripts are paragraph-per-line markdown, so a line can
+    run twelve hundred characters and name four series, and on 2026-08-20 every
+    remaining finding it produced was a false positive: a sentence about FOOD
+    being predictable from its own dynamics counted as a claim about fuel, and
+    two passages quoting an overclaim in order to disown it counted as making it.
+
+    Two narrower rules replace it. A verdict word is attributed to the nearest
+    series named, and a claim inside quotation marks is treated as discussed
+    rather than asserted. Both directions are tested: the same sentence unquoted
+    is still caught, and moving the series name nearer still fails the check.
+
+    A false positive is not a harmless surplus here. This gate is only worth
+    reading if its output can be trusted without re-deriving it, and a reader who
+    finds the first finding spurious stops reading the rest.
+    """
+    targets = {row['target']: row['verdict'] for row in report.get('audit', [])
+               if row.get('target') and row.get('verdict')}
+    names = tuple(dict.fromkeys(tuple(targets) + SERIES_NAMES))
+
     findings = []
-    for row in report.get('audit', []):
-        target, verdict = row.get('target'), row.get('verdict')
-        if not target or not verdict:
-            continue
-        opposite = 'efficient' if verdict == 'predictable' else 'predictable'
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            low = line.lower()
-            if target in low and opposite in low and verdict not in low:
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        low = line.lower()
+        spans = _quoted_spans(line)
+        for target, verdict in targets.items():
+            if verdict in low:            # the line already states the right one
+                continue
+            opposite = 'efficient' if verdict == 'predictable' else 'predictable'
+            for m in re.finditer(opposite, low):
+                if any(start <= m.start() < end for start, end in spans):
+                    continue
+                if _nearest_series(low, m.start(), names) != target:
+                    continue
                 findings.append({
                     'kind': 'verdict',
                     'severity': 'mismatch',
@@ -157,6 +213,7 @@ def check_verdicts(text: str, report: dict) -> list[dict]:
                     'context': line.strip()[:160],
                     'detail': f'artifacts report {target} as {verdict}',
                 })
+                break
     return findings
 
 

@@ -224,14 +224,22 @@ def test_main_completes_on_a_cp1252_console(monkeypatch):
 
 
 def test_sanitising_the_display_does_not_touch_the_findings():
-    """Only printing is made safe. The findings keep the real text, or a consumer
-    reading them would get mangled evidence."""
-    result = _mc.run()
-    contexts = [f['context']
-                for entry in result['manuscripts'] for f in entry['findings']]
-    assert contexts, 'expected findings to exist to make this meaningful'
-    assert any(any(ord(c) > 255 for c in ctx) for ctx in contexts), (
-        'the findings should still carry the characters that broke printing')
+    """Only printing is made safe. A finding keeps the real text, or a consumer
+    reading it as data would get evidence with holes punched in it.
+
+    Built from a constructed claim rather than the live manuscripts. Those
+    reported findings when this test was written and report none now, which is
+    the gate working, but it leaves no natural specimen to assert against.
+    """
+    text = ('The nowcast used n = 61111 months at rho ≈ 0.95, '
+            'anchored at ₱1.40/L, bias − 0.3.')
+    (finding,) = _mc.check_sample_sizes(text, REPORT)
+    assert '₱' in finding['context'] and '≈' in finding['context'], (
+        'the stored finding must carry the original characters')
+    safe = _mc.console_safe(finding['context'], _cp1252_console())
+    assert '₱' not in safe and '≈' not in safe, (
+        'the printable form must not carry what the console cannot encode')
+    _cp1252_console().write(safe)                       # must not raise
 
 
 # ── A correct number reported as wrong is worse than no checker ──────────────
@@ -289,3 +297,76 @@ def test_the_pool_grew_by_exactly_the_run_counts():
     wide = _mc.artifact_sample_sizes(pool)
     narrow = _mc.artifact_sample_sizes(pool, keys=('n', 'n_long', 'n_calib', 'n_eval'))
     assert wide - narrow == {8}, f'unexpected widening: {sorted(wide - narrow)}'
+
+
+# ── A paragraph's vocabulary is not its assertions ───────────────────────────
+#
+# Found 2026-08-20. `check_verdicts` asked whether a target name and the opposite
+# verdict word appear anywhere on the same LINE. These manuscripts are written in
+# paragraph-per-line markdown, so a single "line" can run 1200 characters and
+# mention four series. Every remaining Gate 7 finding was a false positive:
+#
+#   thesis 570   "predictable" describes FOOD's own dynamics; the line also
+#                contains "Fuel and electricity receive a ... anchor"
+#   thesis 551   "MoM is predictable" is quoted as an overclaim the design
+#                PREVENTED
+#   talking 174  "MoM inflation / electricity is predictable" is quoted and
+#                marked withdrawn, on a line that ends "both are nulls"
+#
+# Two rules fix all three without touching a word of correct prose. A verdict
+# word is attributed to the NEAREST series named, because "food ... predictable"
+# is a claim about food however many other series share the paragraph. And a
+# claim inside quotation marks is being discussed, not asserted -- a manuscript
+# that quotes an overclaim in order to disown it must not be recorded as making
+# it.
+#
+# The risk is silencing the tool, so both directions are pinned below: the same
+# sentence unquoted is still caught, and a genuine contradiction still fails.
+
+VERDICTS = {'audit': [{'target': 'fuel', 'verdict': 'efficient', 'n': 72},
+                      {'target': 'inflation', 'verdict': 'efficient', 'n': 80}]}
+
+
+def test_a_verdict_is_attributed_to_the_nearest_series():
+    """thesis line 570, reduced to its shape."""
+    text = ('Fuel and electricity receive a mechanical fuel pass-through anchor; '
+            'food, which the audit found a clean null on commodity drivers but '
+            'predictable from own dynamics, is anchored to the trailing trend.')
+    assert _mc.check_verdicts(text, VERDICTS) == []
+
+
+def test_the_nearest_series_rule_still_catches_a_real_claim():
+    """The same shape with the words the other way round must still fail."""
+    text = ('Food receives a trailing-trend anchor; fuel, on the evidence of the '
+            'audit, is predictable from commodity drivers.')
+    (finding,) = _mc.check_verdicts(text, VERDICTS)
+    assert finding['detail'] == 'artifacts report fuel as efficient'
+
+
+def test_a_quoted_claim_is_not_an_asserted_claim():
+    """thesis 551 and talking-points 174. Both quote a claim to disown it."""
+    disowned = ('the driver-only ablation (which stopped "MoM is predictable" '
+                'from silently becoming "the drivers predict inflation")')
+    withdrawn = '- "MoM inflation / electricity is predictable" -- withdrawn; both are nulls'
+    assert _mc.check_verdicts(disowned, VERDICTS) == []
+    assert _mc.check_verdicts(withdrawn, VERDICTS) == []
+
+
+def test_the_same_sentence_unquoted_is_still_caught():
+    """The quote rule must not become a way to smuggle a claim past the gate."""
+    asserted = 'MoM inflation is predictable from the drivers.'
+    (finding,) = _mc.check_verdicts(asserted, VERDICTS)
+    assert finding['detail'] == 'artifacts report inflation as efficient'
+
+
+def test_a_line_already_stating_the_right_verdict_is_left_alone():
+    text = 'Fuel is efficient at one month, though earlier drafts called it predictable.'
+    assert _mc.check_verdicts(text, VERDICTS) == []
+
+
+def test_the_real_documents_have_no_verdict_findings_left():
+    """The regression, against the committed manuscripts."""
+    result = _mc.run()
+    verdicts = [f for e in result['manuscripts'] for f in e['findings']
+                if f.get('kind') == 'verdict']
+    assert verdicts == [], f'unexpected verdict findings: {verdicts}'
