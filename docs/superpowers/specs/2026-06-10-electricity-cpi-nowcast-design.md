@@ -1,5 +1,23 @@
 # ph_economic_ai — MoM Electricity-CPI Nowcast (Design)
 
+> ⚠️ **Superseded (2026-08-20, found and flagged under `RSK-057`).** Section 9,
+> "The contribution — measured result (a robust positive)," is withdrawn in full.
+> It predates the 2026-07-28 baseline correction, which added the historical mean
+> to the naive pool; every verdict in both of its tables is `no_better_than_naive`
+> in the committed artifacts today, including all three sub-sample stability rows.
+> **Electricity is not a validated nowcast and has no robust within-month driver
+> edge.** The mechanism paragraph, which explains the edge by calling the Meralco
+> generation charge "a formulaic, near-deterministic pass-through," argues for a
+> result that no longer exists and is exactly the overclaim `RSK-008` exists to
+> prevent; it must not be quoted. Sections 1 through 8, the design and its stated
+> honest expectation that the driver edge would be null, are unaffected — that
+> prior turned out to be right. For current verdicts see
+> [`accuracy_report.json`](../../../ph_economic_ai/benchmark/artifacts/accuracy_report.json),
+> and for the correction itself
+> [`mean-baseline-finding.md`](../../defense/mean-baseline-finding.md). Kept as a
+> record of the original design and of what the uncorrected pool returned; do not
+> cite its numbers.
+
 **Date:** 2026-06-10
 **Status:** Approved (design), pending implementation plan
 **Owner:** Sindous (data-science thesis)
