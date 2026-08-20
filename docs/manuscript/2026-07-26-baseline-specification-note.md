@@ -8,21 +8,26 @@
 `… .baseline_size`, `… .vulnerability_survey`, and `… .power`.
 Check it against the artifacts with `python -m ph_economic_ai.benchmark.manuscript_check`.
 
-> ### ARTIFACT-DIVERGENCE notice (2026-07-28)
+> ### ARTIFACT-DIVERGENCE notice (updated 2026-08-20)
 >
-> The calendar correction of 2026-07-28 changed the empirical sample sizes this note's
-> simulation cells were anchored to. Three references to **n = 203** no longer match any
-> artifact; the corresponding empirical sample is now 202.
+> **Resolved.** The size-study cells in this note were labelled **n = 82** and **n = 203**.
+> `baseline_size.run` takes `ns=(61, 151)`, a hardcoded default that has never held any
+> other value in any commit, so those labels never described the experiment that produced
+> the rejection rates printed beside them. The rates themselves were always right: 43.3%
+> and 99.7% at rho = 0 match the artifact at 61 and 151 to the decimal. The labels are now
+> corrected to 61 and 151 throughout, here and in the companion manuscript.
 >
-> This does **not** affect the note's result. The closed form, the size and power study, and
-> the FRED-MD census are simulation and census work whose n values are design choices, not
-> measurements. The correction also confirmed the result empirically: every month-on-month
-> null still holds against the mean on the rebuilt panels, so the finding was not an artifact
-> of the irregular calendar.
+> The earlier version of this notice said the cells should be "re-anchored to the corrected
+> empirical sizes". That instruction was mistaken and is withdrawn. It assumed the
+> simulation tracks the empirical panel; it does not, because `ns` is fixed. Following it
+> would have relabelled the cells to the current empirical sample, 204, moving them further
+> from the experiment rather than closer.
 >
-> The simulation cells should be re-anchored to the corrected empirical sizes when §5 of the
-> companion manuscript is rewritten, so that the illustrative n matches the audit it
-> illustrates.
+> The distinction the earlier notice drew is still the right one and is why nothing else
+> changes: these n values are design choices of a simulation, not measurements. No result,
+> rate, figure or conclusion in this note moves. The empirical citations elsewhere, which
+> ARE measurements, were separately corrected on 2026-08-20 from 203 to 204 and from 197 to
+> 198 after the 2026-07 PSA refresh reached the artifacts.
 
 ---
 
@@ -32,7 +37,7 @@ Forecast-evaluation practice requires a candidate model to beat a naive benchmar
 
 **S(ρ) = 1 − [2(1 − ρ)]^(−1/2)**,
 
-which is positive if and only if ρ < ½ and equals ≈ +29.2% at ρ = 0. Three results follow. First, the expression is accurate: it matches simulation through a walk-forward backtest to ≤ 0.011 across ρ ∈ [−0.2, 0.8], and predicts the observed mean-versus-random-walk gap on five real macroeconomic targets to ≤ 0.022. Second, the induced size distortion is severe rather than marginal: on simulated targets containing no signal at all, a Diebold–Mariano protocol whose naive pool omits the mean returns a significant "edge" in **99.7%** of replications at ρ = 0, n = 203, against a nominal 5%; the rate **increases with sample size**, so the reflexive robustness response of re-estimating on a longer sample amplifies the error rather than exposing it. Including the mean restores exact size (0.0% in every cell) while retaining 80.7% power to detect a genuine driver. Third, the exposure is not exotic: in FRED-MD, the standard monthly US macro panel, **80.2% of 126 series** fall below the ρ = ½ threshold once each series' own *recommended* stationarity transformation is applied — including **every** differenced series and 92% of growth rates, while **no** series left in levels is affected. Differencing removes precisely the persistence that makes a random walk a valid benchmark. A worked case is supplied in which a +28.3% "driver edge" (DM p = 0.0011) survived sub-sample stability tests, a trailing-preliminary-months robustness re-test, a Bonferroni correction, and a mechanistically accurate story, while the model was in fact 1.8% *worse* than a constant. Inverting S(ρ) yields a one-line diagnostic applicable to any reported skill-over-random-walk.
+which is positive if and only if ρ < ½ and equals ≈ +29.2% at ρ = 0. Three results follow. First, the expression is accurate: it matches simulation through a walk-forward backtest to ≤ 0.011 across ρ ∈ [−0.2, 0.8], and predicts the observed mean-versus-random-walk gap on five real macroeconomic targets to ≤ 0.022. Second, the induced size distortion is severe rather than marginal: on simulated targets containing no signal at all, a Diebold–Mariano protocol whose naive pool omits the mean returns a significant "edge" in **99.7%** of replications at ρ = 0, n = 151, against a nominal 5%; the rate **increases with sample size**, so the reflexive robustness response of re-estimating on a longer sample amplifies the error rather than exposing it. Including the mean restores exact size (0.0% in every cell) while retaining 80.7% power to detect a genuine driver. Third, the exposure is not exotic: in FRED-MD, the standard monthly US macro panel, **80.2% of 126 series** fall below the ρ = ½ threshold once each series' own *recommended* stationarity transformation is applied — including **every** differenced series and 92% of growth rates, while **no** series left in levels is affected. Differencing removes precisely the persistence that makes a random walk a valid benchmark. A worked case is supplied in which a +28.3% "driver edge" (DM p = 0.0011) survived sub-sample stability tests, a trailing-preliminary-months robustness re-test, a Bonferroni correction, and a mechanistically accurate story, while the model was in fact 1.8% *worse* than a constant. Inverting S(ρ) yields a one-line diagnostic applicable to any reported skill-over-random-walk.
 
 **Keywords:** forecast evaluation · naive benchmark · Diebold–Mariano · size distortion · nowcasting · mean reversion
 
@@ -148,7 +153,7 @@ Because data, models and losses are identical across arms, every difference is a
 
 300 replications per cell; nominal α = 0.05.
 
-| ρ | n = 82, Pool A | n = 203, Pool A | Pool B (either n) |
+| ρ | n = 61, Pool A | n = 151, Pool A | Pool B (either n) |
 |---|---|---|---|
 | 0.00 | 43.3% | **99.7%** | 0.0% |
 | 0.20 | 19.7% | 87.7% | 0.0% |
@@ -158,7 +163,7 @@ Because data, models and losses are identical across arms, every difference is a
 
 Three observations.
 
-**The distortion is not marginal.** At ρ = 0 and n = 203 the protocol rejects on 99.7% of datasets containing no signal whatsoever. A nominal 5% test that rejects essentially always does not have inflated size; it has no operating characteristics at all.
+**The distortion is not marginal.** At ρ = 0 and n = 151 the protocol rejects on 99.7% of datasets containing no signal whatsoever. A nominal 5% test that rejects essentially always does not have inflated size; it has no operating characteristics at all.
 
 **The distortion is confined to ρ < ½.** At ρ = 0.5 the rate collapses to ~1% and at ρ = 0.7 to zero. §3.1 derives that threshold analytically from two variance calculations; this simulation reaches it independently, sharing no assumption beyond stationarity.
 
@@ -179,9 +184,9 @@ A correction that merely blinds the test is not a correction. Repeating the expe
 | 0.35 | 61 | 42.0% | 13.0% |
 | 0.35 | 151 | 96.3% | **73.0%** |
 
-Pool B retains 80.7% power at ρ = 0, n = 203 and 73.0% at ρ = 0.35 — adequate detection of real signal at realistic sample sizes.
+Pool B retains 80.7% power at ρ = 0, n = 151 and 73.0% at ρ = 0.35 — adequate detection of real signal at realistic sample sizes.
 
-**The Pool A column must not be read as superior power.** On these same targets Pool A has a 43–100% false-positive rate (§4.2), so its "detections" confound size with power and are not comparable. At n = 82 Pool B's power falls to 13–17%, which reflects the sample size rather than a defect of the correction: at that n the test's minimum detectable effect against the mean is ~13%, so a moderate driver is genuinely beyond resolution.
+**The Pool A column must not be read as superior power.** On these same targets Pool A has a 43–100% false-positive rate (§4.2), so its "detections" confound size with power and are not comparable. At n = 61 Pool B's power falls to 13–17%, which reflects the sample size rather than a defect of the correction: at that n the test's minimum detectable effect against the mean is ~13%, so a moderate driver is genuinely beyond resolution.
 
 ---
 
@@ -233,7 +238,7 @@ The most affected series are ordinary quantities whose transformed form carries 
 
 The following is drawn from the author's own predictability audit of Philippine macroeconomic series, and is reported because it documents the failure mode end to end rather than in the abstract. That audit — including the full corrected predictability map, the affected targets in detail, and the withdrawn results in their original form — is reported separately in [`2026-06-10-thesis-manuscript.md`](2026-06-10-thesis-manuscript.md); only what bears on the baseline question is reproduced here.
 
-The audit examined whether electricity CPI inflation could be nowcast from within-month observable energy drivers (Brent, natural gas, FX) before the statistical agency's release. The driver-only specification returned, on n = 203 walk-forward months, **Ridge +28.3% over the best naive baseline, DM p = 0.0011**. The result then passed, in sequence:
+The audit examined whether electricity CPI inflation could be nowcast from within-month observable energy drivers (Brent, natural gas, FX) before the statistical agency's release. The driver-only specification returned, on n = 204 walk-forward months, **Ridge +28.3% over the best naive baseline, DM p = 0.0011**. The result then passed, in sequence:
 
 1. **Statistical significance** — HLN-corrected DM, p = 0.0011.
 2. **Sub-sample stability** — ≤ 2023-12 (+26%, p = 0.006), 2007–2016 (+30%, p = 0.020), 2016–2026 (+29%, p = 0.035). Not period-specific.
@@ -291,13 +296,13 @@ The corresponding recommendation for practice is narrow: **on any target with $\
 
 **The worked case is a single audit** on a single country's data, reported because the author has full access to it, not as representative evidence.
 
-**Power is not free at small n.** At n = 82 the corrected pool detects a moderate driver in only 13–17% of replications. The correction removes a false-positive problem; it does not create power that the sample size does not support. Reporting a minimum detectable effect alongside every null is the appropriate accompaniment.
+**Power is not free at small n.** At n = 61 the corrected pool detects a moderate driver in only 13–17% of replications. The correction removes a false-positive problem; it does not create power that the sample size does not support. Reporting a minimum detectable effect alongside every null is the appropriate accompaniment.
 
 ---
 
 ## 9. Conclusion
 
-The random walk is the conventional naive benchmark, and on a persistent series it is the right one. On a mean-reverting series it is a structurally weak comparator, and the magnitude of that weakness is exactly $S(\rho) = 1 - [2(1-\rho)]^{-1/2}$, positive precisely when $\rho < \tfrac12$. The resulting size distortion is not marginal: at ρ = 0 and n = 203 a nominal 5% protocol rejects on 99.7% of datasets containing nothing, and the rate grows with sample size, so the standard robustness response amplifies rather than exposes it. Four out of five series in the standard US macro panel sit in the affected regime after their own recommended stationarity transformation — every differenced series, and no series in levels — because differencing removes exactly the persistence that justified the benchmark.
+The random walk is the conventional naive benchmark, and on a persistent series it is the right one. On a mean-reverting series it is a structurally weak comparator, and the magnitude of that weakness is exactly $S(\rho) = 1 - [2(1-\rho)]^{-1/2}$, positive precisely when $\rho < \tfrac12$. The resulting size distortion is not marginal: at ρ = 0 and n = 151 a nominal 5% protocol rejects on 99.7% of datasets containing nothing, and the rate grows with sample size, so the standard robustness response amplifies rather than exposes it. Four out of five series in the standard US macro panel sit in the affected regime after their own recommended stationarity transformation — every differenced series, and no series in levels — because differencing removes exactly the persistence that justified the benchmark.
 
 The practical consequence is a single additional row in a results table. The methodological consequence is larger: a stack of robustness checks that all condition on the baseline offers the reassurance of many and the coverage of one, and no amount of significance testing detects a misspecified comparison. Baseline specification is not a preliminary to the analysis. On a mean-reverting target it *is* the analysis.
 
