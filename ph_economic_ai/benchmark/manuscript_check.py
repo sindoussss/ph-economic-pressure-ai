@@ -58,14 +58,30 @@ _SIM_CONTEXT = re.compile(r'simulat|replicat|power|size study|pool without|eithe
                           re.IGNORECASE)
 
 
-def artifact_sample_sizes(report: dict) -> set[int]:
+#: Keys whose integer value is a count a manuscript may legitimately cite as `n`.
+#:
+#: `repeats` and `n_runs` were added 2026-08-20. `talking-points.md` cites the
+#: swarm ablation as `n=8` and names its source in the same breath, yet the
+#: checker reported "no artifact reports n = 8" because `swarm_ablation.json`
+#: stores that count as `repeats`. A correct claim reported as wrong is worse
+#: than a missed one: a reader who checks the first finding, sees the number is
+#: fine and concludes the tool cries wolf will not check the twenty-fifth.
+#:
+#: `reps` is deliberately absent. It is the 300 replications per simulation cell,
+#: no manuscript cites `n = 300`, and every unnecessary value in this pool is a
+#: false negative waiting to happen. The pool is a concession to be kept small,
+#: which `test_the_pool_grew_by_exactly_the_run_counts` enforces.
+SIZE_KEYS = ('n', 'n_long', 'n_calib', 'n_eval', 'repeats', 'n_runs')
+
+
+def artifact_sample_sizes(report: dict, keys=SIZE_KEYS) -> set[int]:
     """Every integer the artifacts describe as a sample or evaluation count."""
     found: set[int] = set()
 
     def walk(node):
         if isinstance(node, dict):
             for key, value in node.items():
-                if key in ('n', 'n_long', 'n_calib', 'n_eval') and isinstance(value, int):
+                if key in keys and isinstance(value, int):
                     found.add(value)
                 else:
                     walk(value)
