@@ -1,5 +1,18 @@
 # ph_economic_ai — MoM Food-CPI Nowcast (Design)
 
+> ⚠️ **Superseded in part (2026-08-20, found and flagged under `RSK-057`).** One
+> row of Section 9 is withdrawn: the full nowcast is **not** `beats_best_naive`.
+> That result predates the 2026-07-28 baseline correction, which added the
+> historical mean to the naive pool; food MoM inflation reads
+> `no_better_than_naive` in the committed artifacts today, so the "second
+> own-dynamics positive" bullet no longer holds and the sentence "Food MoM
+> inflation **is predictable**" must not be quoted. The rest of Section 9 stands
+> and was strengthened rather than overturned: the driver-channel null was already
+> null, and remains so. For current verdicts see
+> [`accuracy_report.json`](../../../ph_economic_ai/benchmark/artifacts/accuracy_report.json),
+> and for the correction itself
+> [`mean-baseline-finding.md`](../../defense/mean-baseline-finding.md).
+
 **Date:** 2026-06-10
 **Status:** Approved (design), pending implementation plan
 **Owner:** Sindous (data-science thesis)

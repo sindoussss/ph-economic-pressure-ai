@@ -1,5 +1,21 @@
 # ph_economic_ai — MoM Transport-CPI Nowcast (Design)
 
+> ⚠️ **Superseded in part (2026-08-20, found and flagged under `RSK-057`).** One
+> row of Section 9 is withdrawn: the full-sample driver-only ablation is **not**
+> `beats_best_naive`. It predates the 2026-07-28 baseline correction, which added
+> the historical mean to the naive pool, and reads `no_better_than_naive` in the
+> committed artifacts today. The effect on this document is unusual and worth
+> stating: the withdrawn row is the *spurious* positive the section exists to
+> knock down, so the canonical verdict it argues for — no robust within-month fuel
+> edge, transport efficient — is unchanged and is still what the artifacts report.
+> What no longer holds is the narrative that the preliminary-data re-test was what
+> killed the edge; under a correct baseline pool there was no full-sample edge to
+> kill. Both framings reach the same verdict by different routes. For current
+> verdicts see
+> [`accuracy_report.json`](../../../ph_economic_ai/benchmark/artifacts/accuracy_report.json),
+> and for the correction itself
+> [`mean-baseline-finding.md`](../../defense/mean-baseline-finding.md).
+
 **Date:** 2026-06-10
 **Status:** Approved (design), pending implementation plan
 **Owner:** Sindous (data-science thesis)

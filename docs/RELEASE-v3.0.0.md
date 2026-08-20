@@ -3,20 +3,32 @@
 **The first tag whose artifacts match the manuscript.**
 
 `v1.0.0` and `v2.0.0` are superseded and must not be cited. Both date from June 2026, both
-predate the calendar correction of 2026-07-28, and they share **not one sample size** with the
-results reported now:
+predate the calendar correction of 2026-07-28, and **not one empirical sample size survives
+from either of them into the results reported now.**
 
-    v1.0.0 / v2.0.0   n-values  [38, 52, 59, 61, 77, 79, 143, 145, 151]
-    v3.0.0            n-values  [36, 41, 72, 80, 81, 82, 90, 97, 99, ... 198, 204]
+    v1.0.0 / v2.0.0   9 distinct sizes   [38, 52, 59, 61, 77, 79, 143, 145, 151]
+    v3.0.0           53 distinct sizes   [8, 19, 30, 32, 36, 38, 41, ... 798, 799, 800, 801]
 
-They hold a different analysis. Anyone who archived or cited them as the companion to the
-current thesis would be citing numbers it does not report. That is the gap this release exists
-to close: it is the archival point for the reported results, identified by the frozen
-artifacts' own content hash, `data_hash = 19979bdda7700d6a`.
+Six of the old nine do still appear somewhere at `v3.0.0`, and it is worth saying where,
+because the raw overlap looks like continuity and is the opposite of it:
+
+- **38, 52, 59, 143** survive only inside `corrected_predictability_map.json`, the artifact
+  whose entire purpose is to record each superseded value beside the corrected one. They are
+  present there *as* the old numbers.
+- **61 and 151** are the simulation cells of `baseline_size.json`, hardcoded design constants
+  (`ns = (61, 151)`). They were never measurements and never changed.
+- 52 additionally turns up as a per-year row count in `weekly_gas_validation.json`, an
+  unrelated quantity that happens to equal it.
+
+Every audit and nowcast `n` those tags reported is gone. They hold a different analysis, and
+anyone who archived or cited them as the companion to the current thesis would be citing
+numbers it does not report. That is the gap this release exists to close: it is the archival
+point for the reported results, identified by the frozen artifacts' own content hash,
+`data_hash = 19979bdda7700d6a`.
 
 **No DOI is claimed.** Adding one is a venue decision that has not been made.
 
-321 commits since `v2.0.0`.
+323 commits since `v2.0.0`.
 
 ## The findings, and what changed
 
