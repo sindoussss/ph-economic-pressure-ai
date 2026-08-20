@@ -3,15 +3,17 @@
   "n_tests": 24,
   "bonferroni_threshold": 0.00208,
   "expected_false_positives": 1.2,
-  "n_nominally_significant": 3,
-  "n_nominally_significant_favouring_model": 1,
+  "n_nominally_significant": 4,
+  "n_nominally_significant_favouring_model": 2,
   "n_nominally_significant_favouring_naive": 2,
   "survive_bonferroni": [],
   "survive_bh_only": [],
   "survive_neither": [
+    "selection holdout: food_mom_full",
     "selection holdout: dairy_eggs_mom_driver_only",
     "selection holdout: sugar_mom_driver_only",
     "selection holdout: fuel_audit",
+    "selection holdout: food_mom_driver_only",
     "selection holdout: meat_mom_full",
     "selection holdout: vegetables_mom_driver_only",
     "weekly gas: commodity model vs no-change (holdout)",
@@ -19,22 +21,34 @@
     "selection holdout: meat_mom_driver_only",
     "selection holdout: rice_mom_full",
     "selection holdout: fx_forecast",
-    "selection holdout: food_mom_driver_only",
     "selection holdout: headline_mom_long",
     "selection holdout: yoy_forecast",
     "selection holdout: electricity_mom_full",
     "selection holdout: rice_mom_driver_only",
     "selection holdout: fish_mom_driver_only",
+    "selection holdout: electricity_mom_driver_only",
     "selection holdout: transport_mom_full",
-    "selection holdout: transport_mom_driver_only",
     "selection holdout: dairy_eggs_mom_full",
     "selection holdout: headline_mom",
     "selection holdout: fish_mom_full",
-    "selection holdout: electricity_mom_driver_only",
     "selection holdout: sugar_mom_full",
-    "selection holdout: food_mom_full"
+    "selection holdout: transport_mom_driver_only"
   ],
   "tests": [
+    {
+      "test": "selection holdout: food_mom_full",
+      "key": "food_mom_full",
+      "source": "selection_holdout.json",
+      "skill_vs_naive": 0.192,
+      "dm_p": 0.0066,
+      "direction": "favours_model",
+      "holdout_verdict": "confirmed_on_holdout",
+      "nominally_significant": true,
+      "bonferroni_p": 0.1584,
+      "survives_bonferroni": false,
+      "bh_q": 0.1584,
+      "survives_bh": false
+    },
     {
       "test": "selection holdout: dairy_eggs_mom_driver_only",
       "key": "dairy_eggs_mom_driver_only",
@@ -46,7 +60,7 @@
       "nominally_significant": true,
       "bonferroni_p": 0.4824,
       "survives_bonferroni": false,
-      "bh_q": 0.2368,
+      "bh_q": 0.1744,
       "survives_bh": false
     },
     {
@@ -60,7 +74,7 @@
       "nominally_significant": true,
       "bonferroni_p": 0.5232,
       "survives_bonferroni": false,
-      "bh_q": 0.2368,
+      "bh_q": 0.1744,
       "survives_bh": false
     },
     {
@@ -74,7 +88,21 @@
       "nominally_significant": true,
       "bonferroni_p": 0.7104,
       "survives_bonferroni": false,
-      "bh_q": 0.2368,
+      "bh_q": 0.1776,
+      "survives_bh": false
+    },
+    {
+      "test": "selection holdout: food_mom_driver_only",
+      "key": "food_mom_driver_only",
+      "source": "selection_holdout.json",
+      "skill_vs_naive": 0.1782,
+      "dm_p": 0.0828,
+      "direction": "favours_model",
+      "holdout_verdict": "not_confirmed_on_holdout",
+      "nominally_significant": false,
+      "bonferroni_p": 1.0,
+      "survives_bonferroni": false,
+      "bh_q": 0.3954,
       "survives_bh": false
     },
     {
@@ -88,7 +116,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.5272,
+      "bh_q": 0.3954,
       "survives_bh": false
     },
     {
@@ -102,7 +130,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.5272,
+      "bh_q": 0.3954,
       "survives_bh": false
     },
     {
@@ -119,7 +147,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.5272,
+      "bh_q": 0.3954,
       "survives_bh": false
     },
     {
@@ -133,7 +161,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.8801,
+      "bh_q": 0.6845,
       "survives_bh": false
     },
     {
@@ -147,7 +175,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.8415,
       "survives_bh": false
     },
     {
@@ -161,7 +189,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.8415,
       "survives_bh": false
     },
     {
@@ -175,21 +203,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
-      "survives_bh": false
-    },
-    {
-      "test": "selection holdout: food_mom_driver_only",
-      "key": "food_mom_driver_only",
-      "source": "selection_holdout.json",
-      "skill_vs_naive": -0.0239,
-      "dm_p": 0.509,
-      "direction": "favours_naive",
-      "holdout_verdict": "not_confirmed_on_holdout",
-      "nominally_significant": false,
-      "bonferroni_p": 1.0,
-      "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9264,
       "survives_bh": false
     },
     {
@@ -203,7 +217,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -217,21 +231,21 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
       "test": "selection holdout: electricity_mom_full",
       "key": "electricity_mom_full",
       "source": "selection_holdout.json",
-      "skill_vs_naive": -0.0065,
-      "dm_p": 0.7325,
+      "skill_vs_naive": -0.0055,
+      "dm_p": 0.7611,
       "direction": "favours_naive",
       "holdout_verdict": "not_confirmed_on_holdout",
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -245,7 +259,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -259,35 +273,35 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
+      "survives_bh": false
+    },
+    {
+      "test": "selection holdout: electricity_mom_driver_only",
+      "key": "electricity_mom_driver_only",
+      "source": "selection_holdout.json",
+      "skill_vs_naive": 0.0062,
+      "dm_p": 0.8143,
+      "direction": "favours_model",
+      "holdout_verdict": "not_confirmed_on_holdout",
+      "nominally_significant": false,
+      "bonferroni_p": 1.0,
+      "survives_bonferroni": false,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
       "test": "selection holdout: transport_mom_full",
       "key": "transport_mom_full",
       "source": "selection_holdout.json",
-      "skill_vs_naive": -0.036,
-      "dm_p": 0.8465,
+      "skill_vs_naive": -0.0355,
+      "dm_p": 0.8486,
       "direction": "favours_naive",
       "holdout_verdict": "not_confirmed_on_holdout",
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
-      "survives_bh": false
-    },
-    {
-      "test": "selection holdout: transport_mom_driver_only",
-      "key": "transport_mom_driver_only",
-      "source": "selection_holdout.json",
-      "skill_vs_naive": 0.0083,
-      "dm_p": 0.9284,
-      "direction": "favours_model",
-      "holdout_verdict": "not_confirmed_on_holdout",
-      "nominally_significant": false,
-      "bonferroni_p": 1.0,
-      "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -301,7 +315,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -315,7 +329,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -329,21 +343,7 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
-      "survives_bh": false
-    },
-    {
-      "test": "selection holdout: electricity_mom_driver_only",
-      "key": "electricity_mom_driver_only",
-      "source": "selection_holdout.json",
-      "skill_vs_naive": -0.0003,
-      "dm_p": 0.9905,
-      "direction": "favours_naive",
-      "holdout_verdict": "not_confirmed_on_holdout",
-      "nominally_significant": false,
-      "bonferroni_p": 1.0,
-      "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
@@ -357,21 +357,21 @@
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     },
     {
-      "test": "selection holdout: food_mom_full",
-      "key": "food_mom_full",
+      "test": "selection holdout: transport_mom_driver_only",
+      "key": "transport_mom_driver_only",
       "source": "selection_holdout.json",
-      "skill_vs_naive": 0.0004,
-      "dm_p": 0.9949,
-      "direction": "favours_model",
+      "skill_vs_naive": 0.0,
+      "dm_p": 0.9998,
+      "direction": "favours_naive",
       "holdout_verdict": "not_confirmed_on_holdout",
       "nominally_significant": false,
       "bonferroni_p": 1.0,
       "survives_bonferroni": false,
-      "bh_q": 0.9949,
+      "bh_q": 0.9998,
       "survives_bh": false
     }
   ]

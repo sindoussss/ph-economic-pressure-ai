@@ -1,21 +1,21 @@
 {
-  "n": 203,
+  "n": 204,
   "mom": {
     "verdict": "no_better_than_naive",
     "best_method": "mean",
     "best_naive": "mean",
     "best_skill_vs_naive": 0.0,
     "dm_p": null,
-    "n": 203,
+    "n": 204,
     "rmse_by_method": {
-      "random_walk": 3.1236,
-      "drift": 3.1482,
-      "seasonal_naive": 2.9122,
-      "arima": 2.387,
-      "ets": 2.4241,
-      "ridge": 2.3878,
-      "hgb": 2.8406,
-      "mean": 2.2992
+      "random_walk": 3.1257,
+      "drift": 3.15,
+      "seasonal_naive": 2.9206,
+      "arima": 2.3983,
+      "ets": 2.4346,
+      "ridge": 2.3957,
+      "hgb": 2.848,
+      "mean": 2.3118
     }
   },
   "driver_ablation": {
@@ -24,35 +24,35 @@
     "best_naive": "mean",
     "best_skill_vs_naive": 0.0,
     "dm_p": null,
-    "n": 203,
+    "n": 204,
     "rmse_by_method": {
-      "random_walk": 3.1236,
-      "seasonal_naive": 2.9122,
-      "drift": 3.1482,
-      "ridge": 2.3504,
-      "hgb": 2.8925,
-      "mean": 2.2992
+      "random_walk": 3.1257,
+      "seasonal_naive": 2.9206,
+      "drift": 3.15,
+      "ridge": 2.3586,
+      "hgb": 2.8924,
+      "mean": 2.3118
     },
     "driver_edge": false
   },
   "driver_edge": false,
   "robust": {
     "prelim_months_dropped": 6,
-    "n": 197,
+    "n": 198,
     "driver_ablation": {
       "verdict": "no_better_than_naive",
       "best_method": "mean",
       "best_naive": "mean",
       "best_skill_vs_naive": 0.0,
       "dm_p": null,
-      "n": 197,
+      "n": 198,
       "rmse_by_method": {
-        "random_walk": 3.1631,
-        "seasonal_naive": 2.9392,
-        "drift": 3.1881,
-        "ridge": 2.38,
-        "hgb": 2.916,
-        "mean": 2.3224
+        "random_walk": 3.1556,
+        "seasonal_naive": 2.9361,
+        "drift": 3.1804,
+        "ridge": 2.374,
+        "hgb": 2.9089,
+        "mean": 2.3167
       },
       "driver_edge": false
     },
@@ -74,18 +74,18 @@
     "first_half": {
       "span": [
         "2007-08",
-        "2016-12"
+        "2017-01"
       ],
       "verdict": "no_better_than_naive",
       "best_skill_vs_naive": 0.0,
       "dm_p": null,
       "driver_edge": false,
-      "n": 89
+      "n": 90
     },
     "second_half": {
       "span": [
-        "2017-01",
-        "2026-06"
+        "2017-02",
+        "2026-07"
       ],
       "verdict": "no_better_than_naive",
       "best_skill_vs_naive": 0.0,

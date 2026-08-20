@@ -1,11 +1,20 @@
 [
   {
     "target": "fuel",
-    "verdict": "predictable",
-    "best_method": "ridge",
-    "best_skill": 0.1211,
-    "best_dm_p": 0.0337,
+    "verdict": "efficient",
+    "best_method": "random_walk",
+    "best_skill": 0.0,
+    "best_dm_p": null,
     "n": 72,
+    "selection": {
+      "n_candidates": 4,
+      "alpha": 0.05,
+      "threshold": 0.0125,
+      "nominally_significant": true,
+      "nominal_best_method": "ridge",
+      "nominal_best_dm_p": 0.0337,
+      "nominal_best_skill": 0.1211
+    },
     "panel": [
       {
         "method": "random_walk",
@@ -88,6 +97,15 @@
     "best_skill": 0.0,
     "best_dm_p": null,
     "n": 81,
+    "selection": {
+      "n_candidates": 4,
+      "alpha": 0.05,
+      "threshold": 0.0125,
+      "nominally_significant": false,
+      "nominal_best_method": null,
+      "nominal_best_dm_p": null,
+      "nominal_best_skill": null
+    },
     "panel": [
       {
         "method": "random_walk",
@@ -170,6 +188,15 @@
     "best_skill": 0.0,
     "best_dm_p": null,
     "n": 80,
+    "selection": {
+      "n_candidates": 4,
+      "alpha": 0.05,
+      "threshold": 0.0125,
+      "nominally_significant": false,
+      "nominal_best_method": null,
+      "nominal_best_dm_p": null,
+      "nominal_best_skill": null
+    },
     "panel": [
       {
         "method": "random_walk",

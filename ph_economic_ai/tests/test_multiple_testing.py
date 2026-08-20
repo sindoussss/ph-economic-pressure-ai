@@ -178,7 +178,13 @@ def test_fuel_audit_survives_neither_correction():
     fuel = next(t for t in result['tests'] if t['key'] == 'fuel_audit')
     assert fuel['dm_p'] == pytest.approx(0.0296)
     assert fuel['bonferroni_p'] == pytest.approx(0.7104, abs=1e-4)
-    assert fuel['bh_q'] == pytest.approx(0.2368, abs=1e-4)   # 0.2269 at m = 23
+    # bh_q moved 0.2368 -> 0.1776 on 2026-08-20 without fuel's own p changing at
+    # all. Benjamini-Hochberg scores a p-value by its RANK in the family, and the
+    # 2026-07 PSA refresh dropped food_mom_full from 0.9949 to 0.0066, which
+    # reordered the family above fuel. Bonferroni is unmoved at 0.7104 because it
+    # multiplies by m alone, and m is still 24. The two behaving differently under
+    # the same edit is the distinction between the corrections, not a defect.
+    assert fuel['bh_q'] == pytest.approx(0.1776, abs=1e-4)
     assert fuel['survives_bonferroni'] is False
     assert fuel['survives_bh'] is False
     assert fuel['test'] in result['survive_neither']
@@ -187,13 +193,23 @@ def test_fuel_audit_survives_neither_correction():
 
 
 def test_the_record_states_how_many_hits_chance_alone_buys():
-    """Three of 24 land under 0.05 and ~1.2 are expected by chance. Reporting
-    the count without that expectation is how a coin-flip becomes a finding."""
+    """Four of 24 land under 0.05 and ~1.2 are expected by chance. Reporting the
+    count without that expectation is how a coin-flip becomes a finding.
+
+    It was three until 2026-08-20, when the artifacts were regenerated against
+    the 2026-07 PSA refresh and food_mom_full went from p = 0.9949 to 0.0066.
+    Four hits against 1.2 expected is a weaker signal than it sounds: two of the
+    four favour the NAIVE baseline, and none of the four survives either
+    correction, which `survive_bonferroni` and `survive_bh_only` both assert
+    elsewhere as empty.
+    """
     result = mt.run()
     assert result['expected_false_positives'] == pytest.approx(1.2, abs=0.01)
     nominal = [t for t in result['tests'] if t['nominally_significant']]
-    assert len(nominal) == 3
+    assert len(nominal) == 4
     assert sum(t['direction'] == 'favours_naive' for t in nominal) == 2
+    assert not any(t['survives_bonferroni'] or t['survives_bh'] for t in nominal), (
+        'the count is only reportable because none of them survives correction')
 
 
 # ── The weekly-gas hypothesis joins the family ───────────────────────────────
