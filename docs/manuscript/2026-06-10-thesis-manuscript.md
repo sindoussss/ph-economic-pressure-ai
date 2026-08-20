@@ -336,14 +336,15 @@ The null **holds across ~2.3× the data** and a far more heterogeneous regime mi
 
 If any series should yield a significant within-month *driver* edge, it is **Transport** CPI — mechanically driven by fuel, which is observable before the official release. Using the official PSA Transport-CPI series (OpenSTAT, by commodity group, 2018 = 100, 1994–present) as a fresh gold target and the same free fuel/FX predictors, the nowcast was re-run (n = 204 backtest months).
 
-On the **full sample**, the driver-only model looked like the sought-after positive: fuel-only Ridge beat the best naive baseline by **+14.8%** (DM p = 0.021). Taken at face value, this would license the headline "the fuel-driven component of inflation is nowcastable ahead of the official figure."
+On the **full sample**, the driver-only model looked like the sought-after positive: against the superseded mean-free pool, fuel-only Ridge beat the best naive baseline by **+14.8%** (DM p = 0.021). Taken at face value, this would license the headline "the fuel-driven component of inflation is nowcastable ahead of the official figure."
 
 A robustness re-test dissolved it. PSA's three most recent prints are labelled **preliminary** and anomalous — Transport CPI 130 → 142 → 156 → 148 for early 2026 (i.e. +9.5%, +10.0%, −5.0% MoM). The check drops these trailing preliminary months from the single committed extract and re-tests on what remains; it does not compare against a later, revised release, since no archived data vintage was collected for this series. Dropping them collapses the skill from +14.8% to **zero**:
 
 | Test | Verdict | skill vs best naive | DM p |
 |---|---|---|---|
-| Driver-only, full sample (n = 204) | beats_best_naive | +14.8% | 0.021 |
+| **Driver-only, full sample (n = 204), corrected** | no_better_than_naive (best naive = mean) | 0.0 | — |
 | Driver-only, robust (drop 6 preliminary months, n = 198) | no_better_than_naive | 0.0 | — |
+| *Superseded (vs random walk), full sample* | *beats_best_naive* | *+14.8%* | *0.021* |
 
 The entire "edge" rested on roughly three unreliable observations. The **canonical verdict is therefore that Transport MoM inflation is also efficient** — no robust within-month fuel edge — consistent with the rest of the map. More importantly, this is a worked example of the audit doing its job: it caught a positive that a naive analysis would have published, traced it to three preliminary months, and reported the robust null. The robustness re-test (`driver_edge_robust`) is baked into the pipeline, so the check is permanent and reproducible.
 
