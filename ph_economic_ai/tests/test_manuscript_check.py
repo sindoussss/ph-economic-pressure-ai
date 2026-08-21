@@ -370,3 +370,129 @@ def test_the_real_documents_have_no_verdict_findings_left():
     verdicts = [f for e in result['manuscripts'] for f in e['findings']
                 if f.get('kind') == 'verdict']
     assert verdicts == [], f'unexpected verdict findings: {verdicts}'
+
+
+# ── The second vocabulary: nowcast verdicts ──────────────────────────────────
+#
+# `RSK-059`, opened 2026-08-20 and fixed here. `check_verdicts` reads only the
+# audit's `efficient`/`predictable` pair, scoped to `accuracy_report.json`'s
+# audit panel. The nowcast pair, `beats_best_naive`/`no_better_than_naive`, was
+# never compared against anything, so no document's nowcast claim was checked at
+# all -- which is how three design specs published four withdrawn positives for
+# seven weeks while this tool reported `consistent` (`RSK-057`).
+#
+# The narrowing that makes this safe is the same one PR #64's banner guard used,
+# and for the same reason. In these documents a prose mention of the token is
+# almost always meta rather than asserted:
+#
+#   thesis 219   defines the test family as the nodes "returning a
+#                `beats_best_naive` verdict"
+#   thesis 419   "there are no `beats_best_naive` positives left to correct"
+#   thesis 691   "Every `beats_best_naive` verdict in the earlier draft ...
+#                none survives the mean column"
+#
+# All three are correct writing and none is a claim. A results TABLE row is a
+# claim, so rows are what this reads. Appendix B's own convention supplies the
+# second rule: a row labelled `*Superseded (vs random walk)*` is preserving
+# history on purpose and is left alone.
+#
+# Attribution has to look past the row, because a row like
+# "| Driver-only, full sample (n = 204) | beats_best_naive | ... |" names no
+# series at all. It inherits the nearest series named above it, which is the
+# section it sits in.
+
+NOWCASTS = {'transport_nowcast': {'n': 204,
+                                  'mom': {'verdict': 'no_better_than_naive'},
+                                  'driver_ablation': {'verdict': 'no_better_than_naive'},
+                                  'robust': {'driver_ablation':
+                                             {'verdict': 'no_better_than_naive'}}}}
+
+
+def test_nowcast_verdicts_are_collected_per_series():
+    assert _mc.nowcast_verdicts(NOWCASTS) == {'transport': {'no_better_than_naive'}}
+
+
+def test_a_table_row_claiming_a_withdrawn_nowcast_positive_is_caught():
+    """thesis 345, reduced to its shape: the defect this check exists for."""
+    text = ('A robustness re-test dissolved it. Transport CPI was anomalous.\n'
+            '\n'
+            '| Test | Verdict | skill vs best naive | DM p |\n'
+            '|---|---|---|---|\n'
+            '| Driver-only, full sample (n = 204) | beats_best_naive | +14.8% | 0.021 |\n')
+    (finding,) = _mc.check_nowcast_verdicts(text, NOWCASTS)
+    assert finding['kind'] == 'nowcast-verdict'
+    assert finding['severity'] == 'mismatch'
+    assert finding['claimed'] == 'beats_best_naive'
+    assert 'transport' in finding['detail']
+
+
+def test_a_row_marked_superseded_is_left_alone():
+    """Appendix B.5's convention: the old value, preserved and labelled."""
+    text = ('Transport panel.\n'
+            '| **Verdict (corrected)** | no_better_than_naive |\n'
+            '| *Superseded (vs random walk)* | *beats_best_naive +14.8%, p = 0.021* |\n')
+    assert _mc.check_nowcast_verdicts(text, NOWCASTS) == []
+
+
+def test_prose_naming_the_token_is_not_a_claim():
+    """thesis 219, 419 and 691. Definitions and negations, all correct writing."""
+    for line in (
+        'The family is every node returning a `beats_best_naive` verdict for transport.',
+        'Under the corrected pool there are no `beats_best_naive` positives left.',
+        'Every `beats_best_naive` verdict in the earlier transport draft has been withdrawn.',
+    ):
+        assert _mc.check_nowcast_verdicts(line, NOWCASTS) == [], line
+
+
+def test_a_row_that_also_states_the_reported_verdict_is_left_alone():
+    text = ('Transport panel.\n'
+            '| Driver-only | no_better_than_naive, was beats_best_naive | 0.0 |\n')
+    assert _mc.check_nowcast_verdicts(text, NOWCASTS) == []
+
+
+def test_a_row_inside_a_code_fence_is_not_a_claim():
+    text = ('Transport panel.\n'
+            '```\n'
+            '| Driver-only | beats_best_naive | +14.8% |\n'
+            '```\n')
+    assert _mc.check_nowcast_verdicts(text, NOWCASTS) == []
+
+
+def test_a_row_about_a_series_the_artifacts_never_nowcast_is_left_alone():
+    """Attribution failure must mean silence, not a guess."""
+    text = ('The swarm ablation.\n'
+            '| Roster | beats_best_naive | +2.0% |\n')
+    assert _mc.check_nowcast_verdicts(text, NOWCASTS) == []
+
+
+def test_the_real_documents_have_no_nowcast_verdict_findings_left():
+    """The regression. Fails until thesis 345 states the corrected verdict."""
+    result = _mc.run()
+    found = [f for e in result['manuscripts'] for f in e['findings']
+             if f.get('kind') == 'nowcast-verdict']
+    assert found == [], f'unexpected nowcast verdict findings: {found}'
+
+
+def test_the_specs_are_uncovered_by_choice_not_by_blindness():
+    """`RSK-057`'s three specs sit outside `MANUSCRIPTS` deliberately.
+
+    The whole `RSK-017`/`RSK-020`/`RSK-014`/`RSK-057` sequence is documents that
+    were never in that tuple, so "absent" has to mean a decision that someone
+    recorded rather than a gap nobody noticed. The decision is that a dated design
+    note owes a reader disclosure, not currency, and
+    `test_withdrawn_findings_are_marked.py` enforces that instead.
+
+    What this pins is the other half: the check can see them perfectly well.
+    """
+    spec = (_mc.DOCS / 'superpowers' / 'specs' /
+            '2026-06-10-electricity-cpi-nowcast-design.md')
+    assert spec.resolve() not in {p.resolve() for p in _mc.MANUSCRIPTS}
+
+    text = spec.read_text(encoding='utf-8')
+    if 'beats_best_naive' not in text:
+        pytest.skip('the electricity spec no longer tables a withdrawn verdict')
+
+    report = json.loads(_mc.ACCURACY_REPORT.read_text(encoding='utf-8'))
+    findings = _mc.check_nowcast_verdicts(text, report)
+    assert findings, 'the check must see the documents it deliberately does not police'
+    assert all(f['detail'].startswith('artifacts report electricity') for f in findings)

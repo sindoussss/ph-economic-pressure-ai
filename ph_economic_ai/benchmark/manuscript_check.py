@@ -45,6 +45,22 @@ MANUSCRIPTS = (
     DOCS / 'defense' / 'talking-points.md',
 )
 
+# Deliberately absent, recorded because every entry above was added after the
+# same mistake: `docs/superpowers/specs/2026-06-10-{electricity,food,transport}-
+# cpi-nowcast-design.md` and the other dated design notes.
+#
+# `check_nowcast_verdicts` does catch all five of their withdrawn rows, verified
+# directly. They stay out because they are dated records of what was designed and
+# what the uncorrected pool returned, not live claims, and adding them would make
+# `consistent` permanently false for documents that are behaving correctly. What
+# they owe a reader is disclosure, not currency, and that is enforced instead by
+# `tests/test_withdrawn_findings_are_marked.py`, which requires a supersession
+# notice on any document tabling a withdrawn verdict.
+#
+# So the two controls divide the surface on purpose: this tuple is every document
+# that must be CURRENT, and that test covers every document that must be HONEST
+# about not being. A new document belongs in one of them.
+
 # `n = 24` is min_train, a design parameter, not a sample size. Simulation cells
 # in the size study are also design choices rather than measured samples; they are
 # declared here so the checker does not flag an author's deliberate choice.
@@ -217,6 +233,150 @@ def check_verdicts(text: str, report: dict) -> list[dict]:
     return findings
 
 
+#: The nowcast vocabulary. `check_verdicts` above reads the audit's
+#: `efficient`/`predictable` pair; this is the other one the benchmark emits.
+NOWCAST_VERDICTS = ('beats_best_naive', 'no_better_than_naive')
+
+#: `accuracy_report.json` node -> the series a reader names it by.
+#:
+#: The bare month-on-month nodes are the headline inflation nowcast. `inflation`
+#: is also an audit target, but on the other vocabulary (year-on-year, reported
+#: `efficient`), so the two checks never contend for the same word: a verdict is
+#: only ever resolved against the map that owns its token.
+NOWCAST_NODES = {
+    'nowcast': 'inflation',
+    'nowcast_mom': 'inflation',
+    'mom_driver_ablation': 'inflation',
+    'mom_longsample': 'inflation',
+    'transport_nowcast': 'transport',
+    'food_nowcast': 'food',
+    'electricity_nowcast': 'electricity',
+}
+
+#: A table row that labels itself superseded is preserving a withdrawn value on
+#: purpose. Appendix B of the thesis does this on every panel, pairing a
+#: `**Verdict (corrected)**` row with an italic `*Superseded (vs random walk)*`
+#: row, which is the behaviour this checker should be encouraging rather than
+#: reporting.
+_SUPERSEDED_ROW = re.compile(r'supersed', re.IGNORECASE)
+
+#: How far above a table row to look for the series it is about. A results table
+#: sits under the prose that introduces it; forty lines reaches that heading
+#: without letting a row inherit a series name from an unrelated section.
+_SERIES_LOOKBACK = 40
+
+
+def nowcast_verdicts(report: dict) -> dict[str, set[str]]:
+    """Series -> every nowcast verdict the artifacts report anywhere for it.
+
+    A set rather than a single value because one series carries several panels
+    (`mom`, `driver_ablation`, its `robust` re-test, and for electricity a
+    sub-sample stability block). A document claiming `beats_best_naive` for a
+    series is wrong only if no panel of that series returns it.
+    """
+    out: dict[str, set[str]] = {}
+
+    def walk(node, found: set):
+        if isinstance(node, dict):
+            verdict = node.get('verdict')
+            if isinstance(verdict, str) and verdict in NOWCAST_VERDICTS:
+                found.add(verdict)
+            for value in node.values():
+                walk(value, found)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, found)
+
+    for node_name, series in NOWCAST_NODES.items():
+        node = report.get(node_name)
+        if isinstance(node, dict):
+            walk(node, out.setdefault(series, set()))
+    return {series: found for series, found in out.items() if found}
+
+
+def scan_table_rows(text: str) -> list[tuple[int, str]]:
+    """Every markdown table row, with its line number, code fences removed.
+
+    Fenced blocks are skipped because a plan or design note builds verdict
+    dictionaries inside them, and source is not a claim about the world.
+    """
+    rows, fenced = [], False
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if line.lstrip().startswith('```'):
+            fenced = not fenced
+            continue
+        if not fenced and line.lstrip().startswith('|'):
+            rows.append((lineno, line))
+    return rows
+
+
+def _row_series(lines: list[str], index: int, pos: int, names) -> Optional[str]:
+    """The series a table row asserts about, or None if it cannot be resolved.
+
+    Named in the row itself when possible. Otherwise the nearest series named
+    above it, because a row reading "Driver-only, full sample (n = 204)" names no
+    series and belongs to whatever section introduced the table. None means the
+    row is left alone: an unresolved attribution is silence, not a guess.
+    """
+    here = _nearest_series(lines[index].lower(), pos, names)
+    if here:
+        return here
+    for above in range(index - 1, max(-1, index - 1 - _SERIES_LOOKBACK), -1):
+        previous = lines[above].lower()
+        found = _nearest_series(previous, len(previous), names)
+        if found:
+            return found
+    return None
+
+
+def check_nowcast_verdicts(text: str, report: dict) -> list[dict]:
+    """Nowcast verdicts asserted in a results table that the artifacts contradict.
+
+    `RSK-059`. Until 2026-08-21 no document's nowcast claim was compared against
+    any artifact, which is how the withdrawn positives of `RSK-057` survived a
+    cross-check that reported `consistent` throughout.
+
+    Only table rows are read. In these documents a prose mention of a verdict
+    token is nearly always meta -- the thesis defines its test family as the
+    nodes "returning a `beats_best_naive` verdict", and states that under the
+    corrected pool "there are no `beats_best_naive` positives left to correct".
+    Both are correct writing, and a checker that flagged them would be teaching
+    its readers to skip it.
+    """
+    reported = nowcast_verdicts(report)
+    if not reported:
+        return []
+    names = tuple(dict.fromkeys(tuple(reported) + SERIES_NAMES))
+    lines = text.splitlines()
+
+    findings = []
+    for lineno, line in scan_table_rows(text):
+        if _SUPERSEDED_ROW.search(line):
+            continue
+        low = line.lower()
+        spans = _quoted_spans(line)
+        for match in re.finditer('beats_best_naive', low):
+            if any(start <= match.start() < end for start, end in spans):
+                continue
+            series = _row_series(lines, lineno - 1, match.start(), names)
+            verdicts = reported.get(series)
+            if not verdicts or 'beats_best_naive' in verdicts:
+                continue
+            if any(verdict in low for verdict in verdicts):
+                continue          # the row already states a verdict the artifacts report
+            findings.append({
+                'kind': 'nowcast-verdict',
+                'severity': 'mismatch',
+                'line': lineno,
+                'claimed': 'beats_best_naive',
+                'context': line.strip()[:160],
+                'detail': (f'artifacts report {series} as '
+                           f'{"/".join(sorted(verdicts))}'),
+            })
+            break
+    return findings
+
+
 def all_committed_artifacts(exclude: Path = None, artifacts_dir: Path = None) -> list[dict]:
     """Every committed artifact JSON, parsed, for pooling sample sizes across
     all of them rather than reading `accuracy_report.json` alone. A manuscript
@@ -238,7 +398,9 @@ def all_committed_artifacts(exclude: Path = None, artifacts_dir: Path = None) ->
 
 def check_manuscript(path: Path, verdict_report: dict, size_pool: list) -> dict:
     text = path.read_text(encoding='utf-8')
-    findings = check_sample_sizes(text, size_pool) + check_verdicts(text, verdict_report)
+    findings = (check_sample_sizes(text, size_pool)
+                + check_verdicts(text, verdict_report)
+                + check_nowcast_verdicts(text, verdict_report))
     mismatches = [f for f in findings if f['severity'] == 'mismatch']
     return {
         'manuscript': path.name,
