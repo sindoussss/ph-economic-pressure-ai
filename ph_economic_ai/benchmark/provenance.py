@@ -79,7 +79,16 @@ def write_record(output_path, source: str, params: dict, transformations: list,
         **_calendar_span(output_path),
     }
     target = sidecar_path(output_path)
-    target.write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+    # `newline='\n'` so the bytes do not depend on the platform that wrote them.
+    # Without it Python's text mode emits CRLF on Windows and LF on Linux CI for
+    # the same record. `.gitattributes` pins `*.provenance.json` to `eol=lf`, so
+    # the committed blob was always right and nothing ever broke, which is
+    # precisely why it survived: the disk copy silently disagreed with the
+    # checkout it came from and reported as a modification carrying no change.
+    # This module certifies files by their bytes, so writing its own output with
+    # platform-dependent bytes undermines the property it exists to establish.
+    target.write_text(json.dumps(record, indent=2) + '\n',
+                      encoding='utf-8', newline='\n')
     return target
 
 
