@@ -118,3 +118,33 @@ def test_the_cpi_record_names_the_resolved_source():
     rec = provenance.load_record(DATA_DIR / 'ph_cpi_monthly.csv')
     assert rec is not None, 'ph_cpi_monthly.csv has no provenance record'
     assert 'IFS' in rec['source'] and 'DBnomics' in rec['source'], rec['source']
+
+
+# ── The sidecar is written with platform line endings ────────────────────────
+#
+# Found 2026-08-21, after hitting it by hand while correcting the announced
+# series under `RSK-069`. `write_record` used `Path.write_text` with no
+# `newline`, so Python's text mode translates '\n' to '\r\n' and every sidecar
+# written on Windows lands as CRLF while the same call on Linux CI lands as LF.
+#
+# `.gitattributes` pins `*.provenance.json` to `eol=lf`, which is why this has
+# never broken a build: git normalises the blob on commit. The cost is that the
+# file on disk then differs from the checkout it came from, so `git status`
+# reports a modification with no content change -- the exact signal `RSK-006`
+# spent 61 consecutive red CI runs learning to distrust, and the one the
+# artifact-churn note now says to investigate rather than revert.
+#
+# It is worth fixing in this module specifically because provenance exists to
+# make files byte-comparable. A checksum recorder that writes its own output
+# with platform-dependent bytes is undermining the property it certifies.
+
+def test_the_sidecar_is_written_with_lf_regardless_of_platform(tmp_path):
+    data = tmp_path / 'x.csv'
+    data.write_bytes(b'date,value\n2026-01,1\n2026-02,2\n')
+
+    target = provenance.write_record(
+        data, source='test', params={}, transformations=['none'])
+
+    raw = target.read_bytes()
+    assert b'\r\n' not in raw, 'sidecar written with CRLF; git normalises it, disk does not'
+    assert raw.endswith(b'\n')
