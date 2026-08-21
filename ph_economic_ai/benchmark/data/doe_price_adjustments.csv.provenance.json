@@ -12,12 +12,13 @@
     "derive the document slug from each Tuesday-to-Monday pricing week",
     "extract text with pypdf; read the covering week from the heading and prefer it over the requested week",
     "industry figure from the summary row where present, else the modal company figure; mode not mean so one company cannot drag it",
-    "the mode is taken over blocs of filings within 0.10 PHP/L of each other rather than over exactly equal values, and the reported figure is the mode WITHIN the winning bloc, so it is always a value some company posted"
+    "the mode is taken over blocs of filings within 0.10 PHP/L of each other rather than over exactly equal values, and the reported figure is the mode WITHIN the winning bloc, so it is always a value some company posted",
+    "a week is published only if at least 2 companies filed a gasoline figure and the winning bloc holds a strict majority of them; corrected 2026-08-21, when the summary row was found to bypass this check entirely, and the 7 weeks it had published on filings that do not support them were withdrawn"
   ],
   "units": "PHP per litre, change for the week",
-  "notes": "The announced move, not a forecast. Announced Monday, effective 6:00 AM Tuesday, and holds for the week. The `consensus` column is the share of companies inside the winning bloc, NOT the share posting an identical figure; the two differ wherever companies filed the same move to different centavos, and figures written before 2026-08-19 carry the stricter meaning.",
+  "notes": "The announced move, not a forecast. Announced Monday, effective 6:00 AM Tuesday, and holds for the week. The `consensus` column is the share of companies inside the winning bloc, NOT the share posting an identical figure; the two differ wherever companies filed the same move to different centavos, and figures written before 2026-08-19 carry the stricter meaning. Corrected 2026-08-21: 7 of the 24 weeks carried a figure taken from the notice summary row while the filings beneath it showed no majority, one of them read from a single company. Those figures are withdrawn and the weeks now read no_consensus; `consensus` and `n_companies` are kept as the record of why. The underlying documents were not re-fetched, so `retrieved_at` is unchanged and this is a re-reading of data already on file.",
   "retrieved_at": "2026-08-19T20:15:45+00:00",
-  "sha256": "4cf5685d7c9849127c91f5e04010d0a56cfd0aa7cfbc049db4e0f4d5044682c4",
+  "sha256": "1a89f432a6fefeecaca0ce6807270a4bd290ce16f740bc5da8025f1dd80d1db2",
   "rows": 24,
   "first_month": "2026-03",
   "last_month": "2026-08",

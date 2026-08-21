@@ -57,9 +57,25 @@ from ph_economic_ai.benchmark.paths import data
 PRODUCTS = ('gasoline', 'diesel', 'kerosene')
 
 #: Fraction of companies that must post the same figure before it is reported as
-#: THE announced move. Below this the notice does not contain one number, and
-#: averaging would manufacture one. The 2026-08-11 notice sits at 14 of 15.
+#: THE announced move. At or below this the notice does not contain one number,
+#: and averaging would manufacture one. The 2026-08-11 notice sits at 14 of 15.
+#:
+#: The comparison is `<=` rather than `<` as of 2026-08-21: an even split is a
+#: tie, not a consensus, and at two companies it is a coin flip. Three committed
+#: weeks sat at exactly 0.5, all three on the summary path, all three carrying
+#: moves the modal weeks never approach (+9.00, +16.00 and -20.00 PHP/L). No
+#: modal week is affected, because the lowest of the ten is 0.714.
 MIN_CONSENSUS = 0.5
+
+#: Filings needed before a consensus share means anything at all.
+#:
+#: A share is largest-bloc over total, so one filing scores 1.0 by construction:
+#: the number meant to express agreement reports perfect agreement exactly when
+#: there is nobody to agree with. The week of 2026-07-21 published `+3.65`
+#: gasoline and `+10.68` diesel read from a single company's filing at a recorded
+#: consensus of 1.0, which is the borrowed-authority shape `RSK-023` already cost
+#: three withdrawn grades for.
+MIN_FILINGS = 2
 
 #: Filings this far apart, in PHP/L, are the same announcement rather than two.
 #: Exact equality was too strict against real notices: on 2026-08-18 all fifteen
@@ -221,15 +237,22 @@ def industry_adjustment(rows: Iterable[Mapping],
         company for company, t in totals.items()
         if t['gasoline'] is not None and not (low <= t['gasoline'] <= high))
 
+    # This runs BEFORE the summary branch, which is the fix of 2026-08-21. It used
+    # to run after, so a parsed summary row returned a figure without ever meeting
+    # the one check that decides whether an announced figure exists. Skipping the
+    # MODE for a summary row is deliberate and stays: the summary is immune to the
+    # company-attribution errors PDF extraction introduces. Skipping the FLOOR was
+    # not, and it is what let seven of twenty-four committed weeks publish a figure
+    # their own filings contradict.
+    if len(posted) < MIN_FILINGS or share <= MIN_CONSENSUS:
+        result['basis'] = 'no_consensus'
+        return result
+
     if summary:
         result['basis'] = 'summary'
         for product in PRODUCTS:
             if summary.get(product) is not None:
                 result[product] = round(float(summary[product]), _DP)
-        return result
-
-    if share < MIN_CONSENSUS:
-        result['basis'] = 'no_consensus'
         return result
 
     result['basis'] = 'modal'

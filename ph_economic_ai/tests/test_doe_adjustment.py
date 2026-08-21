@@ -161,6 +161,98 @@ def test_no_consensus_is_reported_rather_than_averaged():
     assert result['gasoline'] is None
 
 
+# ── The summary row was exempt from every check ──────────────────────────────
+#
+# Found 2026-08-21, investigating a gap the Accuracy Roadmap had recorded as
+# unexplained: summary-basis weeks are measurably worse against observed retail
+# than modal ones, 1.71 MAD against 0.94.
+#
+# The cause is `industry_adjustment`'s ordering. `if summary:` returned BEFORE
+# the consensus floor, so the summary row was exempt from the one check that
+# decides whether an announced figure exists at all. The modal path carried two
+# guards, the floor and the clustered mode; the summary path carried none.
+#
+# `test_the_2026_08_18_notice_has_no_summary_row` below already states half of
+# this -- "with a summary row the mode is never consulted". Skipping the mode is
+# deliberate and correct, because the summary row is immune to the company
+# attribution errors PDF extraction causes. Skipping the FLOOR was not intended.
+#
+# In the 24 committed weeks the split is total: every modal week sits at 0.714
+# consensus or better, and every week below that is summary-basis. Seven weeks
+# published a figure the filings do not support, including one read from a
+# single company's filing and three where the largest bloc was under a third:
+#
+#     2026-03-24   +11.00 gasoline   10 companies   consensus 0.30
+#     2026-03-31    +2.60 gasoline   11 companies   consensus 0.27
+#     2026-04-07    +6.00 gasoline   12 companies   consensus 0.25
+#     2026-07-21    +3.65 gasoline    1 company     consensus 1.00
+#
+# The last is the sharper one. A share computed over a single filing is 1.0 by
+# construction, so the number that is supposed to express agreement reports
+# perfect agreement precisely when there is nobody to agree with. Publishing
+# that as the industry move is the borrowed-authority failure `RSK-023` cost
+# three withdrawn grades for, and worse here because the figure carries DOE's
+# certainty rather than a model's.
+
+def test_a_summary_row_does_not_exempt_a_week_from_the_consensus_floor():
+    """The defect. Companies disagree three ways; a summary row is present."""
+    rows = [_row('A', -1.0, -1.0), _row('B', -3.0, -3.0), _row('C', -5.0, -5.0)]
+    result = da.industry_adjustment(rows, summary={'gasoline': 11.0, 'diesel': 18.0})
+    assert result['basis'] == 'no_consensus', (
+        'a summary row must not publish a figure the filings contradict')
+    assert result['gasoline'] is None
+
+
+def test_one_filing_is_not_a_consensus():
+    """2026-07-21. One company, so the share is 1.0 by construction."""
+    result = da.industry_adjustment([_row('A', -2.0, -2.0)],
+                                    summary={'gasoline': 3.65, 'diesel': 10.68})
+    assert result['n_companies'] == 1
+    assert result['basis'] == 'no_consensus'
+    assert result['gasoline'] is None
+
+
+def test_a_tie_is_not_a_consensus():
+    """2026-03-10 and 03-17: two companies, one each, a coin flip at 0.5."""
+    rows = [_row('A', -1.0, -1.0), _row('B', -9.0, -9.0)]
+    result = da.industry_adjustment(rows, summary={'gasoline': 9.0, 'diesel': 21.0})
+    assert result['consensus'] == pytest.approx(0.5)
+    assert result['basis'] == 'no_consensus'
+
+
+def test_the_guard_does_not_disable_the_summary_row():
+    """The risk in tightening a floor is silencing the path it guards.
+
+    Where the filings agree, the summary is still preferred over the mode, which
+    is the whole reason it is read: it is immune to the attribution errors PDF
+    extraction introduces.
+    """
+    rows = [_row('A', -4.70, -4.30), _row('B', -4.70, -4.30), _row('C', -4.70, -4.30)]
+    result = da.industry_adjustment(rows, summary={'gasoline': -4.72, 'diesel': -4.31})
+    assert result['basis'] == 'summary'
+    assert result['gasoline'] == pytest.approx(-4.72)
+
+
+def test_no_committed_week_publishes_a_figure_its_filings_do_not_support():
+    """The data regression, against the committed series.
+
+    Applying the corrected guard to what is on file, not to a fixture.
+    """
+    import csv
+    with open(da.ANNOUNCEMENTS_CSV, encoding='utf-8') as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, 'the announced series is empty'
+
+    offenders = [
+        r['week_start'] for r in rows
+        if r.get('gasoline') not in (None, '')
+        and (float(r['consensus']) <= da.MIN_CONSENSUS or int(r['n_companies']) < da.MIN_FILINGS)
+    ]
+    assert not offenders, (
+        'weeks publishing an announced figure their own filings do not support: '
+        + ', '.join(offenders))
+
+
 def test_an_empty_notice_yields_nothing_rather_than_zero():
     result = da.industry_adjustment([])
     assert result['gasoline'] is None
